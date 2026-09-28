@@ -1,6 +1,8 @@
 // Everything related to the --chroma-key feature: parsing the hex color
-// the user gives on the command line, and the flood-fill algorithm that
-// turns a matching background region transparent.
+// the user gives on the command line, the flood-fill algorithm that turns
+// a matching background region transparent, and --find's automatic
+// discovery of additional same-colored regions the border-based flood
+// fill can't reach on its own.
 
 use image::{Rgba, RgbaImage};
 use std::collections::VecDeque;
@@ -57,6 +59,15 @@ pub fn parse_hex_color(input: &str) -> Result<[u8; 3], String> {
 /// color-distance threshold.
 const MAX_RGB_DISTANCE: f32 = 441.672_9; // sqrt(255^2 * 3)
 
+/// Converts a 0-100 tolerance percentage into an actual color-distance
+/// threshold. Shared by apply_chroma_key and find_isolated_regions so
+/// both agree on exactly what counts as "close enough" to the target
+/// color - if these ever disagreed, --find could suggest seeds for
+/// regions that the real conversion would then handle differently.
+fn tol_distance_from_percent(tolerance_percent: u8) -> f32 {
+    MAX_RGB_DISTANCE * (tolerance_percent.min(100) as f32 / 100.0)
+}
+
 /// Computes the Euclidean distance between an image color and the target
 /// color in RGB space. A distance of 0 means "identical", larger values
 /// mean "less similar". We simply treat red/green/blue as coordinates in a
@@ -69,35 +80,40 @@ fn color_distance(pixel: &Rgba<u8>, target: [u8; 3]) -> f32 {
     (dr * dr + dg * dg + db * db).sqrt()
 }
 
-/// Removes a specific background color from an image ("chroma key"),
-/// WITHOUT accidentally destroying identically-colored spots in the middle
-/// of the actual subject.
+/// The 4 direct neighbors (up/down/left/right) of (x, y), each as
+/// `Some((nx, ny))` when it's actually inside the image, `None` when it
+/// would fall outside. Shared by the two flood-fill algorithms in this
+/// file (the border-based one in flood_fill_reachable, and the
+/// component-labeling one in find_isolated_regions) so both walk the
+/// image the exact same way.
+fn in_bounds_neighbors(x: u32, y: u32, width: u32, height: u32) -> [Option<(u32, u32)>; 4] {
+    [
+        x.checked_sub(1).map(|nx| (nx, y)),
+        Some(x + 1).filter(|&v| v < width).map(|nx| (nx, y)),
+        y.checked_sub(1).map(|ny| (x, ny)),
+        Some(y + 1).filter(|&v| v < height).map(|ny| (x, ny)),
+    ]
+}
+
+/// Computes which pixels are reachable via flood fill from the image
+/// border (plus any given extra seed points), matching `target` within
+/// `tolerance_percent`. Returns a flat `width * height` vector where
+/// `true` means "reachable" - see apply_chroma_key's doc comment for the
+/// full explanation of why this border-based approach is safer than a
+/// global color replace.
 ///
-/// The idea (flood fill): We start ONLY at the four image borders and
-/// "walk" from there across all directly neighboring pixels that also
-/// have (roughly) the target color. This is like the bucket fill tool in a
-/// paint program, except we don't click with the mouse but start
-/// automatically at every border pixel at once. Only pixels reachable via
-/// such a "path" from the border count as background. An identical color
-/// that randomly occurs in the MIDDLE of the image, not connected to the
-/// border, stays untouched as a result - that's exactly what compensates
-/// for the risk you mentioned.
-///
-/// For a soft rather than hard-cut transition, the alpha reduction is
-/// additionally computed proportionally to the color distance: pixels that
-/// (almost) exactly match the target color become fully transparent;
-/// pixels that just barely fall within the tolerance become only slightly
-/// more transparent. This avoids an ugly, jagged edge.
-pub fn apply_chroma_key(
-    img: &mut RgbaImage,
+/// This is the shared core used by BOTH apply_chroma_key (which then
+/// additionally reduces alpha for everything reachable) and
+/// find_isolated_regions (which uses this purely to know what's ALREADY
+/// reachable, so it only reports what isn't).
+fn flood_fill_reachable(
+    img: &RgbaImage,
     target: [u8; 3],
     tolerance_percent: u8,
     extra_seeds: &[(u32, u32)],
-) {
+) -> Vec<bool> {
     let (width, height) = img.dimensions();
-    let tolerance_percent = tolerance_percent.min(100);
-    // Convert 0-100 into an actual color-distance threshold.
-    let tol_distance = MAX_RGB_DISTANCE * (tolerance_percent as f32 / 100.0);
+    let tol_distance = tol_distance_from_percent(tolerance_percent);
 
     // "visited" tracks, for every pixel, whether it's part of the
     // background region found from the border. Organized as a
@@ -135,13 +151,13 @@ pub fn apply_chroma_key(
         }
     }
 
-    // Enqueue extra, user-specified starting points (--seed). These are
-    // ALWAYS accepted as a starting point (even if their color doesn't
-    // perfectly match the target) - this lets the flood fill "jump into"
-    // an enclosed area that would otherwise be unreachable from the image
-    // border (e.g. because a frame/ring sits in between). The actual
-    // spreading from that point then works exactly as normal, via the
-    // tolerance comparison.
+    // Enqueue extra, user-specified (or --find --auto-apply-discovered)
+    // starting points. These are ALWAYS accepted as a starting point
+    // (even if their color doesn't perfectly match the target) - this
+    // lets the flood fill "jump into" an enclosed area that would
+    // otherwise be unreachable from the image border (e.g. because a
+    // frame/ring sits in between). The actual spreading from that point
+    // then works exactly as normal, via the tolerance comparison.
     for &(x, y) in extra_seeds {
         if x >= width || y >= height {
             eprintln!(
@@ -156,39 +172,74 @@ pub fn apply_chroma_key(
     }
 
     // Breadth-first search: from every pixel marked as "background", check
-    // the 4 direct neighbors (up/down/left/right) and, on a match, mark
-    // them as background too and add them to the queue. This continues
-    // until no new connected area is found.
+    // the 4 direct neighbors and, on a match, mark them as background too
+    // and add them to the queue. This continues until no new connected
+    // area is found.
     while let Some((x, y)) = queue.pop_front() {
-        let neighbors = [
-            (x.checked_sub(1), Some(y)),
-            (Some(x + 1).filter(|&v| v < width), Some(y)),
-            (Some(x), y.checked_sub(1)),
-            (Some(x), Some(y + 1).filter(|&v| v < height)),
-        ];
-        for (nx, ny) in neighbors {
-            if let (Some(nx), Some(ny)) = (nx, ny) {
-                if !visited[idx(nx, ny)] && is_background_candidate(img, nx, ny) {
-                    visited[idx(nx, ny)] = true;
-                    queue.push_back((nx, ny));
-                }
+        for (nx, ny) in in_bounds_neighbors(x, y, width, height).into_iter().flatten() {
+            if !visited[idx(nx, ny)] && is_background_candidate(img, nx, ny) {
+                visited[idx(nx, ny)] = true;
+                queue.push_back((nx, ny));
             }
         }
     }
 
-    // Second pass: reduce the alpha value for every pixel identified as
-    // background.
+    visited
+}
+
+/// Removes a specific background color from an image ("chroma key") -
+/// or, if `replacement` is given, REPLACES it with a different solid
+/// color instead of making it transparent - WITHOUT accidentally
+/// destroying identically-colored spots in the middle of the actual
+/// subject.
+///
+/// The idea (flood fill): We start ONLY at the four image borders and
+/// "walk" from there across all directly neighboring pixels that also
+/// have (roughly) the target color. This is like the bucket fill tool in a
+/// paint program, except we don't click with the mouse but start
+/// automatically at every border pixel at once. Only pixels reachable via
+/// such a "path" from the border count as background. An identical color
+/// that randomly occurs in the MIDDLE of the image, not connected to the
+/// border, stays untouched as a result - that's exactly what compensates
+/// for the risk you mentioned. (See find_isolated_regions below for a way
+/// to automatically discover such spots when they're ALSO meant to be
+/// affected.)
+///
+/// For a soft rather than hard-cut transition, the change is additionally
+/// applied proportionally to the color distance: pixels that (almost)
+/// exactly match the target color are fully affected; pixels that just
+/// barely fall within the tolerance are only slightly affected. This
+/// avoids an ugly, jagged edge - whether that edge is a transparency
+/// cutoff (`replacement: None`) or a color-replacement cutoff
+/// (`replacement: Some(...)`).
+pub fn apply_chroma_key(
+    img: &mut RgbaImage,
+    target: [u8; 3],
+    tolerance_percent: u8,
+    extra_seeds: &[(u32, u32)],
+    replacement: Option<[u8; 3]>,
+) {
+    let (width, height) = img.dimensions();
+    let tol_distance = tol_distance_from_percent(tolerance_percent);
+    let idx = |x: u32, y: u32| -> usize { (y * width + x) as usize };
+
+    let visited = flood_fill_reachable(img, target, tolerance_percent, extra_seeds);
+
+    // Second pass: change every pixel identified as background - either
+    // its alpha (transparency mode) or its RGB color (replacement mode).
     //
     // IMPORTANT: Instead of a single linear transition across the ENTIRE
     // tolerance range (0 to tol_distance), we use two zones:
     //   - "core zone" (distance <= core_distance): pixels are HARD-set to
-    //     alpha = 0, regardless of the tiniest color deviations. This
+    //     the full effect (fully transparent, or fully the replacement
+    //     color), regardless of the tiniest color deviations. This
     //     matters because real-world backgrounds (JPEG artifacts, slight
     //     gradients) almost never match the given target color 100%
     //     exactly - without a core zone there would practically always be
-    //     a tiny residual alpha left over (e.g. 5 out of 255). Barely
-    //     visible on a checkerboard, but in some display contexts (e.g.
-    //     Windows Explorer) it can show up as a faint gray haze over the
+    //     a tiny residual (5 out of 255 alpha left over, or a barely-off
+    //     shade of the replacement color) - barely visible on its own,
+    //     but in some display contexts (e.g. Windows Explorer, for the
+    //     transparency case) it can show up as a faint haze over the
     //     ENTIRE area - exactly the problem we're fixing here.
     //   - "feather zone" (core_distance < distance <= tol_distance): the
     //     soft, linear transition from before is kept here. This zone
@@ -206,21 +257,155 @@ pub fn apply_chroma_key(
                 continue; // already fully transparent, nothing to do
             }
             let distance = color_distance(pixel, target);
+            // scale = 0.0 in the core zone (full effect), ramping up to
+            // 1.0 at the tolerance boundary (no effect) - shared by both
+            // modes below, just applied to a different channel.
             let scale = if distance <= core_distance {
-                // Core zone: clearly background -> fully transparent.
                 0.0
             } else if tol_distance > core_distance {
-                // Feather zone: linear transition from 0 (at the core-zone
-                // boundary) to 1 (at the tolerance boundary).
                 ((distance - core_distance) / (tol_distance - core_distance)).clamp(0.0, 1.0)
             } else {
                 // Edge case (tolerance very small/0): no feather zone
                 // exists, everything outside the core zone stays unchanged.
                 1.0
             };
-            pixel[3] = (pixel[3] as f32 * scale).round() as u8;
+
+            match replacement {
+                None => {
+                    // Transparency mode (the original behavior): fade
+                    // alpha down towards 0.
+                    pixel[3] = (pixel[3] as f32 * scale).round() as u8;
+                }
+                Some(new_color) => {
+                    // Replacement mode: blend the pixel's RGB towards the
+                    // new color instead - "how much of the original color
+                    // to keep" is just `scale` again, applied per
+                    // channel. Alpha is deliberately left untouched: this
+                    // is a solid recolor, not a transparency change.
+                    for channel in 0..3 {
+                        let original = pixel[channel] as f32;
+                        let target_channel = new_color[channel] as f32;
+                        pixel[channel] = (original * scale + target_channel * (1.0 - scale))
+                            .round()
+                            .clamp(0.0, 255.0) as u8;
+                    }
+                }
+            }
         }
     }
+}
+
+/// One region --find discovered: how many pixels it covers, and a single
+/// representative point inside it suitable for use as a --seed value.
+pub struct FoundRegion {
+    pub pixel_count: usize,
+    pub seed: (u32, u32),
+}
+
+/// Default for --find-min-size: regions smaller than this (in pixels) are
+/// ignored by find_isolated_regions unless the user overrides it - a
+/// handful of stray pixels is almost always anti-aliasing/JPEG noise
+/// rather than a deliberate area someone would want to affect, and
+/// reporting every single one would bury the genuinely useful suggestions
+/// in noise. Set --find-min-size 1 to catch every matching pixel, however
+/// small.
+pub const DEFAULT_FIND_MIN_SIZE: usize = 9;
+
+/// Finds additional regions matching `target` that the border-based flood
+/// fill in apply_chroma_key can NOT reach on its own - i.e. exactly the
+/// spots --seed is for, discovered automatically instead of requiring
+/// someone to hunt for pixel coordinates in an image editor first.
+///
+/// How: first compute what the normal border flood fill would already
+/// reach (flood_fill_reachable, with no extra seeds). Then scan every
+/// remaining pixel for a color match; whatever's left is grouped into
+/// separate connected regions the same way (flood fill), just without
+/// requiring a path back to the border. Each resulting region becomes one
+/// suggested seed point (the region's own pixel closest to its centroid,
+/// so the point is guaranteed to actually be part of the region even for
+/// oddly-shaped areas) - one entry in the returned list per region,
+/// smaller than `min_region_size` filtered out (see DEFAULT_FIND_MIN_SIZE
+/// above for the reasoning on why that's not simply 1 by default).
+pub fn find_isolated_regions(
+    img: &RgbaImage,
+    target: [u8; 3],
+    tolerance_percent: u8,
+    min_region_size: usize,
+) -> Vec<FoundRegion> {
+    let (width, height) = img.dimensions();
+    let tol_distance = tol_distance_from_percent(tolerance_percent);
+    let idx = |x: u32, y: u32| -> usize { (y * width + x) as usize };
+
+    let is_candidate = |x: u32, y: u32| -> bool {
+        let pixel = img.get_pixel(x, y);
+        pixel[3] == 0 || color_distance(pixel, target) <= tol_distance
+    };
+
+    // Anything the normal border-based flood fill already reaches doesn't
+    // need to be "found" - it'll be handled anyway. We start our own
+    // labeling from this, treating those pixels as already accounted for.
+    let mut labeled = flood_fill_reachable(img, target, tolerance_percent, &[]);
+
+    let mut regions = Vec::new();
+
+    for y in 0..height {
+        for x in 0..width {
+            if labeled[idx(x, y)] || !is_candidate(x, y) {
+                continue;
+            }
+
+            // Found the start of a new, previously-unaccounted-for region -
+            // flood fill across it (same 4-connectivity as everywhere else
+            // in this file), collecting every member pixel.
+            let mut queue: VecDeque<(u32, u32)> = VecDeque::new();
+            let mut members: Vec<(u32, u32)> = Vec::new();
+            labeled[idx(x, y)] = true;
+            queue.push_back((x, y));
+
+            while let Some((cx, cy)) = queue.pop_front() {
+                members.push((cx, cy));
+                for (nx, ny) in in_bounds_neighbors(cx, cy, width, height).into_iter().flatten() {
+                    if !labeled[idx(nx, ny)] && is_candidate(nx, ny) {
+                        labeled[idx(nx, ny)] = true;
+                        queue.push_back((nx, ny));
+                    }
+                }
+            }
+
+            if members.len() < min_region_size {
+                continue;
+            }
+
+            // Representative point: the actual member pixel closest to the
+            // region's centroid. Using the raw centroid coordinate itself
+            // could land outside the region for a concave/oddly-shaped
+            // area (e.g. a crescent) - snapping to the nearest real member
+            // guarantees the suggested --seed value is actually inside it.
+            let (sum_x, sum_y) = members
+                .iter()
+                .fold((0u64, 0u64), |(sx, sy), &(px, py)| {
+                    (sx + px as u64, sy + py as u64)
+                });
+            let centroid_x = (sum_x / members.len() as u64) as u32;
+            let centroid_y = (sum_y / members.len() as u64) as u32;
+
+            let seed = *members
+                .iter()
+                .min_by_key(|&&(mx, my)| {
+                    let dx = mx as i64 - centroid_x as i64;
+                    let dy = my as i64 - centroid_y as i64;
+                    dx * dx + dy * dy
+                })
+                .expect("members is non-empty: we just pushed at least one pixel into it");
+
+            regions.push(FoundRegion {
+                pixel_count: members.len(),
+                seed,
+            });
+        }
+    }
+
+    regions
 }
 
 #[cfg(test)]

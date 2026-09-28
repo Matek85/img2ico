@@ -6,7 +6,8 @@
 // Everything else lives in its own module, grouped by feature:
 //   - cli.rs         the Args struct and the two --preset/--output-format
 //                     value enums (everything clap needs)
-//   - chroma_key.rs   --chroma-key hex parsing and the flood-fill algorithm
+//   - chroma_key.rs   --chroma-key/--find hex parsing and the flood-fill
+//                     and region-discovery algorithms
 //   - resize.rs       alpha-aware resizing and square-icon construction
 //   - icns.rs         the macOS .icns container format
 //   - ico_ops.rs      --merge, --inspect, --extract, --select (everything
@@ -22,15 +23,20 @@ mod ico_ops;
 mod resize;
 mod util;
 
-use chroma_key::{apply_chroma_key, parse_hex_color};
+use chroma_key::{apply_chroma_key, find_isolated_regions, parse_hex_color};
 use clap::Parser;
 use cli::{Args, OutputFormat};
 use icns::{write_icns, ICNS_SIZES};
 use ico_ops::{extract_icons, inspect_icons, merge_icons, parse_indices, select_icons};
-use resize::{has_transparency, make_square_icon, warn_about_upscaling};
+use resize::{
+    apply_grayscale, has_transparency, make_square_icon, warn_about_thin_content,
+    warn_about_upscaling,
+};
 use util::{check_overwrite, delete_source_files, parse_seed};
 
 fn main() {
+    install_broken_pipe_panic_hook();
+
     // The actual work lives in run(). Reason for this split: run() returns
     // a Result<(), String>, which lets us use the "?" operator everywhere
     // inside it (see explanation below) - this saves us from repeating the
@@ -41,6 +47,51 @@ fn main() {
         eprintln!("{message}");
         std::process::exit(1);
     }
+}
+
+/// Fixes a real bug: by default, Rust's `println!`/`eprintln!` PANIC if
+/// the write itself fails - and one very ordinary, non-error way for that
+/// to happen is piping this program's output into something that closes
+/// the pipe early, e.g. `img2ico --inspect big.ico | head -3`. `head`
+/// reads the first 3 lines and exits, closing its end of the pipe; the
+/// next `println!` we attempt after that fails with a "Broken pipe"
+/// error, and the standard library turns THAT into a panic - a scary
+/// stack trace and exit code 101, for something that isn't a bug in this
+/// program at all and that virtually every other command-line tool
+/// handles by just quietly stopping.
+///
+/// The fix: install a custom panic hook that runs BEFORE the normal one.
+/// If the panic is specifically this "failed printing to stdout/stderr:
+/// Broken pipe" case, we exit cleanly (code 0, no scary output) instead -
+/// exactly what a well-behaved CLI tool does when its output pipe closes
+/// early. Any OTHER panic (an actual bug) falls through to the normal
+/// panic hook completely unchanged, so a genuine crash is never hidden.
+///
+/// Caveat worth knowing: this recognizes the broken-pipe case by checking
+/// whether the panic message contains the text "Broken pipe", since
+/// std's panicking print functions don't hand us the underlying
+/// `std::io::Error` in a more structured way. That text comes from the
+/// operating system and could in principle read differently on a
+/// non-English-locale system - if that ever happens, the worst case is
+/// simply that this fix doesn't kick in and behavior falls back to
+/// exactly what it was before (a panic), never anything worse.
+fn install_broken_pipe_panic_hook() {
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |panic_info| {
+        let message = panic_info
+            .payload()
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| panic_info.payload().downcast_ref::<&str>().copied());
+
+        if let Some(message) = message {
+            if message.contains("Broken pipe") {
+                std::process::exit(0);
+            }
+        }
+
+        default_hook(panic_info);
+    }));
 }
 
 /// Contains the complete program logic.
@@ -155,6 +206,91 @@ fn run() -> Result<(), String> {
         ));
     };
 
+    // --chroma-key and --find both ultimately specify "the background
+    // color" - only one is needed at a time, and allowing both would just
+    // invite the confusing case of them disagreeing.
+    if args.chroma_key.is_some() && args.find.is_some() {
+        return Err(
+            "--chroma-key and --find are mutually exclusive - use --find for automatic seed discovery, or --chroma-key with manual --seed values."
+                .to_string(),
+        );
+    }
+    if args.auto_apply && args.find.is_none() {
+        return Err("--auto-apply has no effect without --find.".to_string());
+    }
+    if args.replace_color.is_some() && args.chroma_key.is_none() && args.find.is_none() {
+        return Err(
+            "--replace-color requires --chroma-key or --find (there's no background color to replace otherwise)."
+                .to_string(),
+        );
+    }
+    let replacement: Option<[u8; 3]> = match &args.replace_color {
+        Some(hex) => {
+            Some(parse_hex_color(hex).map_err(|e| format!("Invalid --replace-color value: {e}"))?)
+        }
+        None => None,
+    };
+
+    // Load the input image EARLY - before output_path/--sizes are even
+    // looked at - specifically so that a plain "--find" preview (see
+    // below) can print its report and exit without needing any of that:
+    // it doesn't write a file, so it shouldn't need to know or care where
+    // one WOULD have gone.
+    //
+    // image::open detects the format automatically from the file header
+    // (not just the file extension).
+    let img = image::open(input_path).map_err(|e| format!("Could not read input file: {e}"))?;
+
+    // IMPORTANT (optimization): img.to_rgba8() converts/copies the entire
+    // image. This intentionally happens only ONCE here, regardless of
+    // whether --chroma-key/--find is set or not - and NOT (as in an
+    // earlier version) again for every single icon size. For a large
+    // source image and the 6 default sizes, that would otherwise have
+    // been 6 full copies of the source image, even though the source
+    // image doesn't change between sizes.
+    let mut rgba_source = img.to_rgba8();
+
+    // --find: look for regions matching this color that the border-based
+    // flood fill in apply_chroma_key can't reach on its own (the same
+    // situation --seed manually solves, just discovered automatically).
+    // Without --auto-apply, this is the ENTIRE effect of --find: print
+    // the suggestions and stop, without converting anything.
+    let mut auto_found_seeds: Vec<(u32, u32)> = Vec::new();
+    if let Some(find_hex) = &args.find {
+        let target =
+            parse_hex_color(find_hex).map_err(|e| format!("Invalid --find value: {e}"))?;
+        let regions = find_isolated_regions(&rgba_source, target, args.tolerance, args.find_min_size);
+
+        if regions.is_empty() {
+            println!(
+                "No additional regions matching {find_hex} found - the border-based flood fill should already reach everything."
+            );
+        } else {
+            println!(
+                "Found {} additional region(s) matching {find_hex} that the border-based flood fill can't reach on its own:",
+                regions.len()
+            );
+            for region in &regions {
+                let (x, y) = region.seed;
+                println!(
+                    "  ~{} pixel(s) near ({x}, {y}) -> --seed {x},{y}",
+                    region.pixel_count
+                );
+            }
+        }
+
+        if !args.auto_apply {
+            if !regions.is_empty() {
+                println!(
+                    "Re-run with these as --seed values, or add --auto-apply to use them automatically."
+                );
+            }
+            return Ok(());
+        }
+
+        auto_found_seeds = regions.into_iter().map(|r| r.seed).collect();
+    }
+
     // Whether to produce .icns or .ico. If the user gave --output-format
     // explicitly, that wins outright. Otherwise, fall back to a
     // platform-based default: .icns on macOS, .ico everywhere else - this
@@ -183,10 +319,10 @@ fn run() -> Result<(), String> {
         p
     });
 
-    // Fail fast, before doing any actual work (loading/resizing the
-    // image), if the resolved output already exists and --force wasn't
-    // given. This one check covers both the normal ICO path and --icns,
-    // since they share this same output_path.
+    // Fail fast, before doing any actual work (resizing the image), if
+    // the resolved output already exists and --force wasn't given. This
+    // one check covers both the normal ICO path and --icns, since they
+    // share this same output_path.
     check_overwrite(&output_path, args.force)?;
 
     // Turn the sizes string ("16,32,48") into a list of numbers. Each
@@ -222,24 +358,12 @@ fn run() -> Result<(), String> {
         return Err("At least one size must be given.".to_string());
     }
 
-    // Load the input image. image::open detects the format automatically
-    // from the file header (not just the file extension).
-    let img = image::open(input_path).map_err(|e| format!("Could not read input file: {e}"))?;
-
-    // If --chroma-key was given: apply it once to the original image at
-    // full resolution (not once per icon size), so the flood-fill
-    // detection can work with as much detail as possible. All icon sizes
-    // generated afterward are then downscaled from this already
-    // transparent-made image.
-    //
-    // IMPORTANT (optimization): img.to_rgba8() converts/copies the entire
-    // image. This intentionally happens only ONCE here, regardless of
-    // whether --chroma-key is set or not - and NOT (as in an earlier
-    // version) again for every single icon size. For a large source image
-    // and the 6 default sizes, that would otherwise have been 6 full
-    // copies of the source image, even though the source image doesn't
-    // change between sizes.
-    let mut rgba_source = img.to_rgba8();
+    // Apply the actual chroma-key removal/replacement, if requested
+    // either way: --chroma-key (with whatever manual --seed values were
+    // given), or --find --auto-apply (manual --seed values PLUS the
+    // automatically discovered regions from above, combined). --replace-color
+    // was already parsed into `replacement` above and gets passed through
+    // to both.
     if let Some(hex) = &args.chroma_key {
         let target = parse_hex_color(hex).map_err(|e| format!("Invalid --chroma-key value: {e}"))?;
         let seeds: Vec<(u32, u32)> = args
@@ -247,7 +371,27 @@ fn run() -> Result<(), String> {
             .iter()
             .map(|s| parse_seed(s).map_err(|e| format!("Invalid --seed value: {e}")))
             .collect::<Result<Vec<(u32, u32)>, String>>()?;
-        apply_chroma_key(&mut rgba_source, target, args.tolerance, &seeds);
+        apply_chroma_key(&mut rgba_source, target, args.tolerance, &seeds, replacement);
+    } else if let Some(hex) = &args.find {
+        // Only reachable when --auto-apply was given too - the plain
+        // "--find" preview case already returned Ok(()) further up.
+        let target = parse_hex_color(hex).map_err(|e| format!("Invalid --find value: {e}"))?;
+        let mut seeds: Vec<(u32, u32)> = args
+            .seeds
+            .iter()
+            .map(|s| parse_seed(s).map_err(|e| format!("Invalid --seed value: {e}")))
+            .collect::<Result<Vec<(u32, u32)>, String>>()?;
+        seeds.extend(auto_found_seeds);
+        apply_chroma_key(&mut rgba_source, target, args.tolerance, &seeds, replacement);
+    }
+
+    // --grayscale runs LAST, after any --chroma-key/--replace-color
+    // processing above - so it uniformly affects the final colors,
+    // including a --replace-color color if both were combined, rather
+    // than leaving a confusing "everything except the replaced background
+    // is grayscale" exception.
+    if args.grayscale {
+        apply_grayscale(&mut rgba_source);
     }
 
     // Computed ONCE here and passed down to every make_square_icon call
@@ -265,8 +409,10 @@ fn run() -> Result<(), String> {
     if use_icns {
         let icns_sizes: Vec<u32> = ICNS_SIZES.iter().map(|&(size, _)| size).collect();
         warn_about_upscaling(source_w, source_h, &icns_sizes);
+        warn_about_thin_content(source_w, source_h, args.padding, &icns_sizes);
     } else {
         warn_about_upscaling(source_w, source_h, &sizes);
+        warn_about_thin_content(source_w, source_h, args.padding, &sizes);
     }
 
     // .icns branches off here (whether from an explicit --output-format icns or from

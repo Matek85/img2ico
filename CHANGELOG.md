@@ -12,7 +12,63 @@ when cutting a release.
 
 Nothing yet.
 
+## [1.1.0] - 2026-09-28
+
+### Added
+
+- `--find <hex color>` to automatically discover background regions the
+  border-based `--chroma-key` flood fill can't reach on its own (the same
+  situation `--seed` solves, but found by scanning the image instead of
+  requiring pixel coordinates hunted down by hand in an image editor).
+  Prints suggested `--seed` values and stops there by default; combined
+  with the new `--auto-apply`, uses them automatically and runs the full
+  conversion right away. Mutually exclusive with `--chroma-key`.
+- A warning when a very elongated source image (e.g. an 8:1 banner) or a
+  high `--padding` value (or both together) would leave only a thin,
+  hard-to-recognize sliver of actual content at a given icon size, since
+  img2ico never distorts a non-square source and instead pads the
+  shorter side.
+- `--replace-color <hex color>` to replace the detected background with
+  a different solid color instead of making it transparent - same
+  detection (border flood fill, `--tolerance`, `--seed`/`--find`) and the
+  same soft edge blend, just blending towards the new color rather than
+  towards transparent. Requires `--chroma-key` or `--find`.
+- `--find-min-size <pixels>` to control the smallest region `--find`
+  reports (default 9, matching the previous fixed behavior) - set to `1`
+  to have `--find`/`--auto-apply` catch every matching pixel, including
+  isolated single-pixel specks.
+- `--grayscale` to remove all color from the icon (standard weighted
+  luminance conversion), leaving transparency untouched. Works standalone
+  or combined with anything else; runs after `--chroma-key`/
+  `--replace-color`, so a replacement color ends up grayscaled too.
+
+### Fixed
+
+- A crash (panic, exit code 101) when this tool's output was piped into
+  something that closes the pipe early, e.g. `img2ico --inspect big.ico
+  | head`. Now exits cleanly instead - any other, genuine panic is
+  unaffected and still shows normally.
+
 ## [1.0.0] - 2026-09-12
+
+### Added
+
+- README: a "Download a pre-built release" installation option alongside
+  the existing build-from-source instructions, linking to the GitHub
+  Releases page - recommended as the default path for anyone who doesn't
+  need/want a Rust toolchain.
+
+### Changed
+
+- CI: `push`/`pull_request` runs now only trigger when something that
+  actually affects the built program changes (`.rs` files, `Cargo.toml`,
+  `Cargo.lock`, or the workflow file itself) - editing just the README,
+  CHANGELOG, or LICENSE no longer spends CI minutes on a rebuild that
+  would produce the same binaries. Tag pushes (`vX.Y.Z`, used for
+  releases) are unaffected by this filter and always build regardless of
+  which files changed.
+
+## [0.1.0] - 2026-09-12
 
 Initial release.
 

@@ -23,6 +23,101 @@ pub fn warn_about_upscaling(source_width: u32, source_height: u32, sizes: &[u32]
     }
 }
 
+/// Below this many pixels, the shorter side of a letterboxed/pillarboxed
+/// image counts as "just a sliver" for warn_about_thin_content - not
+/// invisible, but not really recognizable as the original artwork either.
+const MIN_RECOGNIZABLE_CONTENT_PIXELS: u32 = 3;
+
+/// Warns (once, to stderr) about icon sizes where either an extreme
+/// source aspect ratio, a high --padding value, or the combination of
+/// both leaves only a thin sliver of actual content.
+///
+/// Background: make_square_icon fits the source image into the icon
+/// canvas WITHOUT distorting it (see its doc comment), which for a very
+/// elongated source (e.g. an 800x100 banner, 8:1) means the shorter side
+/// ends up tiny once scaled down - at a 16x16 icon, that 8:1 ratio leaves
+/// only about 2 pixels of actual visible height, the rest is transparent
+/// padding above and below. --padding shrinks the usable area further,
+/// and can cause the exact same symptom completely on its own even for a
+/// perfectly square source (e.g. --padding 100 leaves zero content
+/// regardless of aspect ratio) - so the message below deliberately
+/// doesn't blame one specific cause, since either one (or both together)
+/// can be responsible. The result is still a valid, undistorted icon;
+/// it's just one where the artwork itself may be hard to make out at
+/// that particular size. This is a genuinely different situation from
+/// warn_about_upscaling: the proportion of the icon actually covered by
+/// content is the SAME at every size, so this only becomes a practical
+/// problem once that fraction, applied to a given icon's pixel count,
+/// rounds down to almost nothing - which is why this takes --padding and
+/// every individual target size into account, rather than a single
+/// blanket check.
+pub fn warn_about_thin_content(
+    source_width: u32,
+    source_height: u32,
+    padding_percent: u8,
+    sizes: &[u32],
+) {
+    if source_width == 0 || source_height == 0 {
+        return; // guards the division below; shouldn't happen for a real image
+    }
+    let padding_percent = padding_percent.min(100);
+    let minor = source_width.min(source_height) as f32;
+    let major = source_width.max(source_height) as f32;
+
+    let affected: Vec<String> = sizes
+        .iter()
+        .copied()
+        .filter_map(|size| {
+            let content_size = size as f32 * (1.0 - padding_percent as f32 / 100.0);
+            let minor_scaled = (content_size * minor / major).round() as u32;
+            if minor_scaled <= MIN_RECOGNIZABLE_CONTENT_PIXELS {
+                Some(format!("{size}x{size} (~{minor_scaled}px of actual content)"))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    if !affected.is_empty() {
+        eprintln!(
+            "Warning: at these sizes, only a thin sliver of the actual artwork will be visible: {} - this can be caused by an elongated source image, a high --padding value, or both. Consider a less elongated source image and/or less padding if that looks too thin.",
+            affected.join(", ")
+        );
+    }
+}
+
+/// Converts every pixel to grayscale (sets R=G=B to a single weighted
+/// brightness value), leaving alpha completely untouched. Unlike
+/// --chroma-key/--replace-color (which only affect a detected background
+/// region), this uniformly affects every pixel in the image - the whole
+/// point being "no color left anywhere", not just in the background.
+///
+/// Applied as the LAST color transformation in the pipeline (see main.rs's
+/// run()), after any --chroma-key/--replace-color processing - so if
+/// someone combines --grayscale with --replace-color, the replacement
+/// color itself also ends up grayscaled rather than staying colorful,
+/// which matches what "the whole icon is grayscale" should mean without
+/// a confusing exception.
+pub fn apply_grayscale(img: &mut RgbaImage) {
+    for pixel in img.pixels_mut() {
+        let r = pixel[0] as f32;
+        let g = pixel[1] as f32;
+        let b = pixel[2] as f32;
+        // ITU-R BT.601 luma weights - the standard formula for how bright
+        // an RGB color appears to the human eye: green contributes the
+        // most (eyes are most sensitive to it), blue the least. Using
+        // this instead of a plain average (r+g+b)/3 keeps the perceived
+        // brightness of the original colors intact - a naive average
+        // makes pure blue look almost as bright as pure yellow, even
+        // though blue looks much darker to us.
+        let gray = (0.299 * r + 0.587 * g + 0.114 * b).round().clamp(0.0, 255.0) as u8;
+        pixel[0] = gray;
+        pixel[1] = gray;
+        pixel[2] = gray;
+        // pixel[3] (alpha) is deliberately left as-is.
+    }
+}
+
 /// Returns true if any pixel in the image has an alpha value below 255 -
 /// i.e. whether the image has any transparency at all.
 ///

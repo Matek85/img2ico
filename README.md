@@ -81,7 +81,12 @@ Usage: img2ico [OPTIONS] <INPUT>...
 | `--chroma-key` | `-c` | hex color | Remove this background color |
 | `--tolerance` | `-t` | 0–100 | How strictly `--chroma-key` matches colors |
 | `--seed` | | `x,y` (repeatable) | Extra starting point(s) for background removal |
+| `--find` | | hex color | Auto-discover extra seed points for that color |
+| `--find-min-size` | | pixels (default 9) | Smallest region `--find` reports; `1` catches every matching pixel |
+| `--auto-apply` | | | With `--find`: use the discovered points and convert right away |
+| `--replace-color` | | hex color | Replace the detected background with this color instead of making it transparent |
 | `--padding` | | 0–100 | Transparent margin around the artwork |
+| `--grayscale` | | | Remove all color, keep only brightness |
 | `--output-format` | | `ico` / `icns` | Force a specific icon container format |
 | `--merge` | | | Combine several `.ico` files into one |
 | `--extract` | | | Pull every size out of an `.ico` as PNGs |
@@ -161,6 +166,34 @@ Warning: the source image is 64x64 pixels, smaller than [96, 128, 256] - those s
 
 This is not an error and doesn't stop the conversion — it's a heads-up so a blurry large icon doesn't come as a surprise. Use `--inspect` on your source image beforehand (see [section 8.3](#83-a-source-image-before-converting-it)) if you'd like to check this before running the conversion at all.
 
+### 1.8 Automatic warning for very elongated source images (or heavy padding)
+
+```
+img2ico wide-banner.png --preset windows
+```
+
+img2ico never distorts a non-square source image — it fits the whole thing into the icon canvas proportionally and adds transparent padding on the shorter side (see [section 1.1](#1-basic-conversion) for the general behavior). For a very elongated image (e.g. an 800×100 banner, an 8:1 ratio), that padding can end up dominating the icon at small sizes: at 16×16, only about 2 pixels of actual height remain visible. A high `--padding` value can cause the exact same symptom on its own, even for a perfectly square image. Either way, you'll see a warning rather than a silent, hard-to-recognize result:
+
+```
+Warning: at these sizes, only a thin sliver of the actual artwork will be visible: 16x16 (~2px of actual content), 20x20 (~3px of actual content), 24x24 (~3px of actual content) - this can be caused by an elongated source image, a high --padding value, or both. Consider a less elongated source image and/or less padding if that looks too thin.
+```
+
+Not an error — the icon is still valid and undistorted, just one where the artwork may be hard to make out at that specific size.
+
+### 1.9 Converting to grayscale
+
+```
+img2ico logo.png --grayscale
+```
+
+Removes all color from the icon, leaving only brightness — every pixel gets converted using the standard weighted luminance formula (green contributes most, blue the least, matching how the human eye perceives brightness — a plain R+G+B average would make blue look artificially bright). Transparency is untouched; only color is affected. Works standalone, or combined with anything else:
+
+```
+img2ico logo.png -c FFFFFF --replace-color 000000 --grayscale
+```
+
+`--grayscale` always runs last, after any `--chroma-key`/`--replace-color` processing — so a `--replace-color` color ends up grayscaled too when both are combined, rather than being a confusing exception to an otherwise all-gray icon.
+
 ---
 
 ## 2. Removing a background color (chroma key)
@@ -197,6 +230,41 @@ img2ico logo.png -c FFFFFF --seed 128,64 --seed 200,300
 
 `--seed` can be given more than once, for multiple separate enclosed areas.
 
+### 2.4b Finding those seed points automatically instead of hunting for them by hand
+
+```
+img2ico --find FFFFFF logo.png
+```
+
+Manually opening an image editor just to find pixel coordinates for `--seed` is tedious, and most people won't do it. `--find <hex color>` does that search for you: it scans the image for regions matching the given color that the border-based flood fill can't reach on its own — exactly the situation `--seed` is for — and prints them as ready-to-use `--seed` values:
+
+```
+Found 2 additional region(s) matching FFFFFF that the border-based flood fill can't reach on its own:
+  ~450 pixel(s) near (128, 64) -> --seed 128,64
+  ~120 pixel(s) near (300, 310) -> --seed 300,310
+Re-run with these as --seed values, or add --auto-apply to use them automatically.
+```
+
+On its own, `--find` only prints this report — it doesn't convert anything, and doesn't need `-o`/`--sizes`/etc. at all. Copy the suggested `--seed` values into a real command, or see the next example for skipping that step entirely. `--find` uses the same `--tolerance` as the actual conversion, and is mutually exclusive with `--chroma-key` (its color takes on that role instead).
+
+### 2.4c `--find` + `--auto-apply`: find the regions AND convert, in one step
+
+```
+img2ico --find FFFFFF --auto-apply logo.png -o icon.ico
+```
+
+Adding `--auto-apply` skips the copy-paste step: the discovered regions are used as seeds automatically, and the full conversion runs right away — as if you'd typed every suggested `--seed` yourself. You can still add manual `--seed` values on top for anything the automatic search doesn't catch (e.g. a region too small to be picked up — see the note below).
+
+> **Note:** very small matching regions (a handful of stray pixels, typically anti-aliasing or JPEG noise) are ignored by `--find` by default (anything under 9 pixels), so the suggestions stay focused on areas actually worth affecting instead of being buried in noise. Use `--find-min-size` to change that threshold — e.g. `--find-min-size 1` makes `--find` catch every matching pixel, however small.
+
+### 2.4d Affecting truly every matching pixel, no matter how small
+
+```
+img2ico logo.png --find FFFFFF --find-min-size 1 --auto-apply --replace-color 000000
+```
+
+Combining `--find-min-size 1` with `--auto-apply` means nothing matching the color is left out — not even an isolated single stray pixel buried in the middle of the artwork. Useful for a source image with scattered leftover background-colored pixels (e.g. from a rough removal in another tool) that you want cleaned up completely, rather than just the large, obvious regions.
+
 ### 2.5 Chroma key + custom tolerance + seed, all together
 
 ```
@@ -232,6 +300,20 @@ img2ico logo.png -c 00C800 -t 25 --seed 128,64 --preset windows --padding 10 -o 
 ```
 
 Every one of the options above can be combined into a single command.
+
+### 2.9 Replacing the background with a different color instead of making it transparent
+
+```
+img2ico logo.png -c FFFFFF --replace-color 000000
+```
+
+Sometimes you don't want the background gone — you want it swapped for a different solid color (e.g. turning a white background into black, to match a dark theme). `--replace-color <hex>` does exactly that: same detection as always (border flood fill, `--tolerance`, `--seed`/`--find` for enclosed regions, the same soft edge blend), except instead of fading the detected area towards transparent, it blends towards the new color. Alpha is left untouched — this changes color only. Requires `--chroma-key` or `--find` (there needs to be a background color to replace in the first place).
+
+```
+img2ico logo.png --find FFFFFF --auto-apply --replace-color FF0000
+```
+
+Combines naturally with `--find`/`--auto-apply` too — including for enclosed regions the border-based search can't reach on its own.
 
 ---
 
@@ -540,6 +622,7 @@ img2ico logo.png --output-format icns --force
 - Every icon size this tool writes is 32-bit PNG-encoded with a full alpha channel — never the older, lower-quality BMP-with-reduced-palette format that some other tools (and older Windows conventions) fall back to.
 - Resizing is alpha-aware (premultiplied), so shrinking a transparent image doesn't leave a colored fringe around soft edges.
 - This tool has been checked with `cargo clippy` (clean), `cargo audit` (no known vulnerabilities in its dependencies at the time of writing), and includes automated property-based tests (`cargo test`) covering its input-parsing logic against malformed/adversarial input.
+- Piping this tool's output into something that closes the pipe early (e.g. `img2ico --inspect big.ico | head`) exits cleanly instead of showing a panic/stack trace.
 
 ## Changelog
 

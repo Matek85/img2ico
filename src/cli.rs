@@ -4,6 +4,7 @@
 // really one unit - clap reads all of it together to build a single
 // coherent --help output.
 
+use crate::chroma_key::DEFAULT_FIND_MIN_SIZE;
 use clap::Parser;
 use std::path::PathBuf;
 
@@ -141,6 +142,61 @@ pub struct Args {
     /// then spreads exactly the same way it does from the border.
     #[arg(long = "seed")]
     pub seeds: Vec<String>,
+
+    /// Scans the source image for additional regions matching this hex
+    /// color that the border-based --chroma-key flood fill can't reach on
+    /// its own (the same situation --seed solves, but found automatically
+    /// instead of you having to hunt for pixel coordinates in an image
+    /// editor first). Prints each found region as a ready-to-use --seed
+    /// value and stops there - unless --auto-apply is also given, in
+    /// which case the found regions are used as seeds automatically and
+    /// the full conversion proceeds right away, with --find's color
+    /// acting as the --chroma-key target. Mutually exclusive with
+    /// --chroma-key - use whichever one fits (or --find, plus additional
+    /// manual --seed values for anything it doesn't catch).
+    #[arg(long = "find")]
+    pub find: Option<String>,
+
+    /// Minimum region size (in pixels) for --find to report, only
+    /// relevant together with --find. Smaller connected regions are
+    /// ignored, since a handful of stray pixels is almost always
+    /// anti-aliasing/JPEG noise rather than a deliberate area worth
+    /// pointing out. The default catches real background patches while
+    /// staying quiet about noise; set this to 1 if you want --find to
+    /// catch every matching pixel, however small.
+    #[arg(long = "find-min-size", default_value_t = DEFAULT_FIND_MIN_SIZE)]
+    pub find_min_size: usize,
+
+    /// Together with --find: instead of only printing the found regions,
+    /// automatically use them as extra seed points (in addition to any
+    /// --seed values also given) and proceed with the full conversion
+    /// right away. Has no effect without --find.
+    #[arg(long = "auto-apply")]
+    pub auto_apply: bool,
+
+    /// Instead of making the detected background transparent, replaces it
+    /// with this solid hex color (same format as --chroma-key/--find,
+    /// e.g. "#000000" or "000000"). Uses the exact same detection - flood
+    /// fill from the border, --seed/--find for enclosed regions, --tolerance
+    /// for how strict the color match is, and the same soft edge
+    /// transition, just blending towards the new color instead of towards
+    /// transparency. Requires --chroma-key or --find (there has to be a
+    /// background color to replace in the first place). Alpha is left
+    /// untouched - this changes color only, not transparency.
+    #[arg(long = "replace-color")]
+    pub replace_color: Option<String>,
+
+    /// Converts the entire image to grayscale (removes all color, leaving
+    /// only brightness) before generating the icon. Unlike --chroma-key/
+    /// --replace-color, this affects every pixel uniformly, not just a
+    /// detected background region - alpha (transparency) is left
+    /// untouched. Applied last, after any --chroma-key/--replace-color
+    /// processing, so a --replace-color color ends up grayscaled too if
+    /// both are used together. Works standalone (no --chroma-key/--find
+    /// needed) and combines with everything else (--padding, --preset,
+    /// --output-format, ...).
+    #[arg(long = "grayscale")]
+    pub grayscale: bool,
 
     /// Merge mode: instead of converting an image, combine the icon
     /// entries of two or more existing .ico files (passed as INPUT) into
