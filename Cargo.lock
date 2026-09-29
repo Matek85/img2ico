@@ -292,6 +292,7 @@ dependencies = [
  "image",
  "proptest",
  "serde",
+ "tempfile",
  "toml",
 ]
 

@@ -433,6 +433,384 @@ mod tests {
         assert!(result.is_err(), "expected an error, got {result:?}");
     }
 
+    // --- Test image helpers ------------------------------------------------
+
+    const GREEN: [u8; 3] = [0, 255, 0];
+    const RED: [u8; 3] = [255, 0, 0];
+
+    fn rgba(color: [u8; 3]) -> Rgba<u8> {
+        Rgba([color[0], color[1], color[2], 255])
+    }
+
+    fn solid(width: u32, height: u32, color: [u8; 3]) -> RgbaImage {
+        RgbaImage::from_pixel(width, height, rgba(color))
+    }
+
+    /// Fills the inclusive rectangle (x0,y0)..=(x1,y1) with `color`.
+    fn fill_rect(img: &mut RgbaImage, (x0, y0): (u32, u32), (x1, y1): (u32, u32), color: [u8; 3]) {
+        for y in y0..=y1 {
+            for x in x0..=x1 {
+                img.put_pixel(x, y, rgba(color));
+            }
+        }
+    }
+
+    /// A 9x9 image: green background, a red ring (2 pixels from the border)
+    /// and a 3x3 green patch in the middle that the border can't reach.
+    fn image_with_enclosed_patch() -> RgbaImage {
+        let mut img = solid(9, 9, GREEN);
+        fill_rect(&mut img, (2, 2), (6, 6), RED);
+        fill_rect(&mut img, (3, 3), (5, 5), GREEN);
+        img
+    }
+
+    // --- parse_hex_color -----------------------------------------------------
+
+    #[test]
+    fn parse_hex_color_accepts_with_and_without_hash() {
+        assert_eq!(parse_hex_color("#00FF00"), Ok([0, 255, 0]));
+        assert_eq!(parse_hex_color("00FF00"), Ok([0, 255, 0]));
+    }
+
+    #[test]
+    fn parse_hex_color_is_case_insensitive() {
+        assert_eq!(parse_hex_color("aBcDeF"), Ok([0xAB, 0xCD, 0xEF]));
+    }
+
+    #[test]
+    fn parse_hex_color_trims_surrounding_whitespace() {
+        assert_eq!(parse_hex_color("  #102030 "), Ok([0x10, 0x20, 0x30]));
+    }
+
+    #[test]
+    fn parse_hex_color_rejects_wrong_length() {
+        assert!(parse_hex_color("").is_err());
+        assert!(parse_hex_color("#FFF").is_err());
+        assert!(parse_hex_color("00FF000").is_err());
+    }
+
+    #[test]
+    fn parse_hex_color_rejects_non_hex_digits() {
+        assert!(parse_hex_color("GGGGGG").is_err());
+        assert!(parse_hex_color("00FF0Z").is_err());
+    }
+
+    #[test]
+    fn parse_hex_color_error_mentions_the_input() {
+        let err = parse_hex_color("nope").unwrap_err();
+        assert!(err.contains("nope"), "unexpected message: {err}");
+    }
+
+    // --- Distance and tolerance helpers --------------------------------------
+
+    #[test]
+    fn tolerance_zero_percent_means_zero_distance() {
+        assert_eq!(tol_distance_from_percent(0), 0.0);
+    }
+
+    #[test]
+    fn tolerance_hundred_percent_covers_the_whole_color_cube() {
+        assert_eq!(tol_distance_from_percent(100), MAX_RGB_DISTANCE);
+    }
+
+    #[test]
+    fn tolerance_above_hundred_is_clamped() {
+        assert_eq!(tol_distance_from_percent(255), MAX_RGB_DISTANCE);
+    }
+
+    #[test]
+    fn color_distance_is_zero_for_identical_colors() {
+        assert_eq!(color_distance(&rgba(RED), RED), 0.0);
+    }
+
+    #[test]
+    fn color_distance_black_to_white_is_the_maximum() {
+        let distance = color_distance(&rgba([0, 0, 0]), [255, 255, 255]);
+        assert!((distance - MAX_RGB_DISTANCE).abs() < 0.01, "got {distance}");
+    }
+
+    #[test]
+    fn color_distance_ignores_alpha() {
+        let translucent = Rgba([255, 0, 0, 10]);
+        assert_eq!(color_distance(&translucent, RED), 0.0);
+    }
+
+    #[test]
+    fn neighbors_in_the_middle_are_all_four_directions() {
+        let neighbors: Vec<_> = in_bounds_neighbors(2, 2, 5, 5).into_iter().flatten().collect();
+        assert_eq!(neighbors.len(), 4);
+        for expected in [(1, 2), (3, 2), (2, 1), (2, 3)] {
+            assert!(neighbors.contains(&expected), "missing {expected:?}");
+        }
+    }
+
+    #[test]
+    fn neighbors_at_a_corner_stay_inside_the_image() {
+        let top_left: Vec<_> = in_bounds_neighbors(0, 0, 5, 5).into_iter().flatten().collect();
+        assert_eq!(top_left.len(), 2);
+        let bottom_right: Vec<_> = in_bounds_neighbors(4, 4, 5, 5).into_iter().flatten().collect();
+        assert_eq!(bottom_right.len(), 2);
+        assert!(bottom_right.contains(&(3, 4)) && bottom_right.contains(&(4, 3)));
+    }
+
+    #[test]
+    fn neighbors_of_a_single_pixel_image_are_empty() {
+        assert_eq!(in_bounds_neighbors(0, 0, 1, 1).into_iter().flatten().count(), 0);
+    }
+
+    // --- flood_fill_reachable ------------------------------------------------
+
+    #[test]
+    fn flood_fill_reaches_the_whole_uniform_background() {
+        let img = solid(6, 4, GREEN);
+        let visited = flood_fill_reachable(&img, GREEN, 20, &[], true);
+        assert_eq!(visited.len(), 24);
+        assert!(visited.iter().all(|&v| v));
+    }
+
+    #[test]
+    fn flood_fill_stops_at_a_differently_colored_subject() {
+        let mut img = solid(7, 7, GREEN);
+        fill_rect(&mut img, (2, 2), (4, 4), RED);
+        let visited = flood_fill_reachable(&img, GREEN, 20, &[], true);
+        for y in 0..7u32 {
+            for x in 0..7u32 {
+                let inside_subject = (2..=4).contains(&x) && (2..=4).contains(&y);
+                assert_eq!(visited[(y * 7 + x) as usize], !inside_subject, "pixel ({x},{y})");
+            }
+        }
+    }
+
+    #[test]
+    fn flood_fill_does_not_reach_an_enclosed_patch() {
+        let visited = flood_fill_reachable(&image_with_enclosed_patch(), GREEN, 20, &[], true);
+        assert!(!visited[4 * 9 + 4], "the enclosed centre must stay unreached");
+        assert!(visited[0], "the border must be reached");
+    }
+
+    #[test]
+    fn flood_fill_enters_an_enclosed_patch_through_a_seed() {
+        let visited =
+            flood_fill_reachable(&image_with_enclosed_patch(), GREEN, 20, &[(4, 4)], true);
+        assert!(visited[4 * 9 + 4]);
+        assert!(visited[3 * 9 + 3]);
+        assert!(!visited[2 * 9 + 2], "the red ring itself must stay unreached");
+    }
+
+    #[test]
+    fn flood_fill_ignores_seeds_outside_the_image() {
+        let img = solid(4, 4, RED);
+        let visited = flood_fill_reachable(&img, GREEN, 20, &[(4, 0), (0, 4), (100, 100)], true);
+        assert!(visited.iter().all(|&v| !v));
+    }
+
+    #[test]
+    fn flood_fill_reaches_nothing_when_no_border_pixel_matches() {
+        let img = solid(5, 5, RED);
+        let visited = flood_fill_reachable(&img, GREEN, 20, &[], true);
+        assert!(visited.iter().all(|&v| !v));
+    }
+
+    #[test]
+    fn flood_fill_passes_through_already_transparent_pixels() {
+        let mut img = solid(5, 1, RED);
+        img.put_pixel(0, 0, Rgba([255, 0, 0, 0]));
+        img.put_pixel(1, 0, Rgba([255, 0, 0, 0]));
+        let visited = flood_fill_reachable(&img, GREEN, 20, &[], true);
+        assert_eq!(visited, vec![true, true, false, false, false]);
+    }
+
+    #[test]
+    fn flood_fill_does_not_move_diagonally() {
+        // Green pixels touching only at a corner are not connected.
+        let mut img = solid(3, 3, RED);
+        img.put_pixel(0, 0, rgba(GREEN));
+        img.put_pixel(1, 1, rgba(GREEN));
+        let visited = flood_fill_reachable(&img, GREEN, 20, &[], true);
+        assert!(visited[0]);
+        assert!(!visited[4]);
+    }
+
+    #[test]
+    fn flood_fill_higher_tolerance_reaches_more() {
+        let mut img = solid(5, 5, GREEN);
+        fill_rect(&mut img, (1, 1), (3, 3), [0, 200, 0]); // distance 55 from GREEN
+        fill_rect(&mut img, (2, 2), (2, 2), RED);
+        let strict = flood_fill_reachable(&img, GREEN, 5, &[], true);
+        let lenient = flood_fill_reachable(&img, GREEN, 20, &[], true);
+        assert!(!strict[2 * 5 + 1], "5% (~22) must not cross the 55-distance ring");
+        assert!(lenient[2 * 5 + 1], "20% (~88) crosses the ring");
+        assert!(!lenient[2 * 5 + 2], "but never the red centre");
+    }
+
+    // --- apply_chroma_key ------------------------------------------------------
+
+    #[test]
+    fn chroma_key_makes_the_background_transparent_and_keeps_the_subject() {
+        let mut img = solid(7, 7, GREEN);
+        fill_rect(&mut img, (2, 2), (4, 4), RED);
+        apply_chroma_key(&mut img, GREEN, 20, &[], None, true);
+        assert_eq!(img.get_pixel(0, 0)[3], 0);
+        assert_eq!(img.get_pixel(6, 6)[3], 0);
+        assert_eq!(*img.get_pixel(3, 3), rgba(RED));
+    }
+
+    #[test]
+    fn chroma_key_leaves_an_enclosed_patch_alone_without_a_seed() {
+        let mut img = image_with_enclosed_patch();
+        apply_chroma_key(&mut img, GREEN, 20, &[], None, true);
+        assert_eq!(img.get_pixel(0, 0)[3], 0);
+        assert_eq!(img.get_pixel(4, 4)[3], 255);
+    }
+
+    #[test]
+    fn chroma_key_removes_an_enclosed_patch_with_a_seed() {
+        let mut img = image_with_enclosed_patch();
+        apply_chroma_key(&mut img, GREEN, 20, &[(4, 4)], None, true);
+        assert_eq!(img.get_pixel(4, 4)[3], 0);
+        assert_eq!(img.get_pixel(2, 2)[3], 255, "the ring stays");
+    }
+
+    #[test]
+    fn chroma_key_replacement_recolors_the_background_and_keeps_alpha() {
+        let mut img = solid(7, 7, GREEN);
+        fill_rect(&mut img, (2, 2), (4, 4), RED);
+        apply_chroma_key(&mut img, GREEN, 20, &[], Some([0, 0, 255]), true);
+        assert_eq!(*img.get_pixel(0, 0), Rgba([0, 0, 255, 255]));
+        assert_eq!(*img.get_pixel(3, 3), rgba(RED));
+    }
+
+    #[test]
+    fn chroma_key_tolerance_zero_only_matches_the_exact_color() {
+        let mut img = solid(4, 4, GREEN);
+        img.put_pixel(0, 0, rgba([0, 250, 0]));
+        apply_chroma_key(&mut img, GREEN, 0, &[], None, true);
+        assert_eq!(img.get_pixel(1, 1)[3], 0, "exact match is removed");
+        assert_eq!(img.get_pixel(0, 0)[3], 255, "a slightly different shade survives");
+    }
+
+    #[test]
+    fn chroma_key_core_zone_is_fully_removed_despite_small_deviations() {
+        let mut img = solid(4, 4, GREEN);
+        img.put_pixel(0, 0, rgba([0, 235, 0])); // distance 20, inside the core zone at 20%
+        apply_chroma_key(&mut img, GREEN, 20, &[], None, true);
+        assert_eq!(img.get_pixel(0, 0)[3], 0);
+    }
+
+    #[test]
+    fn chroma_key_feather_zone_gives_partial_transparency() {
+        let mut img = solid(4, 4, GREEN);
+        img.put_pixel(0, 0, rgba([0, 189, 0])); // distance 66, between core (44) and limit (88)
+        apply_chroma_key(&mut img, GREEN, 20, &[], None, true);
+        let alpha = img.get_pixel(0, 0)[3];
+        assert!(alpha > 0 && alpha < 255, "expected a partial alpha, got {alpha}");
+    }
+
+    #[test]
+    fn chroma_key_feather_is_monotonic_further_from_target_means_more_opaque() {
+        let mut img = solid(4, 1, GREEN);
+        img.put_pixel(0, 0, rgba([0, 205, 0])); // distance 50
+        img.put_pixel(1, 0, rgba([0, 185, 0])); // distance 70
+        apply_chroma_key(&mut img, GREEN, 20, &[], None, true);
+        assert!(img.get_pixel(0, 0)[3] < img.get_pixel(1, 0)[3]);
+    }
+
+    #[test]
+    fn chroma_key_does_not_touch_already_transparent_pixels() {
+        let mut img = solid(3, 3, GREEN);
+        img.put_pixel(1, 1, Rgba([12, 34, 56, 0]));
+        apply_chroma_key(&mut img, GREEN, 20, &[], None, true);
+        assert_eq!(*img.get_pixel(1, 1), Rgba([12, 34, 56, 0]));
+    }
+
+    #[test]
+    fn chroma_key_on_a_single_pixel_image_does_not_panic() {
+        let mut img = solid(1, 1, GREEN);
+        apply_chroma_key(&mut img, GREEN, 20, &[], None, true);
+        assert_eq!(img.get_pixel(0, 0)[3], 0);
+    }
+
+    #[test]
+    fn chroma_key_without_any_match_changes_nothing() {
+        let mut img = solid(5, 5, RED);
+        let before = img.clone();
+        apply_chroma_key(&mut img, GREEN, 20, &[], None, true);
+        assert_eq!(img, before);
+    }
+
+    // --- find_isolated_regions -------------------------------------------------
+
+    #[test]
+    fn find_reports_nothing_when_the_border_reaches_everything() {
+        let img = solid(8, 8, GREEN);
+        assert!(find_isolated_regions(&img, GREEN, 20, 1, true).is_empty());
+    }
+
+    #[test]
+    fn find_discovers_an_enclosed_patch() {
+        let regions =
+            find_isolated_regions(&image_with_enclosed_patch(), GREEN, 20, DEFAULT_FIND_MIN_SIZE, true);
+        assert_eq!(regions.len(), 1);
+        assert_eq!(regions[0].pixel_count, 9);
+        assert_eq!(regions[0].seed, (4, 4));
+    }
+
+    #[test]
+    fn find_ignores_regions_smaller_than_the_minimum_size() {
+        let img = image_with_enclosed_patch(); // the patch has exactly 9 pixels
+        assert_eq!(find_isolated_regions(&img, GREEN, 20, 9, true).len(), 1);
+        assert!(find_isolated_regions(&img, GREEN, 20, 10, true).is_empty());
+    }
+
+    #[test]
+    fn find_with_minimum_one_catches_a_single_pixel() {
+        let mut img = solid(7, 7, RED);
+        img.put_pixel(3, 3, rgba(GREEN));
+        let regions = find_isolated_regions(&img, GREEN, 20, 1, true);
+        assert_eq!(regions.len(), 1);
+        assert_eq!(regions[0].pixel_count, 1);
+        assert_eq!(regions[0].seed, (3, 3));
+    }
+
+    #[test]
+    fn find_reports_separate_regions_separately() {
+        let mut img = solid(12, 6, RED);
+        fill_rect(&mut img, (1, 1), (2, 2), GREEN);
+        fill_rect(&mut img, (8, 2), (10, 4), GREEN);
+        let mut regions = find_isolated_regions(&img, GREEN, 20, 1, true);
+        regions.sort_by_key(|r| r.pixel_count);
+        assert_eq!(regions.len(), 2);
+        assert_eq!(regions[0].pixel_count, 4);
+        assert_eq!(regions[1].pixel_count, 9);
+    }
+
+    #[test]
+    fn find_suggests_a_seed_that_lies_inside_a_concave_region() {
+        // An L-shape: its centroid falls outside the shape itself.
+        let mut img = solid(14, 14, RED);
+        fill_rect(&mut img, (2, 2), (3, 11), GREEN);
+        fill_rect(&mut img, (4, 10), (11, 11), GREEN);
+        let regions = find_isolated_regions(&img, GREEN, 20, 1, true);
+        assert_eq!(regions.len(), 1);
+        let (x, y) = regions[0].seed;
+        assert_eq!(*img.get_pixel(x, y), rgba(GREEN), "seed ({x},{y}) is not part of the region");
+    }
+
+    #[test]
+    fn find_does_not_report_what_the_border_fill_already_reaches() {
+        let img = image_with_enclosed_patch();
+        // The green background around the ring is border-reachable and must
+        // not show up; only the enclosed patch does.
+        let regions = find_isolated_regions(&img, GREEN, 20, 1, true);
+        assert_eq!(regions.len(), 1);
+        assert_eq!(regions[0].pixel_count, 9);
+    }
+
+    #[test]
+    fn default_find_min_size_is_nine() {
+        assert_eq!(DEFAULT_FIND_MIN_SIZE, 9);
+    }
+
     proptest! {
         /// parse_hex_color must return a normal Ok/Err for absolutely any
         /// string - never panic. This property, run automatically, would

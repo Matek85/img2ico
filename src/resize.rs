@@ -263,3 +263,212 @@ pub fn make_square_icon(rgba: &RgbaImage, size: u32, padding_percent: u8, has_al
 
     canvas
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const RED: Rgba<u8> = Rgba([255, 0, 0, 255]);
+
+    fn solid(width: u32, height: u32, pixel: Rgba<u8>) -> RgbaImage {
+        RgbaImage::from_pixel(width, height, pixel)
+    }
+
+    // --- has_transparency ------------------------------------------------------
+
+    #[test]
+    fn opaque_image_has_no_transparency() {
+        assert!(!has_transparency(&solid(4, 4, RED)));
+    }
+
+    #[test]
+    fn a_single_slightly_transparent_pixel_counts_as_transparency() {
+        let mut img = solid(4, 4, RED);
+        img.put_pixel(2, 3, Rgba([255, 0, 0, 254]));
+        assert!(has_transparency(&img));
+    }
+
+    #[test]
+    fn a_fully_transparent_image_has_transparency() {
+        assert!(has_transparency(&solid(2, 2, Rgba([0, 0, 0, 0]))));
+    }
+
+    // --- apply_grayscale -------------------------------------------------------
+
+    #[test]
+    fn grayscale_uses_bt601_luma_weights() {
+        let mut img = RgbaImage::new(3, 1);
+        img.put_pixel(0, 0, Rgba([255, 0, 0, 255]));
+        img.put_pixel(1, 0, Rgba([0, 255, 0, 255]));
+        img.put_pixel(2, 0, Rgba([0, 0, 255, 255]));
+        apply_grayscale(&mut img);
+        assert_eq!(*img.get_pixel(0, 0), Rgba([76, 76, 76, 255]));
+        assert_eq!(*img.get_pixel(1, 0), Rgba([150, 150, 150, 255]));
+        assert_eq!(*img.get_pixel(2, 0), Rgba([29, 29, 29, 255]));
+    }
+
+    #[test]
+    fn grayscale_keeps_black_and_white() {
+        let mut img = RgbaImage::new(2, 1);
+        img.put_pixel(0, 0, Rgba([0, 0, 0, 255]));
+        img.put_pixel(1, 0, Rgba([255, 255, 255, 255]));
+        apply_grayscale(&mut img);
+        assert_eq!(*img.get_pixel(0, 0), Rgba([0, 0, 0, 255]));
+        assert_eq!(*img.get_pixel(1, 0), Rgba([255, 255, 255, 255]));
+    }
+
+    #[test]
+    fn grayscale_leaves_alpha_untouched() {
+        let mut img = solid(2, 2, Rgba([10, 200, 30, 77]));
+        apply_grayscale(&mut img);
+        assert!(img.pixels().all(|p| p[3] == 77));
+    }
+
+    #[test]
+    fn grayscale_makes_all_channels_equal() {
+        let mut img = solid(3, 3, Rgba([12, 99, 201, 255]));
+        apply_grayscale(&mut img);
+        assert!(img.pixels().all(|p| p[0] == p[1] && p[1] == p[2]));
+    }
+
+    // --- make_square_icon ------------------------------------------------------
+
+    #[test]
+    fn square_icon_has_exactly_the_requested_size_for_any_aspect_ratio() {
+        for (w, h) in [(64, 64), (200, 50), (50, 200), (1, 1), (3, 97)] {
+            let icon = make_square_icon(&solid(w, h, RED), 32, 0, false);
+            assert_eq!(icon.dimensions(), (32, 32), "source {w}x{h}");
+        }
+    }
+
+    #[test]
+    fn square_source_fills_the_whole_canvas() {
+        let icon = make_square_icon(&solid(100, 100, RED), 32, 0, false);
+        assert!(icon.pixels().all(|p| *p == RED));
+    }
+
+    #[test]
+    fn wide_source_is_letterboxed_with_transparent_margins() {
+        // 80x10 (8:1) into 32x32 -> 32x4 content, centred vertically.
+        let icon = make_square_icon(&solid(80, 10, RED), 32, 0, false);
+        assert_eq!(icon.get_pixel(16, 16)[3], 255, "centre is content");
+        assert_eq!(icon.get_pixel(16, 0)[3], 0, "top margin is transparent");
+        assert_eq!(icon.get_pixel(16, 31)[3], 0, "bottom margin is transparent");
+        assert_eq!(icon.get_pixel(0, 16)[3], 255, "content spans the full width");
+        assert_eq!(icon.get_pixel(31, 16)[3], 255);
+    }
+
+    #[test]
+    fn tall_source_is_pillarboxed_with_transparent_margins() {
+        let icon = make_square_icon(&solid(10, 80, RED), 32, 0, false);
+        assert_eq!(icon.get_pixel(16, 16)[3], 255);
+        assert_eq!(icon.get_pixel(0, 16)[3], 0);
+        assert_eq!(icon.get_pixel(31, 16)[3], 0);
+        assert_eq!(icon.get_pixel(16, 0)[3], 255);
+        assert_eq!(icon.get_pixel(16, 31)[3], 255);
+    }
+
+    #[test]
+    fn padding_leaves_a_transparent_margin_on_every_side() {
+        // 50% padding on 32px -> 16px content box, offset 8 on each side.
+        let icon = make_square_icon(&solid(100, 100, RED), 32, 50, false);
+        assert_eq!(icon.get_pixel(7, 16)[3], 0);
+        assert_eq!(icon.get_pixel(8, 16)[3], 255);
+        assert_eq!(icon.get_pixel(23, 16)[3], 255);
+        assert_eq!(icon.get_pixel(24, 16)[3], 0);
+        assert_eq!(icon.get_pixel(16, 7)[3], 0);
+        assert_eq!(icon.get_pixel(16, 24)[3], 0);
+    }
+
+    #[test]
+    fn full_padding_and_padding_above_100_do_not_panic() {
+        for padding in [100u8, 101, 200, 255] {
+            let icon = make_square_icon(&solid(50, 50, RED), 16, padding, false);
+            assert_eq!(icon.dimensions(), (16, 16));
+        }
+    }
+
+    #[test]
+    fn padding_above_100_behaves_like_100() {
+        let a = make_square_icon(&solid(50, 50, RED), 16, 100, false);
+        let b = make_square_icon(&solid(50, 50, RED), 16, 200, false);
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn one_pixel_icon_is_possible() {
+        let icon = make_square_icon(&solid(50, 20, RED), 1, 0, false);
+        assert_eq!(icon.dimensions(), (1, 1));
+    }
+
+    #[test]
+    fn upscaling_a_tiny_source_still_fills_the_canvas() {
+        let icon = make_square_icon(&solid(2, 2, RED), 64, 0, false);
+        assert_eq!(icon.dimensions(), (64, 64));
+        assert!(icon.pixels().all(|p| *p == RED));
+    }
+
+    #[test]
+    fn existing_transparency_of_the_source_is_preserved() {
+        let mut src = solid(16, 16, RED);
+        for y in 0..16 {
+            for x in 0..8 {
+                src.put_pixel(x, y, Rgba([0, 0, 0, 0]));
+            }
+        }
+        let icon = make_square_icon(&src, 16, 0, true);
+        assert_eq!(icon.get_pixel(1, 8)[3], 0);
+        assert_eq!(*icon.get_pixel(14, 8), RED);
+    }
+
+    #[test]
+    fn premultiplied_resize_prevents_a_colored_fringe_from_invisible_pixels() {
+        // Left half: opaque red. Right half: fully transparent but with a
+        // bright green RGB value still stored in it (as a chroma key leaves
+        // behind). Downscaling must not let that hidden green bleed in.
+        let mut src = RgbaImage::new(8, 8);
+        for y in 0..8 {
+            for x in 0..8 {
+                src.put_pixel(x, y, if x < 4 { RED } else { Rgba([0, 255, 0, 0]) });
+            }
+        }
+
+        let correct = make_square_icon(&src, 4, 0, true);
+        assert!(
+            correct.pixels().filter(|p| p[3] > 0).all(|p| p[1] == 0),
+            "visible pixels must not contain any hidden green"
+        );
+
+        let naive = make_square_icon(&src, 4, 0, false);
+        assert!(
+            naive.pixels().any(|p| p[3] > 0 && p[1] > 0),
+            "sanity check: without the alpha fix the green does bleed in"
+        );
+    }
+
+    #[test]
+    fn opaque_and_premultiplied_paths_agree_for_an_opaque_image() {
+        let src = solid(40, 40, Rgba([10, 120, 240, 255]));
+        let plain = make_square_icon(&src, 16, 0, false);
+        let premult = make_square_icon(&src, 16, 0, true);
+        assert_eq!(plain, premult);
+    }
+
+    // --- warnings (stderr only: these must simply never panic) -----------------
+
+    #[test]
+    fn upscaling_warning_handles_edge_cases_without_panicking() {
+        warn_about_upscaling(16, 16, &[16, 32, 256], true);
+        warn_about_upscaling(16, 16, &[], false);
+        warn_about_upscaling(0, 0, &[16], false);
+    }
+
+    #[test]
+    fn thin_content_warning_handles_edge_cases_without_panicking() {
+        warn_about_thin_content(800, 100, 0, &[16, 256], false);
+        warn_about_thin_content(100, 100, 100, &[16], false);
+        warn_about_thin_content(100, 100, 255, &[16], false);
+        warn_about_thin_content(0, 0, 0, &[16], false);
+        warn_about_thin_content(100, 100, 0, &[], false);
+        warn_about_thin_content(100, 100, 0, &[16], true);
+    }
+}

@@ -50,6 +50,13 @@ toml = "=0.5.11"
 # multi-byte Unicode strings - to try to break that property. See
 # src/main.rs's "#[cfg(test)] mod tests" for what we use this for.
 proptest = "1"
+
+# Temporary directories for tests that write real files (ICO/PNG/GIF
+# fixtures, config files, extraction output) - each test gets its own
+# directory that is removed automatically when the test ends, so tests
+# never interfere with each other or leave files behind.
+tempfile = "3"
+
 # Optimized release binaries (what "cargo build --release" and the CI
 # release job produce):
 # - lto = true: link-time optimization across all crates, so unused code
