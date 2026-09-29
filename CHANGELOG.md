@@ -10,6 +10,10 @@ when cutting a release.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [1.2.0] - 2026-09-29
+
 ### Added
 
 - `--config <path>` to load default values for the "tuning" settings
