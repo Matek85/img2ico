@@ -50,3 +50,20 @@ toml = "=0.5.11"
 # multi-byte Unicode strings - to try to break that property. See
 # src/main.rs's "#[cfg(test)] mod tests" for what we use this for.
 proptest = "1"
+# Optimized release binaries (what "cargo build --release" and the CI
+# release job produce):
+# - lto = true: link-time optimization across all crates, so unused code
+#   from dependencies is dropped and calls can be inlined across crate
+#   boundaries.
+# - codegen-units = 1: compile each crate as a single unit, giving the
+#   optimizer the full picture at the cost of a longer build.
+# - strip = true: remove debug symbols from the binary.
+# - panic = "abort": on a panic, terminate immediately instead of
+#   unwinding the stack - smaller binary. The program has no code that
+#   catches panics, so behavior is unchanged apart from the exact panic
+#   output/exit code path.
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
