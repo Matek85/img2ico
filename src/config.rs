@@ -163,3 +163,221 @@ pub fn write_config(settings: &Settings, path: &Path) -> Result<(), String> {
     std::fs::write(path, text)
         .map_err(|e| format!("Could not write settings file '{}': {e}", path.display()))
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeSet;
+
+    fn write_file(dir: &Path, name: &str, text: &str) -> PathBuf {
+        let path = dir.join(name);
+        std::fs::write(&path, text).unwrap();
+        path
+    }
+
+    fn load(text: &str) -> Result<Settings, String> {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_file(dir.path(), "cfg.toml", text);
+        load_config(Some(&path), true).map(|loaded| loaded.expect("explicit path always loads").0)
+    }
+
+    /// A `Settings` with every single field set to a non-default value.
+    fn fully_populated() -> Settings {
+        Settings {
+            sizes: Some("16,32".to_string()),
+            preset: Some(SizePreset::Favicon),
+            chroma_key: Some("#00FF00".to_string()),
+            tolerance: Some(35),
+            seeds: vec!["1,2".to_string(), "3,4".to_string()],
+            find: Some("#FF00FF".to_string()),
+            find_min_size: Some(5),
+            auto_apply: true,
+            replace_color: Some("#000000".to_string()),
+            grayscale: true,
+            padding: Some(12),
+            gif_frame: Some(3),
+            output_format: Some(OutputFormat::Icns),
+            delete_source: true,
+            force: true,
+            combine: true,
+            index: Some("0,2".to_string()),
+            silent: true,
+        }
+    }
+
+    // --- Loading ---------------------------------------------------------------
+
+    #[test]
+    fn empty_file_gives_default_settings() {
+        let settings = load("").unwrap();
+        assert_eq!(settings.tolerance, None);
+        assert!(settings.seeds.is_empty());
+        assert!(!settings.force);
+    }
+
+    #[test]
+    fn keys_use_the_kebab_case_names_of_the_command_line_flags() {
+        let settings = load(
+            r##"
+            chroma-key = "#00FF00"
+            find-min-size = 4
+            replace-color = "#111111"
+            output-format = "icns"
+            gif-frame = 2
+            delete-source = true
+            auto-apply = true
+            "##,
+        )
+        .unwrap();
+        assert_eq!(settings.chroma_key.as_deref(), Some("#00FF00"));
+        assert_eq!(settings.find_min_size, Some(4));
+        assert_eq!(settings.replace_color.as_deref(), Some("#111111"));
+        assert_eq!(settings.output_format, Some(OutputFormat::Icns));
+        assert_eq!(settings.gif_frame, Some(2));
+        assert!(settings.delete_source);
+        assert!(settings.auto_apply);
+    }
+
+    #[test]
+    fn snake_case_keys_are_not_accepted_as_setting_names() {
+        let settings = load("chroma_key = \"#00FF00\"").unwrap();
+        assert_eq!(settings.chroma_key, None);
+    }
+
+    #[test]
+    fn presets_and_formats_are_lowercase_words() {
+        let settings = load("preset = \"favicon\"\noutput-format = \"ico\"").unwrap();
+        assert_eq!(settings.preset, Some(SizePreset::Favicon));
+        assert_eq!(settings.output_format, Some(OutputFormat::Ico));
+    }
+
+    #[test]
+    fn seeds_are_read_as_a_list() {
+        let settings = load("seeds = [\"10,20\", \"30,40\"]").unwrap();
+        assert_eq!(settings.seeds, vec!["10,20", "30,40"]);
+    }
+
+    #[test]
+    fn unknown_settings_are_ignored_and_the_rest_still_applies() {
+        let settings = load("toleranse = 5\ntolerance = 33").unwrap();
+        assert_eq!(settings.tolerance, Some(33));
+    }
+
+    #[test]
+    fn invalid_toml_is_an_error_naming_the_file() {
+        let err = load("this is = = not toml").unwrap_err();
+        assert!(err.contains("Could not parse"), "unexpected message: {err}");
+        assert!(err.contains("cfg.toml"), "unexpected message: {err}");
+    }
+
+    #[test]
+    fn a_value_of_the_wrong_type_is_an_error() {
+        assert!(load("tolerance = \"high\"").is_err());
+        assert!(load("force = \"yes\"").is_err());
+    }
+
+    #[test]
+    fn a_tolerance_beyond_u8_is_an_error() {
+        assert!(load("tolerance = 300").is_err());
+        assert!(load("tolerance = -1").is_err());
+    }
+
+    #[test]
+    fn an_unknown_preset_or_format_is_an_error() {
+        assert!(load("preset = \"huge\"").is_err());
+        assert!(load("output-format = \"tiff\"").is_err());
+    }
+
+    #[test]
+    fn a_missing_explicit_config_file_is_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = load_config(Some(&dir.path().join("nope.toml")), true).unwrap_err();
+        assert!(err.contains("Could not read config file"), "unexpected message: {err}");
+    }
+
+    #[test]
+    fn load_returns_the_path_it_used() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_file(dir.path(), "mine.toml", "padding = 5");
+        let (settings, used) = load_config(Some(&path), true).unwrap().unwrap();
+        assert_eq!(settings.padding, Some(5));
+        assert_eq!(used, path);
+    }
+
+    // --- Writing and round trips -----------------------------------------------
+
+    #[test]
+    fn written_settings_load_back_unchanged() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("out.toml");
+        write_config(&fully_populated(), &path).unwrap();
+
+        let (loaded, _) = load_config(Some(&path), true).unwrap().unwrap();
+        let expected = fully_populated();
+        assert_eq!(loaded.sizes, expected.sizes);
+        assert_eq!(loaded.preset, expected.preset);
+        assert_eq!(loaded.chroma_key, expected.chroma_key);
+        assert_eq!(loaded.tolerance, expected.tolerance);
+        assert_eq!(loaded.seeds, expected.seeds);
+        assert_eq!(loaded.find, expected.find);
+        assert_eq!(loaded.find_min_size, expected.find_min_size);
+        assert_eq!(loaded.auto_apply, expected.auto_apply);
+        assert_eq!(loaded.replace_color, expected.replace_color);
+        assert_eq!(loaded.grayscale, expected.grayscale);
+        assert_eq!(loaded.padding, expected.padding);
+        assert_eq!(loaded.gif_frame, expected.gif_frame);
+        assert_eq!(loaded.output_format, expected.output_format);
+        assert_eq!(loaded.delete_source, expected.delete_source);
+        assert_eq!(loaded.force, expected.force);
+        assert_eq!(loaded.combine, expected.combine);
+        assert_eq!(loaded.index, expected.index);
+        assert_eq!(loaded.silent, expected.silent);
+    }
+
+    #[test]
+    fn writing_twice_through_a_load_gives_identical_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let first = dir.path().join("first.toml");
+        let second = dir.path().join("second.toml");
+        write_config(&fully_populated(), &first).unwrap();
+        let (loaded, _) = load_config(Some(&first), true).unwrap().unwrap();
+        write_config(&loaded, &second).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(first).unwrap(),
+            std::fs::read_to_string(second).unwrap()
+        );
+    }
+
+    #[test]
+    fn written_file_uses_kebab_case_keys() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("out.toml");
+        write_config(&fully_populated(), &path).unwrap();
+        let text = std::fs::read_to_string(path).unwrap();
+        assert!(text.contains("chroma-key = "), "{text}");
+        assert!(text.contains("output-format = "), "{text}");
+        assert!(text.contains("preset = "), "{text}");
+        assert!(!text.contains('_'), "no snake_case keys expected: {text}");
+    }
+
+    #[test]
+    fn writing_to_an_unwritable_location_is_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("no-such-dir").join("out.toml");
+        let err = write_config(&Settings::default(), &path).unwrap_err();
+        assert!(err.contains("Could not write settings file"), "unexpected message: {err}");
+    }
+
+    // --- Drift guard -------------------------------------------------------------
+
+    #[test]
+    fn known_keys_list_matches_the_settings_struct_exactly() {
+        let text = toml::to_string(&fully_populated()).unwrap();
+        let table: toml::value::Table = toml::from_str(&text).unwrap();
+        let actual: BTreeSet<&str> = table.keys().map(String::as_str).collect();
+        let listed: BTreeSet<&str> = KNOWN_SETTINGS_KEYS.iter().copied().collect();
+        assert_eq!(
+            actual, listed,
+            "KNOWN_SETTINGS_KEYS is out of sync with the Settings struct"
+        );
+    }
+}

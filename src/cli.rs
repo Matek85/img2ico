@@ -378,3 +378,120 @@ pub struct Args {
     #[arg(long = "out-toml")]
     pub out_toml: Option<PathBuf>,
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::CommandFactory;
+
+    fn parse(args: &[&str]) -> Result<Args, clap::Error> {
+        let mut full = vec!["img2ico"];
+        full.extend_from_slice(args);
+        Args::try_parse_from(full)
+    }
+
+    #[test]
+    fn the_clap_definition_is_internally_consistent() {
+        Args::command().debug_assert();
+    }
+
+    // --- Presets ---------------------------------------------------------------
+
+    #[test]
+    fn windows_preset_is_the_recommended_size_set() {
+        assert_eq!(SizePreset::Windows.sizes(), &RECOMMENDED_WINDOWS_SIZES);
+        assert_eq!(SizePreset::Windows.sizes().len(), 10);
+    }
+
+    #[test]
+    fn favicon_and_minimal_presets_have_their_documented_sizes() {
+        assert_eq!(SizePreset::Favicon.sizes(), &[16, 32, 48]);
+        assert_eq!(SizePreset::Minimal.sizes(), &[16, 32]);
+    }
+
+    #[test]
+    fn recommended_windows_sizes_are_sorted_unique_and_valid_for_ico() {
+        let sizes = RECOMMENDED_WINDOWS_SIZES;
+        assert!(sizes.windows(2).all(|pair| pair[0] < pair[1]));
+        assert!(sizes.iter().all(|&s| (1..=256).contains(&s)));
+    }
+
+    // --- Parsing ---------------------------------------------------------------
+
+    #[test]
+    fn an_input_file_is_required() {
+        assert!(parse(&[]).is_err());
+    }
+
+    #[test]
+    fn a_bare_input_leaves_every_setting_unset() {
+        let args = parse(&["in.png"]).unwrap();
+        assert_eq!(args.input, vec![PathBuf::from("in.png")]);
+        assert_eq!(args.output, None);
+        assert_eq!(args.sizes, None);
+        assert_eq!(args.preset, None);
+        assert_eq!(args.tolerance, None);
+        assert_eq!(args.padding, None);
+        assert_eq!(args.gif_frame, None);
+        assert_eq!(args.output_format, None);
+        assert!(args.seeds.is_empty());
+        assert!(!args.merge && !args.inspect && !args.extract && !args.select);
+        assert!(!args.force && !args.silent && !args.delete_source && !args.grayscale);
+    }
+
+    #[test]
+    fn short_flags_work() {
+        let args = parse(&["in.png", "-o", "out.ico", "-s", "16,32", "-c", "#00FF00", "-t", "30", "-f"]).unwrap();
+        assert_eq!(args.output, Some(PathBuf::from("out.ico")));
+        assert_eq!(args.sizes.as_deref(), Some("16,32"));
+        assert_eq!(args.chroma_key.as_deref(), Some("#00FF00"));
+        assert_eq!(args.tolerance, Some(30));
+        assert!(args.force);
+    }
+
+    #[test]
+    fn seed_can_be_given_multiple_times() {
+        let args = parse(&["in.png", "--seed", "1,2", "--seed", "3,4"]).unwrap();
+        assert_eq!(args.seeds, vec!["1,2", "3,4"]);
+    }
+
+    #[test]
+    fn several_inputs_are_collected_for_merge() {
+        let args = parse(&["a.ico", "b.ico", "c.ico", "--merge"]).unwrap();
+        assert_eq!(args.input.len(), 3);
+        assert!(args.merge);
+    }
+
+    #[test]
+    fn preset_and_output_format_accept_their_lowercase_names() {
+        let args = parse(&["in.png", "--preset", "favicon", "--output-format", "icns"]).unwrap();
+        assert_eq!(args.preset, Some(SizePreset::Favicon));
+        assert_eq!(args.output_format, Some(OutputFormat::Icns));
+    }
+
+    #[test]
+    fn unknown_preset_or_format_values_are_rejected() {
+        assert!(parse(&["in.png", "--preset", "huge"]).is_err());
+        assert!(parse(&["in.png", "--output-format", "tiff"]).is_err());
+    }
+
+    #[test]
+    fn numeric_options_reject_values_out_of_range() {
+        assert!(parse(&["in.png", "--tolerance", "256"]).is_err());
+        assert!(parse(&["in.png", "--tolerance", "-1"]).is_err());
+        assert!(parse(&["in.png", "--padding", "300"]).is_err());
+        assert!(parse(&["in.png", "--gif-frame", "-2"]).is_err());
+        assert!(parse(&["in.png", "--find-min-size", "abc"]).is_err());
+    }
+
+    #[test]
+    fn unknown_flags_are_rejected() {
+        assert!(parse(&["in.png", "--no-such-flag"]).is_err());
+    }
+
+    #[test]
+    fn config_and_out_toml_take_paths() {
+        let args = parse(&["in.png", "--config", "a.toml", "--out-toml", "b.toml"]).unwrap();
+        assert_eq!(args.config, Some(PathBuf::from("a.toml")));
+        assert_eq!(args.out_toml, Some(PathBuf::from("b.toml")));
+    }
+}
