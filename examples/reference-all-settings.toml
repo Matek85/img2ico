@@ -74,3 +74,12 @@ combine = false
 # With --select: which icon size(s) to pull out, by index (see
 # `img2ico --inspect` to find valid indices for a given .ico file).
 index = "0,2"
+
+# Which frame (1-indexed) to use as the source, if the input is an
+# animated GIF. Has no effect on any other format.
+gif-frame = 1
+
+# Suppress advisory warnings/notices (upscaling, thin content, an
+# out-of-range seed, unknown settings in this very file, etc.). Never
+# suppresses errors or --inspect/--find's own report output.
+silent = false

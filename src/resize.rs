@@ -12,8 +12,12 @@ use image::{Rgba, RgbaImage};
 /// wasn't in the source to begin with (see make_square_icon /
 /// resize_rgba_premultiplied below for how the resize itself works -
 /// Lanczos3 makes the result smooth rather than blocky, but it's still an
-/// estimate, not real detail).
-pub fn warn_about_upscaling(source_width: u32, source_height: u32, sizes: &[u32]) {
+/// estimate, not real detail). `silent` suppresses this - see --silent's
+/// own doc comment in cli.rs for exactly what that flag covers.
+pub fn warn_about_upscaling(source_width: u32, source_height: u32, sizes: &[u32], silent: bool) {
+    if silent {
+        return;
+    }
     let native_max = source_width.max(source_height);
     let upscaled: Vec<u32> = sizes.iter().copied().filter(|&s| s > native_max).collect();
     if !upscaled.is_empty() {
@@ -56,8 +60,9 @@ pub fn warn_about_thin_content(
     source_height: u32,
     padding_percent: u8,
     sizes: &[u32],
+    silent: bool,
 ) {
-    if source_width == 0 || source_height == 0 {
+    if silent || source_width == 0 || source_height == 0 {
         return; // guards the division below; shouldn't happen for a real image
     }
     let padding_percent = padding_percent.min(100);

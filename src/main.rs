@@ -20,6 +20,7 @@
 mod chroma_key;
 mod cli;
 mod config;
+mod gif;
 mod icns;
 mod ico_ops;
 mod resize;
@@ -29,6 +30,7 @@ use chroma_key::{apply_chroma_key, find_isolated_regions, parse_hex_color, DEFAU
 use clap::Parser;
 use cli::{Args, OutputFormat};
 use config::{load_config, write_config, Settings};
+use gif::{extract_gif_frame, is_gif};
 use icns::{write_icns, ICNS_SIZES};
 use ico_ops::{extract_icons, inspect_icons, merge_icons, parse_indices, select_icons};
 use resize::{
@@ -123,6 +125,8 @@ struct ResolvedSettings {
     replace_color: Option<String>,
     grayscale: bool,
     padding: u8,
+    gif_frame: usize,
+    silent: bool,
     output_format: Option<OutputFormat>,
     delete_source: bool,
     force: bool,
@@ -158,6 +162,8 @@ impl ResolvedSettings {
                 .or_else(|| settings.replace_color.clone()),
             grayscale: args.grayscale || settings.grayscale,
             padding: args.padding.or(settings.padding).unwrap_or(0),
+            gif_frame: args.gif_frame.or(settings.gif_frame).unwrap_or(1),
+            silent: args.silent || settings.silent,
             output_format: args.output_format.or(settings.output_format),
             delete_source: args.delete_source || settings.delete_source,
             force: args.force || settings.force,
@@ -183,11 +189,13 @@ impl ResolvedSettings {
             replace_color: self.replace_color.clone(),
             grayscale: self.grayscale,
             padding: Some(self.padding),
+            gif_frame: Some(self.gif_frame),
             output_format: self.output_format,
             delete_source: self.delete_source,
             force: self.force,
             combine: self.combine,
             index: self.index.clone(),
+            silent: self.silent,
         }
     }
 }
@@ -200,7 +208,9 @@ impl ResolvedSettings {
 fn maybe_write_out_toml(out_toml: &Option<std::path::PathBuf>, resolved: &ResolvedSettings) -> Result<(), String> {
     if let Some(path) = out_toml {
         write_config(&resolved.to_settings(), path)?;
-        println!("Settings written to '{}'.", path.display());
+        if !resolved.silent {
+            println!("Settings written to '{}'.", path.display());
+        }
     }
     Ok(())
 }
@@ -261,12 +271,14 @@ fn run() -> Result<(), String> {
     // (and --select additionally --combine/--index), so all of them need
     // the resolved settings, not just the normal conversion path further
     // down.
-    let (settings, config_path) = match load_config(args.config.as_deref())? {
+    let (settings, config_path) = match load_config(args.config.as_deref(), args.silent)? {
         Some((settings, path)) => (settings, Some(path)),
         None => (Settings::default(), None),
     };
     if let Some(path) = &config_path {
-        println!("Using settings from '{}'.", path.display());
+        if !args.silent {
+            println!("Using settings from '{}'.", path.display());
+        }
     }
     let resolved = ResolvedSettings::resolve(&args, &settings);
 
@@ -282,7 +294,7 @@ fn run() -> Result<(), String> {
             // The output here is a directory, not a file, so it can never
             // collide with the (file) source path - no output_path needed
             // for the same-file safety check.
-            delete_source_files(std::slice::from_ref(input_path), None);
+            delete_source_files(std::slice::from_ref(input_path), None, resolved.silent);
         }
         maybe_write_out_toml(&args.out_toml, &resolved)?;
         return Ok(());
@@ -308,7 +320,7 @@ fn run() -> Result<(), String> {
             // written (protect against deleting it if it happens to equal
             // the source), or None when a whole directory of separate
             // files was written instead (can't collide with a file path).
-            delete_source_files(std::slice::from_ref(input_path), written_file.as_deref());
+            delete_source_files(std::slice::from_ref(input_path), written_file.as_deref(), resolved.silent);
         }
         maybe_write_out_toml(&args.out_toml, &resolved)?;
         return Ok(());
@@ -324,9 +336,9 @@ fn run() -> Result<(), String> {
         let output_path = args.output.ok_or_else(|| {
             "Merge mode requires an explicit output path (-o/--output).".to_string()
         })?;
-        merge_icons(&args.input, &output_path, resolved.force)?;
+        merge_icons(&args.input, &output_path, resolved.force, resolved.silent)?;
         if resolved.delete_source {
-            delete_source_files(&args.input, Some(&output_path));
+            delete_source_files(&args.input, Some(&output_path), resolved.silent);
         }
         maybe_write_out_toml(&args.out_toml, &resolved)?;
         return Ok(());
@@ -372,18 +384,32 @@ fn run() -> Result<(), String> {
     // it doesn't write a file, so it shouldn't need to know or care where
     // one WOULD have gone.
     //
-    // image::open detects the format automatically from the file header
-    // (not just the file extension).
-    let img = image::open(input_path).map_err(|e| format!("Could not read input file: {e}"))?;
-
-    // IMPORTANT (optimization): img.to_rgba8() converts/copies the entire
-    // image. This intentionally happens only ONCE here, regardless of
-    // whether --chroma-key/--find is set or not - and NOT (as in an
-    // earlier version) again for every single icon size. For a large
-    // source image and the 6 default sizes, that would otherwise have
-    // been 6 full copies of the source image, even though the source
-    // image doesn't change between sizes.
-    let mut rgba_source = img.to_rgba8();
+    // image::open() alone - used for every other format - only ever
+    // returns a GIF's FIRST frame, with no way to pick a different one.
+    // So: for a GIF specifically, --gif-frame picks which frame becomes
+    // the source image (extract_gif_frame() already gives back an
+    // RgbaImage directly); for everything else, --gif-frame has no
+    // meaning and image::open() (which detects the format from the file
+    // header, not just its extension) is used exactly as before.
+    let mut rgba_source = if is_gif(input_path)? {
+        extract_gif_frame(input_path, resolved.gif_frame)?
+    } else {
+        if resolved.gif_frame != 1 && !resolved.silent {
+            eprintln!(
+                "Warning: --gif-frame only applies to GIF input and is ignored for this file."
+            );
+        }
+        // IMPORTANT (optimization): to_rgba8() converts/copies the entire
+        // image. This intentionally happens only ONCE here, regardless of
+        // whether --chroma-key/--find is set or not - and NOT (as in an
+        // earlier version) again for every single icon size. For a large
+        // source image and the 6 default sizes, that would otherwise have
+        // been 6 full copies of the source image, even though the source
+        // image doesn't change between sizes.
+        image::open(input_path)
+            .map_err(|e| format!("Could not read input file: {e}"))?
+            .to_rgba8()
+    };
 
     // --find: look for regions matching this color that the border-based
     // flood fill in apply_chroma_key can't reach on its own (the same
@@ -396,7 +422,7 @@ fn run() -> Result<(), String> {
     if let Some(find_hex) = &resolved.find {
         let target =
             parse_hex_color(find_hex).map_err(|e| format!("Invalid --find value: {e}"))?;
-        let regions = find_isolated_regions(&rgba_source, target, resolved.tolerance, resolved.find_min_size);
+        let regions = find_isolated_regions(&rgba_source, target, resolved.tolerance, resolved.find_min_size, resolved.silent);
 
         if regions.is_empty() {
             println!(
@@ -516,7 +542,7 @@ fn run() -> Result<(), String> {
             .iter()
             .map(|s| parse_seed(s).map_err(|e| format!("Invalid --seed value: {e}")))
             .collect::<Result<Vec<(u32, u32)>, String>>()?;
-        apply_chroma_key(&mut rgba_source, target, resolved.tolerance, &seeds, replacement);
+        apply_chroma_key(&mut rgba_source, target, resolved.tolerance, &seeds, replacement, resolved.silent);
     } else if let Some(hex) = &resolved.find {
         // Only reachable when --auto-apply was given too - the plain
         // "--find" preview case already returned Ok(()) further up.
@@ -527,7 +553,7 @@ fn run() -> Result<(), String> {
             .map(|s| parse_seed(s).map_err(|e| format!("Invalid --seed value: {e}")))
             .collect::<Result<Vec<(u32, u32)>, String>>()?;
         seeds.extend(auto_found_seeds);
-        apply_chroma_key(&mut rgba_source, target, resolved.tolerance, &seeds, replacement);
+        apply_chroma_key(&mut rgba_source, target, resolved.tolerance, &seeds, replacement, resolved.silent);
     }
 
     // --grayscale runs LAST, after any --chroma-key/--replace-color
@@ -553,11 +579,11 @@ fn run() -> Result<(), String> {
     let (source_w, source_h) = rgba_source.dimensions();
     if use_icns {
         let icns_sizes: Vec<u32> = ICNS_SIZES.iter().map(|&(size, _)| size).collect();
-        warn_about_upscaling(source_w, source_h, &icns_sizes);
-        warn_about_thin_content(source_w, source_h, resolved.padding, &icns_sizes);
+        warn_about_upscaling(source_w, source_h, &icns_sizes, resolved.silent);
+        warn_about_thin_content(source_w, source_h, resolved.padding, &icns_sizes, resolved.silent);
     } else {
-        warn_about_upscaling(source_w, source_h, &sizes);
-        warn_about_thin_content(source_w, source_h, resolved.padding, &sizes);
+        warn_about_upscaling(source_w, source_h, &sizes, resolved.silent);
+        warn_about_thin_content(source_w, source_h, resolved.padding, &sizes, resolved.silent);
     }
 
     // .icns branches off here (whether from an explicit --output-format icns or from
@@ -567,7 +593,7 @@ fn run() -> Result<(), String> {
     if use_icns {
         write_icns(&rgba_source, resolved.padding, has_alpha, &output_path)?;
         if resolved.delete_source {
-            delete_source_files(std::slice::from_ref(input_path), Some(&output_path));
+            delete_source_files(std::slice::from_ref(input_path), Some(&output_path), resolved.silent);
         }
         maybe_write_out_toml(&args.out_toml, &resolved)?;
         return Ok(());
@@ -580,7 +606,9 @@ fn run() -> Result<(), String> {
     for &size in &sizes {
         // ICO files officially only support edge lengths up to 256px.
         if size == 0 || size > 256 {
-            eprintln!("Skipping size {size} (valid range: 1-256).");
+            if !resolved.silent {
+                eprintln!("Skipping size {size} (valid range: 1-256).");
+            }
             continue;
         }
 
@@ -628,7 +656,7 @@ fn run() -> Result<(), String> {
     );
 
     if resolved.delete_source {
-        delete_source_files(std::slice::from_ref(input_path), Some(&output_path));
+        delete_source_files(std::slice::from_ref(input_path), Some(&output_path), resolved.silent);
     }
 
     maybe_write_out_toml(&args.out_toml, &resolved)?;

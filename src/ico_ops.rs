@@ -5,6 +5,7 @@
 // why they live together in one module.
 
 use crate::cli::RECOMMENDED_WINDOWS_SIZES;
+use crate::gif::{count_gif_frames, is_gif};
 use crate::icns::ICNS_SIZES;
 use crate::util::check_overwrite;
 use image::RgbaImage;
@@ -34,7 +35,12 @@ fn read_icon_dir(path: &Path) -> Result<ico::IconDir, String> {
 /// and later duplicates are skipped (with a warning): an .ico file isn't
 /// meant to contain the same size twice, and most consumers would only
 /// ever look at one of them anyway.
-pub fn merge_icons(paths: &[PathBuf], output_path: &Path, force: bool) -> Result<(), String> {
+pub fn merge_icons(
+    paths: &[PathBuf],
+    output_path: &Path,
+    force: bool,
+    silent: bool,
+) -> Result<(), String> {
     if paths.len() < 2 {
         return Err("Merge mode needs at least two input .ico files.".to_string());
     }
@@ -51,12 +57,14 @@ pub fn merge_icons(paths: &[PathBuf], output_path: &Path, force: bool) -> Result
         for entry in source.entries() {
             let size = (entry.width(), entry.height());
             if !seen_sizes.insert(size) {
-                eprintln!(
-                    "Skipping {}x{} from '{}': that size is already present in the merged output.",
-                    size.0,
-                    size.1,
-                    path.display()
-                );
+                if !silent {
+                    eprintln!(
+                        "Skipping {}x{} from '{}': that size is already present in the merged output.",
+                        size.0,
+                        size.1,
+                        path.display()
+                    );
+                }
                 continue;
             }
 
@@ -192,6 +200,21 @@ fn inspect_source_image(path: &Path, img: &image::DynamicImage) {
     let native_max = w.max(h);
 
     println!("{} (source image, {w}x{h}):", path.display());
+
+    // GIF-specific: report the frame count, since img2ico (like the
+    // normal, non-animation-aware image::open() path it's built on) only
+    // ever uses ONE frame from an animated GIF, not the whole animation.
+    // A read/decode error here is treated as "couldn't determine this",
+    // not a reason to fail the rest of the report - the resolution and
+    // size-coverage information below is still fully valid either way.
+    if let Ok(true) = is_gif(path) {
+        match count_gif_frames(path) {
+            Ok(count) => println!(
+                "  frames: {count} (img2ico uses frame 1 by default; pass --gif-frame N to pick another)"
+            ),
+            Err(e) => eprintln!("  (could not determine the frame count: {e})"),
+        }
+    }
 
     let windows_sizes: Vec<u32> = RECOMMENDED_WINDOWS_SIZES.to_vec();
     let icns_sizes: Vec<u32> = ICNS_SIZES.iter().map(|&(size, _)| size).collect();

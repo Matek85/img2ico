@@ -63,20 +63,26 @@ fn paths_refer_to_same_file(a: &Path, b: &Path) -> bool {
 /// conversion/merge/extraction the user asked for already succeeded by
 /// the time this runs, so a cleanup problem afterward shouldn't make the
 /// whole command look like it failed.
-pub fn delete_source_files(paths: &[PathBuf], output_path: Option<&Path>) {
+pub fn delete_source_files(paths: &[PathBuf], output_path: Option<&Path>, silent: bool) {
     for path in paths {
         if let Some(output_path) = output_path {
             if paths_refer_to_same_file(path, output_path) {
-                eprintln!(
-                    "Not deleting '{}': it's also the output path.",
-                    path.display()
-                );
+                if !silent {
+                    eprintln!(
+                        "Not deleting '{}': it's also the output path.",
+                        path.display()
+                    );
+                }
                 continue;
             }
         }
         match std::fs::remove_file(path) {
             Ok(()) => println!("Deleted source file '{}'.", path.display()),
-            Err(e) => eprintln!("Warning: could not delete '{}': {e}", path.display()),
+            Err(e) => {
+                if !silent {
+                    eprintln!("Warning: could not delete '{}': {e}", path.display());
+                }
+            }
         }
     }
 }

@@ -85,6 +85,7 @@ Usage: img2ico [OPTIONS] <INPUT>...
 | `--auto-apply` | | | With `--find`: use the discovered points and convert right away |
 | `--replace-color` | | hex color | Replace the detected background with this color instead of making it transparent |
 | `--padding` | | 0–100 | Transparent margin around the artwork |
+| `--gif-frame` | | number (default 1) | Which frame to use from an animated GIF source |
 | `--grayscale` | | | Remove all color, keep only brightness |
 | `--output-format` | | `ico` / `icns` | Force a specific icon container format |
 | `--merge` | | | Combine several `.ico` files into one |
@@ -94,6 +95,7 @@ Usage: img2ico [OPTIONS] <INPUT>...
 | `--combine` | | | With `--select` + multiple `--index`: one file instead of several |
 | `--force` | `-f` | | Allow overwriting existing output |
 | `--config` | | path | Load default settings from a TOML file |
+| `--silent` | | | Suppress warnings/notices (errors and --inspect/--find reports still show) |
 | `--out-toml` | | path | Save the settings actually used for this run as a TOML file |
 | `--delete-source` | | | Delete the input file(s) after a successful run |
 | `--inspect` | | | Print a report about `.ico` file(s) or source image(s) |
@@ -194,6 +196,27 @@ img2ico logo.png -c FFFFFF --replace-color 000000 --grayscale
 ```
 
 `--grayscale` always runs last, after any `--chroma-key`/`--replace-color` processing — so a `--replace-color` color ends up grayscaled too when both are combined, rather than being a confusing exception to an otherwise all-gray icon.
+
+### 1.10 Picking a frame from an animated GIF
+
+```
+img2ico animation.gif --gif-frame 2 -o icon.ico
+```
+
+If the source is an animated GIF, img2ico only ever converts ONE frame into the icon — never the whole animation (an `.ico`/`.icns` file has no concept of animation to begin with). Without `--gif-frame`, that's frame 1 (the first frame) — the same frame img2ico has always used, even before this option existed. Frames are numbered starting at 1, matching how you'd naturally describe "the second frame" as frame 2, not frame 1.
+
+Check `--inspect` on the GIF first if you're not sure how many frames it has or which one you want:
+
+```
+img2ico --inspect animation.gif
+```
+```
+animation.gif (source image, 100x100):
+  frames: 3 (img2ico uses frame 1 by default; pass --gif-frame N to pick another)
+  ...
+```
+
+`--gif-frame` has no effect on any other image format — passing it for a PNG/JPG/BMP source prints a warning and is otherwise ignored.
 
 ---
 
@@ -712,7 +735,38 @@ grayscale = false
 
 Field names match the long command-line flag names (minus the leading `--`, with dashes kept as-is, e.g. `chroma-key` for `--chroma-key`).
 
-### 10.6 Ready-made example files
+### 10.6 Misspelled a setting? You'll be told
+
+```
+# my-settings.toml (typo: "toleranse" instead of "tolerance")
+tolerance = 25
+toleranse = 30
+```
+```
+img2ico logo.png --config my-settings.toml -o icon.ico
+```
+```
+Warning: unknown setting 'toleranse' in 'my-settings.toml' - ignored. Check for a typo, or see `img2ico --help` for the exact setting names.
+```
+
+An unrecognized key in a settings file is almost always a typo, so it's flagged rather than silently doing nothing — the conversion still proceeds using whatever settings ARE valid, exactly as if the misspelled line weren't there at all.
+
+### 10.7 Quieting down: `--silent`
+
+```
+img2ico logo.png --preset windows -o icon.ico --silent
+```
+
+Suppresses every advisory warning and informational notice this tool prints — upscaling/thin-content warnings, an out-of-range `--seed` point, a skipped duplicate size in `--merge`, the unknown-setting warning above, the "Using settings from ..." notice, and so on. Handy for scripted/CI use where you only care about the final result.
+
+`--silent` does **not** suppress:
+- **Errors.** Something going wrong always needs to reach you (and the exit code), silent or not — that's the whole point of an error.
+- **`--inspect`/`--find`'s own report.** That report IS the requested output of those modes, not incidental chatter around it.
+- **The final "Done: ... created" confirmation.**
+
+Like the other tuning settings, `--silent` is config-file-eligible too — with one nuance: a `--silent` set *inside* a config file only takes effect once that file has already finished loading, so it can never hide a warning about a problem with the file itself (e.g. the unknown-setting warning above).
+
+### 10.8 Ready-made example files
 
 The [`examples/`](examples/) folder has several ready-to-use settings files for common scenarios — a Windows app icon, a favicon, a macOS `.icns`, a grayscale variant, and a hands-off setup for scripted/CI use — plus `reference-all-settings.toml`, which documents every possible field in one place (not meant to be used as-is, since several of its settings intentionally contradict each other; copy individual lines from it instead).
 

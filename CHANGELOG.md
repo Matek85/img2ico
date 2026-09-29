@@ -10,12 +10,31 @@ when cutting a release.
 
 ## [Unreleased]
 
-Nothing yet.
+## [1.3.0] - 2026-09-29
+
+### Added
+
+- A warning when a config file (`--config`/`img2ico.toml`) contains a
+  setting name img2ico doesn't recognize - previously silently ignored
+  (typically a typo, e.g. `toleranse` instead of `tolerance`), now
+  flagged while the rest of the file's settings still apply normally.
+- `--silent` to suppress advisory warnings and informational notices
+  (upscaling/thin-content warnings, an out-of-range `--seed`, a skipped
+  duplicate in `--merge`, the unknown-setting warning above, the "Using
+  settings from ..." notice, etc.) - handy for scripted/CI use. Never
+  suppresses errors or `--inspect`/`--find`'s own report output.
+  Config-file-eligible like the other tuning settings.
 
 ## [1.2.0] - 2026-09-29
 
 ### Added
 
+- `--gif-frame <n>` to pick which frame (1-indexed) of an animated GIF
+  source becomes the icon - previously always the first frame, silently,
+  with no way to choose or even know how many frames existed.
+  Config-file-eligible like the other tuning settings. Has no effect on
+  non-GIF input.
+- `--inspect` on a GIF now reports its frame count.
 - `--config <path>` to load default values for the "tuning" settings
   (sizes/preset, chroma-key/`--find` options, padding, grayscale,
   `--output-format`, `--force`, `--delete-source`, `--select`'s

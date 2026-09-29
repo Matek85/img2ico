@@ -111,6 +111,7 @@ fn flood_fill_reachable(
     target: [u8; 3],
     tolerance_percent: u8,
     extra_seeds: &[(u32, u32)],
+    silent: bool,
 ) -> Vec<bool> {
     let (width, height) = img.dimensions();
     let tol_distance = tol_distance_from_percent(tolerance_percent);
@@ -160,9 +161,11 @@ fn flood_fill_reachable(
     // then works exactly as normal, via the tolerance comparison.
     for &(x, y) in extra_seeds {
         if x >= width || y >= height {
-            eprintln!(
-                "Warning: seed point ({x},{y}) is outside the image ({width}x{height}) and will be ignored."
-            );
+            if !silent {
+                eprintln!(
+                    "Warning: seed point ({x},{y}) is outside the image ({width}x{height}) and will be ignored."
+                );
+            }
             continue;
         }
         if !visited[idx(x, y)] {
@@ -218,12 +221,13 @@ pub fn apply_chroma_key(
     tolerance_percent: u8,
     extra_seeds: &[(u32, u32)],
     replacement: Option<[u8; 3]>,
+    silent: bool,
 ) {
     let (width, height) = img.dimensions();
     let tol_distance = tol_distance_from_percent(tolerance_percent);
     let idx = |x: u32, y: u32| -> usize { (y * width + x) as usize };
 
-    let visited = flood_fill_reachable(img, target, tolerance_percent, extra_seeds);
+    let visited = flood_fill_reachable(img, target, tolerance_percent, extra_seeds, silent);
 
     // Second pass: change every pixel identified as background - either
     // its alpha (transparency mode) or its RGB color (replacement mode).
@@ -331,6 +335,7 @@ pub fn find_isolated_regions(
     target: [u8; 3],
     tolerance_percent: u8,
     min_region_size: usize,
+    silent: bool,
 ) -> Vec<FoundRegion> {
     let (width, height) = img.dimensions();
     let tol_distance = tol_distance_from_percent(tolerance_percent);
@@ -344,7 +349,7 @@ pub fn find_isolated_regions(
     // Anything the normal border-based flood fill already reaches doesn't
     // need to be "found" - it'll be handled anyway. We start our own
     // labeling from this, treating those pixels as already accounted for.
-    let mut labeled = flood_fill_reachable(img, target, tolerance_percent, &[]);
+    let mut labeled = flood_fill_reachable(img, target, tolerance_percent, &[], silent);
 
     let mut regions = Vec::new();
 

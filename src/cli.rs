@@ -272,6 +272,30 @@ pub struct Args {
     #[arg(long = "padding")]
     pub padding: Option<u8>,
 
+    /// Which frame to use as the source image, if the input is an
+    /// animated GIF (has no effect on any other format). Frames are
+    /// numbered starting at 1 (the first frame), matching how you'd
+    /// naturally describe it. Defaults to 1 if neither this nor a config
+    /// file sets it - the same frame img2ico has always used, even
+    /// before this option existed. Use `--inspect` on the GIF first to
+    /// see how many frames it has.
+    #[arg(long = "gif-frame")]
+    pub gif_frame: Option<usize>,
+
+    /// Suppresses all advisory warnings and informational notices (e.g.
+    /// upscaling/thin-content warnings, an out-of-range --seed point, a
+    /// skipped duplicate size in --merge, an unrecognized setting in a
+    /// config file, the "Using settings from ..." notice). Does NOT
+    /// suppress errors (those always need to reach you, in scripts
+    /// especially) or the actual report --inspect/--find print, which is
+    /// their whole purpose, not incidental chatter around it. Like the
+    /// other tuning settings, this is config-file-eligible - but a config
+    /// file's own --silent only takes effect once that file has already
+    /// been loaded, so it never silences warnings about problems with the
+    /// config file itself.
+    #[arg(long = "silent")]
+    pub silent: bool,
+
     /// Which icon container format to write: "ico" (the Windows format)
     /// or "icns" (the macOS format, using a fixed, Apple-recommended set
     /// of sizes - 16, 32, 64, 128, 256, 512 and 1024 pixels, each
@@ -326,12 +350,13 @@ pub struct Args {
     /// Loads default values for the "tuning" settings above (--sizes,
     /// --preset, --chroma-key, --tolerance, --seed, --find,
     /// --find-min-size, --auto-apply, --replace-color, --grayscale,
-    /// --padding, --output-format, --delete-source, --force, --combine,
-    /// --index) from a TOML file. An explicit command-line flag for the
-    /// same setting still wins over whatever the file says - this only
-    /// changes what happens when you DON'T pass a flag. Deliberately does
-    /// NOT cover the mode (--merge/--inspect/--extract/--select), the
-    /// input file(s), or -o/--output - those stay command-line-only,
+    /// --padding, --gif-frame, --output-format, --delete-source, --force,
+    /// --combine, --index, --silent) from a TOML file. An explicit
+    /// command-line flag for the same setting still wins over whatever
+    /// the file says - this only changes what happens when you DON'T
+    /// pass a flag. Deliberately does NOT cover the mode
+    /// (--merge/--inspect/--extract/--select), the input file(s), or
+    /// -o/--output - those stay command-line-only,
     /// since defaulting those rarely makes sense.
     ///
     /// If this is omitted entirely, img2ico looks for "img2ico.toml" in
