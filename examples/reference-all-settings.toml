@@ -1,0 +1,76 @@
+# reference-all-settings.toml
+#
+# Every setting a config file can contain, with an explanation of each -
+# not meant to be used as-is (several of these contradict each other,
+# e.g. "sizes" and "preset"), but as a reference to copy individual lines
+# from into your own settings file. Field names match the long
+# command-line flag names exactly (minus the leading "--"), so anything
+# you already know from `img2ico --help` carries over directly.
+#
+# Remember: an explicit command-line flag always overrides the same
+# setting from a config file - a file only fills in what you didn't type.
+
+# Comma-separated list of icon sizes. Ignored if "preset" is also set.
+sizes = "16,32,48,64,128,256"
+
+# A named preset instead of listing sizes manually: "windows", "favicon",
+# or "minimal". Overrides "sizes" above when both are present.
+preset = "windows"
+
+# Hex color (with or without a leading "#") to remove as the background.
+# Mutually exclusive with "find" below - use one or the other.
+chroma-key = "FFFFFF"
+
+# How strictly "chroma-key"/"find" match colors, 0-100. Higher catches
+# more shades of the same color but risks eating into real artwork.
+tolerance = 20
+
+# Extra starting points (pixel coordinates in the ORIGINAL image) for
+# background regions enclosed by the artwork that the border-based
+# search can't reach on its own. Can list more than one.
+seeds = ["128,64", "200,300"]
+
+# Like "chroma-key", but automatically searches for enclosed background
+# regions too instead of requiring "seeds" above to be found by hand.
+# Mutually exclusive with "chroma-key".
+find = "FFFFFF"
+
+# Smallest region (in pixels) "find" reports/uses. Lower catches smaller
+# stray spots; 1 catches every matching pixel, however small.
+find-min-size = 9
+
+# Whether "find" should apply what it discovers automatically and convert
+# right away, instead of only printing a preview and stopping.
+auto-apply = true
+
+# Replace the detected background with this solid color instead of
+# making it transparent. Requires "chroma-key" or "find" to be set too.
+replace-color = "000000"
+
+# Remove all color from the final image, keeping only brightness.
+grayscale = false
+
+# Transparent margin around the artwork, as a percentage (0-100) of the
+# icon size.
+padding = 10
+
+# Which icon container format to write: "ico" (Windows) or "icns"
+# (macOS). If omitted, img2ico picks automatically based on the platform
+# it was built for.
+output-format = "ico"
+
+# Delete the source file(s) after a successful run. Destructive - only
+# turn this on if you're sure the source is meant to be disposable.
+delete-source = false
+
+# Allow overwriting an existing output file/directory instead of
+# refusing to run.
+force = false
+
+# With --select and multiple --index values: bundle them into one output
+# file instead of one separate file per selected icon.
+combine = false
+
+# With --select: which icon size(s) to pull out, by index (see
+# `img2ico --inspect` to find valid indices for a given .ico file).
+index = "0,2"

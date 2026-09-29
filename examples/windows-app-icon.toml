@@ -1,0 +1,15 @@
+# windows-app-icon.toml
+#
+# A typical setup for turning a logo with a plain white background into a
+# ready-to-ship Windows application icon: full DPI-scaling size coverage,
+# a small transparent margin so the artwork doesn't touch the edges, and
+# automatic removal of a white background.
+#
+# Usage:
+#   img2ico logo.png --config windows-app-icon.toml -o app.ico
+
+preset = "windows"
+chroma-key = "FFFFFF"
+tolerance = 20
+padding = 5
+force = true

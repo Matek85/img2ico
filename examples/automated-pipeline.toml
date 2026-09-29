@@ -1,0 +1,24 @@
+# automated-pipeline.toml
+#
+# A hands-off setup for scripted/CI use: automatically discovers every
+# spot matching the background color (including ones enclosed by the
+# artwork that a plain border-based removal can't reach), applies them
+# without printing a preview and waiting for a re-run, overwrites any
+# previous output without asking, and deletes the source file once the
+# icon has been created successfully - useful in a build pipeline where
+# the source is a temporary/generated file you don't need to keep
+# afterward.
+#
+# NOTE: --delete-source is destructive by nature - make sure the source
+# path this runs against is really meant to be thrown away (e.g. a file
+# in a temporary build directory), not your original artwork.
+#
+# Usage:
+#   img2ico generated-logo.png --config automated-pipeline.toml -o icon.ico
+
+preset = "windows"
+find = "FFFFFF"
+tolerance = 20
+auto-apply = true
+force = true
+delete-source = true

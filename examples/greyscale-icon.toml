@@ -1,0 +1,16 @@
+# grayscale-icon.toml
+#
+# A monochrome icon variant: removes the background AND strips all color
+# from the remaining artwork, leaving only brightness. Useful for e.g. a
+# secondary "disabled" or "inactive" icon state, or a minimalist icon set
+# where every icon should share a single, uniform look regardless of the
+# source artwork's original colors.
+#
+# Usage:
+#   img2ico logo.png --config grayscale-icon.toml -o icon-gray.ico
+
+preset = "windows"
+chroma-key = "FFFFFF"
+tolerance = 20
+grayscale = true
+force = true

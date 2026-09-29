@@ -4,7 +4,6 @@
 // really one unit - clap reads all of it together to build a single
 // coherent --help output.
 
-use crate::chroma_key::DEFAULT_FIND_MIN_SIZE;
 use clap::Parser;
 use std::path::PathBuf;
 
@@ -36,7 +35,8 @@ pub const RECOMMENDED_WINDOWS_SIZES: [u32; 10] = [16, 20, 24, 32, 40, 48, 64, 96
 /// Adding a new preset later is just: add a variant here, add its doc
 /// comment, and add one line to `SizePreset::sizes()` below - the CLI
 /// parsing and --help text update themselves automatically.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum SizePreset {
     /// Microsoft's recommended set for full DPI-scaling coverage (16, 20,
     /// 24, 32, 40, 48, 64, 96, 128, 256) - Windows never has to stretch a
@@ -64,7 +64,8 @@ impl SizePreset {
 /// If --output-format isn't given at all (the field stays `None` in
 /// `Args`), img2ico falls back to a platform-based default instead - see
 /// where `use_icns` is computed in `run()` (main.rs).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum OutputFormat {
     /// The Windows icon format.
     Ico,
@@ -93,9 +94,11 @@ pub struct Args {
     /// Comma-separated list of icon sizes to embed into the .ico file.
     /// Windows ICOs can contain several resolutions at once (the operating
     /// system then picks the appropriate one depending on context, e.g.
-    /// small for the taskbar, large for the desktop view).
-    #[arg(short, long, default_value = "16,32,48,64,128,256")]
-    pub sizes: String,
+    /// small for the taskbar, large for the desktop view). Defaults to
+    /// "16,32,48,64,128,256" if neither this, a config file, nor --preset
+    /// sets it.
+    #[arg(short, long)]
+    pub sizes: Option<String>,
 
     /// Overrides --sizes with a predefined set of sizes for a common use
     /// case, instead of listing sizes manually (see the presets listed
@@ -123,9 +126,10 @@ pub struct Args {
     /// 0   = only (nearly) exactly the given color is recognized.
     /// 100 = almost any color would count as "background" (not useful in
     ///       practice).
-    /// A good starting value to experiment with is 15-30.
-    #[arg(short = 't', long = "tolerance", default_value_t = 20)]
-    pub tolerance: u8,
+    /// A good starting value to experiment with is 15-30. Defaults to 20
+    /// if neither this nor a config file sets it.
+    #[arg(short = 't', long = "tolerance")]
+    pub tolerance: Option<u8>,
 
     /// Extra starting point for the chroma-key flood fill, as "x,y"
     /// (pixel coordinates IN THE ORIGINAL IMAGE, not in the resulting
@@ -161,11 +165,12 @@ pub struct Args {
     /// relevant together with --find. Smaller connected regions are
     /// ignored, since a handful of stray pixels is almost always
     /// anti-aliasing/JPEG noise rather than a deliberate area worth
-    /// pointing out. The default catches real background patches while
-    /// staying quiet about noise; set this to 1 if you want --find to
-    /// catch every matching pixel, however small.
-    #[arg(long = "find-min-size", default_value_t = DEFAULT_FIND_MIN_SIZE)]
-    pub find_min_size: usize,
+    /// pointing out. Defaults to 9 (catches real background patches while
+    /// staying quiet about noise) if neither this nor a config file sets
+    /// it; set this to 1 if you want --find to catch every matching
+    /// pixel, however small.
+    #[arg(long = "find-min-size")]
+    pub find_min_size: Option<usize>,
 
     /// Together with --find: instead of only printing the found regions,
     /// automatically use them as extra seed points (in addition to any
@@ -261,11 +266,11 @@ pub struct Args {
     /// the square icon canvas, as a percentage (0-100) of the icon size.
     /// For example, --padding 10 on a 256x256 icon leaves roughly a 10%
     /// margin on every side, so the actual artwork ends up smaller and
-    /// more centered instead of touching the edges. 0 (the default) keeps
-    /// the previous behavior (artwork fills the canvas as much as
-    /// possible while preserving aspect ratio).
-    #[arg(long = "padding", default_value_t = 0)]
-    pub padding: u8,
+    /// more centered instead of touching the edges. Defaults to 0 (fills
+    /// the canvas as much as possible while preserving aspect ratio) if
+    /// neither this nor a config file sets it.
+    #[arg(long = "padding")]
+    pub padding: Option<u8>,
 
     /// Which icon container format to write: "ico" (the Windows format)
     /// or "icns" (the macOS format, using a fixed, Apple-recommended set
@@ -317,4 +322,34 @@ pub struct Args {
     /// behind.
     #[arg(short = 'f', long = "force")]
     pub force: bool,
+
+    /// Loads default values for the "tuning" settings above (--sizes,
+    /// --preset, --chroma-key, --tolerance, --seed, --find,
+    /// --find-min-size, --auto-apply, --replace-color, --grayscale,
+    /// --padding, --output-format, --delete-source, --force, --combine,
+    /// --index) from a TOML file. An explicit command-line flag for the
+    /// same setting still wins over whatever the file says - this only
+    /// changes what happens when you DON'T pass a flag. Deliberately does
+    /// NOT cover the mode (--merge/--inspect/--extract/--select), the
+    /// input file(s), or -o/--output - those stay command-line-only,
+    /// since defaulting those rarely makes sense.
+    ///
+    /// If this is omitted entirely, img2ico looks for "img2ico.toml" in
+    /// the current directory instead and uses it automatically if
+    /// present - --config takes priority over that automatic lookup
+    /// entirely (the two are never combined). Either way, a short notice
+    /// is printed naming the file actually used, so this never silently
+    /// changes behavior without saying so.
+    #[arg(long = "config")]
+    pub config: Option<PathBuf>,
+
+    /// After resolving all the "tuning" settings for this run (built-in
+    /// defaults, any config file, and command-line flags - in that
+    /// priority order, lowest to highest), writes them out to this path
+    /// as a TOML file - handy for turning a hand-tuned command line into
+    /// a reusable config file for next time (see --config). The normal
+    /// conversion still runs as usual; this just additionally saves a
+    /// snapshot of the settings that were actually used.
+    #[arg(long = "out-toml")]
+    pub out_toml: Option<PathBuf>,
 }

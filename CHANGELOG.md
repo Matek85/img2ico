@@ -10,7 +10,34 @@ when cutting a release.
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- `--config <path>` to load default values for the "tuning" settings
+  (sizes/preset, chroma-key/`--find` options, padding, grayscale,
+  `--output-format`, `--force`, `--delete-source`, `--select`'s
+  `--combine`/`--index`) from a TOML file - an explicit command-line flag
+  still overrides the same setting from the file. If `--config` isn't
+  given, an `img2ico.toml` in the current directory is picked up
+  automatically if present (never combined with an explicit `--config` -
+  one or the other, not both). Either way, a notice names the file that
+  was used. Deliberately does not cover the mode
+  (`--merge`/`--inspect`/`--extract`/`--select`), the input file(s), or
+  `-o`/`--output`.
+- `--out-toml <path>` to write the settings actually used for a run (CLI
+  + config file + built-in defaults, fully resolved) back out as a TOML
+  file - handy for turning a hand-tuned command line into a reusable
+  `--config` file.
+- An `examples/` folder with ready-to-use settings files (Windows app
+  icon, favicon, macOS `.icns`, grayscale variant, automated/CI setup)
+  plus a fully-commented reference covering every config-file field.
+
+### Changed
+
+- GitHub Releases now attach a single per-platform zip bundle
+  (`img2ico-windows.zip` / `img2ico-macos.zip` / `img2ico-linux.zip`)
+  instead of a bare binary - each contains the executable, `README.md`,
+  `LICENSE`, and the `examples/` settings files, so a release download
+  is self-contained.
 
 ## [1.1.0] - 2026-09-28
 

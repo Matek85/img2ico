@@ -6,6 +6,7 @@
 // Everything else lives in its own module, grouped by feature:
 //   - cli.rs         the Args struct and the two --preset/--output-format
 //                     value enums (everything clap needs)
+//   - config.rs       the optional --config/--out-toml TOML settings file
 //   - chroma_key.rs   --chroma-key/--find hex parsing and the flood-fill
 //                     and region-discovery algorithms
 //   - resize.rs       alpha-aware resizing and square-icon construction
@@ -18,14 +19,16 @@
 
 mod chroma_key;
 mod cli;
+mod config;
 mod icns;
 mod ico_ops;
 mod resize;
 mod util;
 
-use chroma_key::{apply_chroma_key, find_isolated_regions, parse_hex_color};
+use chroma_key::{apply_chroma_key, find_isolated_regions, parse_hex_color, DEFAULT_FIND_MIN_SIZE};
 use clap::Parser;
 use cli::{Args, OutputFormat};
+use config::{load_config, write_config, Settings};
 use icns::{write_icns, ICNS_SIZES};
 use ico_ops::{extract_icons, inspect_icons, merge_icons, parse_indices, select_icons};
 use resize::{
@@ -94,6 +97,114 @@ fn install_broken_pipe_panic_hook() {
     }));
 }
 
+/// Everything --config/a discovered "img2ico.toml" resolved into, plus
+/// the settings actually used for THIS run - bundled together so it can
+/// be passed around easily and, at the end, optionally written back out
+/// via --out-toml. Every field here mirrors one from `Settings`
+/// (config.rs) - see that struct's doc comment for which settings are
+/// config-file-eligible in the first place (and why some, like the mode
+/// or the input file, deliberately aren't).
+///
+/// Resolution order for every field is the same: an explicit command-line
+/// flag wins outright; otherwise the config file's value is used (if any);
+/// otherwise img2ico's own built-in default applies. For plain on/off
+/// flags (no explicit "off" is possible on the command line, only
+/// "given" or "not given"), this is implemented as a simple OR: the
+/// setting ends up on if EITHER the command line or the config file turns
+/// it on.
+struct ResolvedSettings {
+    preset: Option<cli::SizePreset>,
+    chroma_key: Option<String>,
+    tolerance: u8,
+    seeds: Vec<String>,
+    find: Option<String>,
+    find_min_size: usize,
+    auto_apply: bool,
+    replace_color: Option<String>,
+    grayscale: bool,
+    padding: u8,
+    output_format: Option<OutputFormat>,
+    delete_source: bool,
+    force: bool,
+    combine: bool,
+    index: Option<String>,
+    sizes: Option<String>,
+}
+
+impl ResolvedSettings {
+    /// Merges the command-line `args` with a loaded (or default, if no
+    /// config file applied) `settings`, following the "CLI wins, then
+    /// config file, then built-in default" priority described on the
+    /// struct itself.
+    fn resolve(args: &Args, settings: &Settings) -> ResolvedSettings {
+        ResolvedSettings {
+            preset: args.preset.or(settings.preset),
+            chroma_key: args.chroma_key.clone().or_else(|| settings.chroma_key.clone()),
+            tolerance: args.tolerance.or(settings.tolerance).unwrap_or(20),
+            seeds: if !args.seeds.is_empty() {
+                args.seeds.clone()
+            } else {
+                settings.seeds.clone()
+            },
+            find: args.find.clone().or_else(|| settings.find.clone()),
+            find_min_size: args
+                .find_min_size
+                .or(settings.find_min_size)
+                .unwrap_or(DEFAULT_FIND_MIN_SIZE),
+            auto_apply: args.auto_apply || settings.auto_apply,
+            replace_color: args
+                .replace_color
+                .clone()
+                .or_else(|| settings.replace_color.clone()),
+            grayscale: args.grayscale || settings.grayscale,
+            padding: args.padding.or(settings.padding).unwrap_or(0),
+            output_format: args.output_format.or(settings.output_format),
+            delete_source: args.delete_source || settings.delete_source,
+            force: args.force || settings.force,
+            combine: args.combine || settings.combine,
+            index: args.index.clone().or_else(|| settings.index.clone()),
+            sizes: args.sizes.clone().or_else(|| settings.sizes.clone()),
+        }
+    }
+
+    /// Turns the resolved settings back into a `Settings` value, for
+    /// --out-toml to write out as a snapshot of what was actually used
+    /// for this run.
+    fn to_settings(&self) -> Settings {
+        Settings {
+            sizes: self.sizes.clone(),
+            preset: self.preset,
+            chroma_key: self.chroma_key.clone(),
+            tolerance: Some(self.tolerance),
+            seeds: self.seeds.clone(),
+            find: self.find.clone(),
+            find_min_size: Some(self.find_min_size),
+            auto_apply: self.auto_apply,
+            replace_color: self.replace_color.clone(),
+            grayscale: self.grayscale,
+            padding: Some(self.padding),
+            output_format: self.output_format,
+            delete_source: self.delete_source,
+            force: self.force,
+            combine: self.combine,
+            index: self.index.clone(),
+        }
+    }
+}
+
+/// Writes `resolved` out to `path` as TOML, if `--out-toml` was given -
+/// shared by every mode that supports it (merge/extract/select/normal
+/// conversion). A no-op if `out_toml` is `None`. Called right before each
+/// mode's own final `Ok(())`, so it only runs after everything else about
+/// the run already succeeded.
+fn maybe_write_out_toml(out_toml: &Option<std::path::PathBuf>, resolved: &ResolvedSettings) -> Result<(), String> {
+    if let Some(path) = out_toml {
+        write_config(&resolved.to_settings(), path)?;
+        println!("Settings written to '{}'.", path.display());
+    }
+    Ok(())
+}
+
 /// Contains the complete program logic.
 ///
 /// Rust note on the "?" operator: when a "?" follows an expression that
@@ -120,10 +231,10 @@ fn run() -> Result<(), String> {
     // output container at the end), so they only conflict with the other
     // four modes, not with "no flag at all". Note this check deliberately
     // looks at the RAW args.output_format (whether the user typed
-    // --output-format at all), not the platform-based default computed
-    // further down - a Mac user running --merge without ever typing
-    // --output-format shouldn't trip this just because icns happens to be
-    // their platform's default format.
+    // --output-format at all), not any config-file/platform-based default
+    // - a Mac user (or someone with --output-format in their config file)
+    // running --merge without ever explicitly typing --output-format
+    // shouldn't trip this just because icns happens to be the default.
     let mode_count = [args.merge, args.inspect, args.extract, args.select]
         .iter()
         .filter(|&&on| on)
@@ -136,8 +247,28 @@ fn run() -> Result<(), String> {
     }
 
     if args.inspect {
+        // --inspect never writes anything to disk (that's the whole
+        // point of it), so it deliberately doesn't participate in
+        // --config/--out-toml at all - loading tuning settings that
+        // inspect wouldn't use anyway, or letting --out-toml add a
+        // surprise file-write side effect, would both work against that.
         return inspect_icons(&args.input);
     }
+
+    // Resolve the config file (--config, or an auto-discovered
+    // "img2ico.toml" in the current directory) ONCE here, before any of
+    // the remaining modes - all of them can use --force/--delete-source
+    // (and --select additionally --combine/--index), so all of them need
+    // the resolved settings, not just the normal conversion path further
+    // down.
+    let (settings, config_path) = match load_config(args.config.as_deref())? {
+        Some((settings, path)) => (settings, Some(path)),
+        None => (Settings::default(), None),
+    };
+    if let Some(path) = &config_path {
+        println!("Using settings from '{}'.", path.display());
+    }
+    let resolved = ResolvedSettings::resolve(&args, &settings);
 
     if args.extract {
         let [input_path] = args.input.as_slice() else {
@@ -146,13 +277,14 @@ fn run() -> Result<(), String> {
                 args.input.len()
             ));
         };
-        extract_icons(input_path, args.output.as_deref(), args.force)?;
-        if args.delete_source {
+        extract_icons(input_path, args.output.as_deref(), resolved.force)?;
+        if resolved.delete_source {
             // The output here is a directory, not a file, so it can never
             // collide with the (file) source path - no output_path needed
             // for the same-file safety check.
             delete_source_files(std::slice::from_ref(input_path), None);
         }
+        maybe_write_out_toml(&args.out_toml, &resolved)?;
         return Ok(());
     }
 
@@ -163,21 +295,22 @@ fn run() -> Result<(), String> {
                 args.input.len()
             ));
         };
-        let indices = parse_indices(&args.index)?;
+        let indices = parse_indices(&resolved.index)?;
         let written_file = select_icons(
             input_path,
             &indices,
-            args.combine,
+            resolved.combine,
             args.output.as_deref(),
-            args.force,
+            resolved.force,
         )?;
-        if args.delete_source {
+        if resolved.delete_source {
             // written_file is Some(path) when a single combined file was
             // written (protect against deleting it if it happens to equal
             // the source), or None when a whole directory of separate
             // files was written instead (can't collide with a file path).
             delete_source_files(std::slice::from_ref(input_path), written_file.as_deref());
         }
+        maybe_write_out_toml(&args.out_toml, &resolved)?;
         return Ok(());
     }
 
@@ -191,10 +324,11 @@ fn run() -> Result<(), String> {
         let output_path = args.output.ok_or_else(|| {
             "Merge mode requires an explicit output path (-o/--output).".to_string()
         })?;
-        merge_icons(&args.input, &output_path, args.force)?;
-        if args.delete_source {
+        merge_icons(&args.input, &output_path, resolved.force)?;
+        if resolved.delete_source {
             delete_source_files(&args.input, Some(&output_path));
         }
+        maybe_write_out_toml(&args.out_toml, &resolved)?;
         return Ok(());
     }
 
@@ -209,22 +343,23 @@ fn run() -> Result<(), String> {
     // --chroma-key and --find both ultimately specify "the background
     // color" - only one is needed at a time, and allowing both would just
     // invite the confusing case of them disagreeing.
-    if args.chroma_key.is_some() && args.find.is_some() {
+    if resolved.chroma_key.is_some() && resolved.find.is_some() {
         return Err(
             "--chroma-key and --find are mutually exclusive - use --find for automatic seed discovery, or --chroma-key with manual --seed values."
                 .to_string(),
         );
     }
-    if args.auto_apply && args.find.is_none() {
+    if resolved.auto_apply && resolved.find.is_none() {
         return Err("--auto-apply has no effect without --find.".to_string());
     }
-    if args.replace_color.is_some() && args.chroma_key.is_none() && args.find.is_none() {
+    if resolved.replace_color.is_some() && resolved.chroma_key.is_none() && resolved.find.is_none()
+    {
         return Err(
             "--replace-color requires --chroma-key or --find (there's no background color to replace otherwise)."
                 .to_string(),
         );
     }
-    let replacement: Option<[u8; 3]> = match &args.replace_color {
+    let replacement: Option<[u8; 3]> = match &resolved.replace_color {
         Some(hex) => {
             Some(parse_hex_color(hex).map_err(|e| format!("Invalid --replace-color value: {e}"))?)
         }
@@ -254,12 +389,14 @@ fn run() -> Result<(), String> {
     // flood fill in apply_chroma_key can't reach on its own (the same
     // situation --seed manually solves, just discovered automatically).
     // Without --auto-apply, this is the ENTIRE effect of --find: print
-    // the suggestions and stop, without converting anything.
+    // the suggestions and stop, without converting anything (and without
+    // --out-toml writing anything either - nothing was actually decided
+    // about the FINAL settings yet in that case).
     let mut auto_found_seeds: Vec<(u32, u32)> = Vec::new();
-    if let Some(find_hex) = &args.find {
+    if let Some(find_hex) = &resolved.find {
         let target =
             parse_hex_color(find_hex).map_err(|e| format!("Invalid --find value: {e}"))?;
-        let regions = find_isolated_regions(&rgba_source, target, args.tolerance, args.find_min_size);
+        let regions = find_isolated_regions(&rgba_source, target, resolved.tolerance, resolved.find_min_size);
 
         if regions.is_empty() {
             println!(
@@ -279,7 +416,7 @@ fn run() -> Result<(), String> {
             }
         }
 
-        if !args.auto_apply {
+        if !resolved.auto_apply {
             if !regions.is_empty() {
                 println!(
                     "Re-run with these as --seed values, or add --auto-apply to use them automatically."
@@ -292,18 +429,18 @@ fn run() -> Result<(), String> {
     }
 
     // Whether to produce .icns or .ico. If the user gave --output-format
-    // explicitly, that wins outright. Otherwise, fall back to a
-    // platform-based default: .icns on macOS, .ico everywhere else - this
-    // is what most people building on a given platform actually want,
-    // without having to remember to pass --output-format every time on a
-    // Mac.
+    // explicitly (or a config file set it), that wins outright. Otherwise,
+    // fall back to a platform-based default: .icns on macOS, .ico
+    // everywhere else - this is what most people building on a given
+    // platform actually want, without having to remember to pass
+    // --output-format every time on a Mac.
     //
     // cfg!(target_os = "macos") is a compile-time check (baked into the
     // binary depending on what platform it was BUILT for), not a runtime
     // one - which is exactly what we want here: a binary built natively
     // on macOS should default to .icns, regardless of where it's later
     // copied to and run from.
-    let use_icns = match args.output_format {
+    let use_icns = match resolved.output_format {
         Some(OutputFormat::Icns) => true,
         Some(OutputFormat::Ico) => false,
         None => cfg!(target_os = "macos"),
@@ -312,7 +449,9 @@ fn run() -> Result<(), String> {
     // Determine the target path: either given explicitly, or the input
     // name with a ".ico" (or ".icns", depending on use_icns) extension.
     // Not an error case, but a default value - hence still
-    // unwrap_or_else() instead of "?".
+    // unwrap_or_else() instead of "?". -o/--output stays command-line-only
+    // (not config-file-eligible) - see cli.rs's doc comment on --config
+    // for why.
     let output_path = args.output.unwrap_or_else(|| {
         let mut p = input_path.clone();
         p.set_extension(if use_icns { "icns" } else { "ico" });
@@ -323,7 +462,7 @@ fn run() -> Result<(), String> {
     // the resolved output already exists and --force wasn't given. This
     // one check covers both the normal ICO path and --icns, since they
     // share this same output_path.
-    check_overwrite(&output_path, args.force)?;
+    check_overwrite(&output_path, resolved.force)?;
 
     // Turn the sizes string ("16,32,48") into a list of numbers. Each
     // individual size can fail (not a valid number) - so the map() closure
@@ -339,11 +478,17 @@ fn run() -> Result<(), String> {
     //
     // --preset short-circuits all of this: it replaces whatever --sizes
     // says with a predefined list outright, so --sizes is simply never
-    // parsed/looked at in that case.
-    let sizes: Vec<u32> = if let Some(preset) = args.preset {
+    // parsed/looked at in that case. If neither --sizes, a config file,
+    // nor --preset set anything, img2ico's own built-in default
+    // ("16,32,48,64,128,256") is used, matching the previous behavior
+    // from before --sizes could be left unset.
+    let sizes: Vec<u32> = if let Some(preset) = resolved.preset {
         preset.sizes().to_vec()
     } else {
-        args.sizes
+        resolved
+            .sizes
+            .as_deref()
+            .unwrap_or("16,32,48,64,128,256")
             .split(',')
             .map(|s| s.trim())
             .filter(|s| !s.is_empty())
@@ -364,25 +509,25 @@ fn run() -> Result<(), String> {
     // automatically discovered regions from above, combined). --replace-color
     // was already parsed into `replacement` above and gets passed through
     // to both.
-    if let Some(hex) = &args.chroma_key {
+    if let Some(hex) = &resolved.chroma_key {
         let target = parse_hex_color(hex).map_err(|e| format!("Invalid --chroma-key value: {e}"))?;
-        let seeds: Vec<(u32, u32)> = args
+        let seeds: Vec<(u32, u32)> = resolved
             .seeds
             .iter()
             .map(|s| parse_seed(s).map_err(|e| format!("Invalid --seed value: {e}")))
             .collect::<Result<Vec<(u32, u32)>, String>>()?;
-        apply_chroma_key(&mut rgba_source, target, args.tolerance, &seeds, replacement);
-    } else if let Some(hex) = &args.find {
+        apply_chroma_key(&mut rgba_source, target, resolved.tolerance, &seeds, replacement);
+    } else if let Some(hex) = &resolved.find {
         // Only reachable when --auto-apply was given too - the plain
         // "--find" preview case already returned Ok(()) further up.
         let target = parse_hex_color(hex).map_err(|e| format!("Invalid --find value: {e}"))?;
-        let mut seeds: Vec<(u32, u32)> = args
+        let mut seeds: Vec<(u32, u32)> = resolved
             .seeds
             .iter()
             .map(|s| parse_seed(s).map_err(|e| format!("Invalid --seed value: {e}")))
             .collect::<Result<Vec<(u32, u32)>, String>>()?;
         seeds.extend(auto_found_seeds);
-        apply_chroma_key(&mut rgba_source, target, args.tolerance, &seeds, replacement);
+        apply_chroma_key(&mut rgba_source, target, resolved.tolerance, &seeds, replacement);
     }
 
     // --grayscale runs LAST, after any --chroma-key/--replace-color
@@ -390,7 +535,7 @@ fn run() -> Result<(), String> {
     // including a --replace-color color if both were combined, rather
     // than leaving a confusing "everything except the replaced background
     // is grayscale" exception.
-    if args.grayscale {
+    if resolved.grayscale {
         apply_grayscale(&mut rgba_source);
     }
 
@@ -409,10 +554,10 @@ fn run() -> Result<(), String> {
     if use_icns {
         let icns_sizes: Vec<u32> = ICNS_SIZES.iter().map(|&(size, _)| size).collect();
         warn_about_upscaling(source_w, source_h, &icns_sizes);
-        warn_about_thin_content(source_w, source_h, args.padding, &icns_sizes);
+        warn_about_thin_content(source_w, source_h, resolved.padding, &icns_sizes);
     } else {
         warn_about_upscaling(source_w, source_h, &sizes);
-        warn_about_thin_content(source_w, source_h, args.padding, &sizes);
+        warn_about_thin_content(source_w, source_h, resolved.padding, &sizes);
     }
 
     // .icns branches off here (whether from an explicit --output-format icns or from
@@ -420,10 +565,11 @@ fn run() -> Result<(), String> {
     // container format (see write_icns) and doesn't use the ICO-specific
     // --sizes list at all.
     if use_icns {
-        write_icns(&rgba_source, args.padding, has_alpha, &output_path)?;
-        if args.delete_source {
+        write_icns(&rgba_source, resolved.padding, has_alpha, &output_path)?;
+        if resolved.delete_source {
             delete_source_files(std::slice::from_ref(input_path), Some(&output_path));
         }
+        maybe_write_out_toml(&args.out_toml, &resolved)?;
         return Ok(());
     }
 
@@ -438,7 +584,7 @@ fn run() -> Result<(), String> {
             continue;
         }
 
-        let square = make_square_icon(&rgba_source, size, args.padding, has_alpha);
+        let square = make_square_icon(&rgba_source, size, resolved.padding, has_alpha);
         let (w, h) = square.dimensions();
 
         // into_raw() gives us the raw pixel bytes in RGBA order (red,
@@ -481,9 +627,11 @@ fn run() -> Result<(), String> {
         sizes
     );
 
-    if args.delete_source {
+    if resolved.delete_source {
         delete_source_files(std::slice::from_ref(input_path), Some(&output_path));
     }
+
+    maybe_write_out_toml(&args.out_toml, &resolved)?;
 
     Ok(())
 }

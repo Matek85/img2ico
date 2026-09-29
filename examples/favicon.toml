@@ -1,0 +1,14 @@
+# favicon.toml
+#
+# The classic small multi-resolution favicon.ico set (16, 32, 48 pixels)
+# used on websites, with a slightly gentler tolerance than usual since
+# favicons are often small, already-compressed logo exports where a wide
+# tolerance risks eating into the actual artwork.
+#
+# Usage:
+#   img2ico logo.png --config favicon.toml -o favicon.ico
+
+preset = "favicon"
+chroma-key = "FFFFFF"
+tolerance = 12
+force = true

@@ -68,17 +68,50 @@ jobs:
       - name: Build release binary
         run: cargo build --release
 
-      - name: Upload binary artifact
+      # Bundles the platform binary together with examples/, README.md
+      # and LICENSE into a single downloadable archive - so anyone
+      # grabbing a release doesn't get just a bare .exe/binary with
+      # nothing else, but a self-contained package including the
+      # ready-to-use settings-file examples and the documentation that
+      # explains how to use them. Two separate steps (Windows vs.
+      # macOS/Linux) because the two platforms don't share a common
+      # built-in archive tool: Windows runners use PowerShell's
+      # Compress-Archive, macOS/Linux runners use the "zip" command
+      # (preinstalled on both GitHub-hosted images) - each step only
+      # runs on its matching platform via "if:".
+      - name: Package release bundle (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path img2ico-windows | Out-Null
+          Copy-Item target/release/img2ico.exe img2ico-windows/
+          Copy-Item -Recurse examples img2ico-windows/examples
+          Copy-Item README.md img2ico-windows/
+          Copy-Item LICENSE img2ico-windows/
+          Compress-Archive -Path img2ico-windows -DestinationPath img2ico-windows.zip
+
+      - name: Package release bundle (macOS/Linux)
+        if: matrix.os != 'windows-latest'
+        shell: bash
+        run: |
+          if [ "${{ matrix.os }}" = "macos-latest" ]; then
+            os_name=macos
+          else
+            os_name=linux
+          fi
+          folder="img2ico-$os_name"
+          mkdir "$folder"
+          cp target/release/img2ico "$folder/"
+          cp -r examples "$folder/examples"
+          cp README.md "$folder/"
+          cp LICENSE "$folder/"
+          zip -r "img2ico-$os_name.zip" "$folder"
+
+      - name: Upload release bundle
         uses: actions/upload-artifact@v6
         with:
           name: img2ico-${{ matrix.os }}
-          # Only one of these two paths will actually exist per OS -
-          # if-no-files-found: ignore stops that from being treated as an
-          # error for the other platform's job.
-          path: |
-            target/release/img2ico
-            target/release/img2ico.exe
-          if-no-files-found: ignore
+          path: img2ico-*.zip
 
   # Bonus verification step: generates a real .icns file on an actual
   # macOS runner, then decomposes it again using Apple's OWN "iconutil"
@@ -128,7 +161,7 @@ jobs:
   # Only runs when the trigger was a version tag (e.g. "v1.2.0"), not on
   # ordinary pushes to main or pull requests - see the "tags" trigger
   # above. Publishes a proper GitHub Release with the three platform
-  # binaries attached as downloadable assets: permanent, publicly
+  # bundles attached as downloadable assets: permanent, publicly
   # linkable, no login required, and prominently shown on the repo's main
   # page - unlike the plain build artifacts above, which expire and
   # require being logged in to even find.
@@ -143,25 +176,24 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Download all three platform artifacts from the build job
+      - name: Download all three platform bundles from the build job
         uses: actions/download-artifact@v7
         with:
           pattern: img2ico-*
           path: artifacts
 
-      # macOS and Linux both produce a binary simply named "img2ico" (no
-      # extension) - if we uploaded both as-is, they'd collide as release
-      # assets, since a Release can't have two files with the same name.
-      # Renaming each to include its platform makes them all distinct.
-      - name: Rename each binary so they don't collide as release assets
+      # Each platform's zip is already named distinctly by the packaging
+      # step in the build job (img2ico-windows.zip / img2ico-macos.zip /
+      # img2ico-linux.zip), so unlike before, no renaming is needed here -
+      # just collect them all into one flat folder to hand to the release
+      # action.
+      - name: Collect the packaged bundles for the release
         run: |
           mkdir -p release
-          mv artifacts/img2ico-windows-latest/img2ico.exe release/img2ico-windows.exe
-          mv artifacts/img2ico-macos-latest/img2ico release/img2ico-macos
-          mv artifacts/img2ico-ubuntu-latest/img2ico release/img2ico-linux
-          chmod +x release/img2ico-macos release/img2ico-linux
+          find artifacts -name "*.zip" -exec cp {} release/ \;
+          ls -la release/
 
-      - name: Create the GitHub Release with the binaries attached
+      - name: Create the GitHub Release with the bundles attached
         uses: softprops/action-gh-release@v3
         with:
           files: release/*

@@ -1,0 +1,17 @@
+# macos-icon.toml
+#
+# Produces a macOS .icns file instead of a Windows .ico (Apple's full
+# recommended size set, including the 2x "Retina" variants, is always
+# used for .icns and doesn't need to be configured separately). Includes
+# the same white-background removal as the Windows example, plus a
+# little more padding, which tends to look better for icons displayed at
+# the larger sizes typical on macOS (the Dock, Launchpad, Finder).
+#
+# Usage:
+#   img2ico logo.png --config macos-icon.toml -o app.icns
+
+output-format = "icns"
+chroma-key = "FFFFFF"
+tolerance = 20
+padding = 8
+force = true

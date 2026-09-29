@@ -1,6 +1,6 @@
 [package]
 name = "img2ico"
-version = "1.1.0"
+version = "1.1.1"
 edition = "2021"
 
 [dependencies]
@@ -27,6 +27,20 @@ clap = { version = "~4.4", features = ["derive"] }
 # conveniently, so we combine both: "image" for reading/resizing, "ico"
 # for finally assembling the .ico file.
 ico = "0.3"
+
+# For the --config/--out-toml settings file: "serde" handles converting
+# our Rust structs to/from a generic data format, "toml" is the actual
+# TOML reader/writer that plugs into it. TOML (not JSON/INI/XML) because
+# it's the Rust ecosystem's own standard for exactly this kind of
+# human-edited settings file (Cargo.toml itself is TOML), and unlike JSON
+# it allows comments in the file.
+# Version pinned to "=0.5.11" for the same reason as "image" and "clap"
+# above - newer toml releases pull in a dependency chain that needs a
+# newer Rust compiler than is available in this project's build/test
+# environment. Remove the "=" and run "cargo update" on a machine with a
+# current Rust toolchain to get a newer version.
+serde = { version = "1", features = ["derive"] }
+toml = "=0.5.11"
 
 [dev-dependencies]
 # Property-based testing: instead of writing individual test cases by

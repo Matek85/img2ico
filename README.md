@@ -1,5 +1,3 @@
-[![Build](https://github.com/Matek85/pic2ico/actions/workflows/main.yml/badge.svg)](https://github.com/Matek85/pic2ico/actions/workflows/main.yml)
-
 # img2ico
 
 A command-line tool that converts any image into a Windows `.ico` file (or a macOS `.icns` file), with proper transparency support, background removal, and a few extra tools for working with existing icon files.
@@ -30,14 +28,15 @@ img2ico is pure, platform-neutral Rust — no OS-specific code or dependencies a
 
 ### Option A: Download a pre-built release (recommended for most people)
 
-Every [GitHub Release](https://github.com/Matek85/pic2ico/releases) has ready-to-run binaries attached for Windows, macOS, and Linux — no Rust toolchain, no compiling, just download and run:
+Every [GitHub Release](https://github.com/Matek85/pic2ico/releases) has a ready-to-run bundle attached for Windows, macOS, and Linux — no Rust toolchain, no compiling, just download, extract, and run:
 
 1. Go to the [Releases page](https://github.com/Matek85/pic2ico/releases) and open the latest one.
-2. Download the file matching your platform: `img2ico-windows.exe`, `img2ico-macos`, or `img2ico-linux`.
-3. On macOS/Linux, mark it executable once: `chmod +x img2ico-macos` (or `img2ico-linux`).
-4. Run it — see [Platform Support](#platform-support) above for the SmartScreen/Gatekeeper warning you'll likely see the first time, and [Quick Start](#quick-start) below for actual usage.
+2. Download the file matching your platform: `img2ico-windows.zip`, `img2ico-macos.zip`, or `img2ico-linux.zip`.
+3. Extract it. Each bundle contains the binary (`img2ico.exe`/`img2ico`), this README, the license, and the [`examples/`](examples/) settings files from [section 10](#10-settings-files---config----out-toml) — everything you need in one download.
+4. On macOS/Linux, mark the binary executable once: `chmod +x img2ico`.
+5. Run it — see [Platform Support](#platform-support) above for the SmartScreen/Gatekeeper warning you'll likely see the first time, and [Quick Start](#quick-start) below for actual usage.
 
-These binaries are built automatically by this project's GitHub Actions workflow directly from the tagged source at release time — the same CI setup described under [A note on quality and safety](#a-note-on-quality-and-safety) below.
+These bundles are built automatically by this project's GitHub Actions workflow directly from the tagged source at release time — the same CI setup described under [A note on quality and safety](#a-note-on-quality-and-safety) below.
 
 ### Option B: Build it yourself
 
@@ -94,6 +93,8 @@ Usage: img2ico [OPTIONS] <INPUT>...
 | `--index` | | comma list | Which size(s) `--select` should pull out |
 | `--combine` | | | With `--select` + multiple `--index`: one file instead of several |
 | `--force` | `-f` | | Allow overwriting existing output |
+| `--config` | | path | Load default settings from a TOML file |
+| `--out-toml` | | path | Save the settings actually used for this run as a TOML file |
 | `--delete-source` | | | Delete the input file(s) after a successful run |
 | `--inspect` | | | Print a report about `.ico` file(s) or source image(s) |
 | `--help` | `-h` | | Full built-in help text |
@@ -614,6 +615,106 @@ Seeing this, you might decide to get a higher-resolution version of `logo.png` b
 ```
 img2ico logo.png --output-format icns --force
 ```
+
+---
+
+## 10. Settings files (`--config` / `--out-toml`)
+
+With ~25 flags available, typing the same combination every time gets old fast. A TOML settings file lets you set defaults for the "tuning" options — sizes, chroma-key/`--find` settings, padding, grayscale, `--output-format`, `--force`, `--delete-source`, and `--select`'s `--combine`/`--index` — without retyping them. **Not** config-file-eligible: the input file(s), `-o`/`--output`, and which mode to run (`--merge`/`--inspect`/`--extract`/`--select`) — those change with every run and defaulting them rarely makes sense.
+
+An explicit command-line flag always wins over whatever a settings file says — the file only fills in what you didn't type.
+
+### 10.0 TOML syntax in brief
+
+If you've never seen a TOML file before, here's everything you need to read or write one for img2ico — it's deliberately simple, just `key = value` lines:
+
+```toml
+# Lines starting with # are comments - ignored entirely, just for humans.
+
+tolerance = 20          # a plain number: no quotes
+grayscale = true        # true or false: no quotes either
+chroma-key = "FFFFFF"   # text needs double quotes
+seeds = ["128,64", "200,300"]   # a list: square brackets, comma-separated
+```
+
+That's the whole syntax — no indentation rules, no nesting needed for anything img2ico uses. One `key = value` per line, in any order, comments start with `#`. The [official TOML site](https://toml.io/) has the full specification if you're curious, but for a img2ico settings file the four lines above cover every kind of value you'll actually write.
+
+### 10.1 Saving the settings you actually used
+
+```
+img2ico logo.png -c FFFFFF --preset windows --padding 10 -o icon.ico --out-toml my-settings.toml
+```
+
+Converts as normal, and additionally writes the settings that ended up being used — not just what you typed, but also anything a config file contributed — to `my-settings.toml`:
+
+```toml
+preset = "windows"
+chroma-key = "FFFFFF"
+tolerance = 20
+seeds = []
+find-min-size = 9
+auto-apply = false
+grayscale = false
+padding = 10
+delete-source = false
+force = true
+combine = false
+```
+
+(Fields with no value at all — like `find`, `replace-color`, `output-format`, `index` here — are left out entirely; on/off settings like `grayscale`/`force` are always written, `true` or `false`, since there's no way to tell "off" apart from "not set" for those otherwise.)
+
+### 10.2 Reusing a settings file explicitly
+
+```
+img2ico other-logo.png --config my-settings.toml -o other-icon.ico
+```
+
+Loads `my-settings.toml` as defaults for this run. You'll see a short notice confirming it was used:
+
+```
+Using settings from 'my-settings.toml'.
+```
+
+### 10.3 Automatic pickup: `img2ico.toml` in the current directory
+
+```
+img2ico logo.png -o icon.ico
+```
+
+If you don't pass `--config` at all, img2ico looks for a file named exactly `img2ico.toml` in the current directory and uses it automatically if present — handy for a project folder where you always want the same settings, without typing `--config` every time. You'll still see the same notice either way, so this never silently changes behavior without saying so:
+
+```
+Using settings from 'img2ico.toml'.
+```
+
+`--config <path>` and this automatic lookup are never combined — an explicit `--config` completely replaces the automatic lookup, it doesn't merge with it.
+
+### 10.4 Overriding just one setting from the file
+
+```
+img2ico logo.png --config my-settings.toml --padding 0 -o icon.ico
+```
+
+Everything else still comes from `my-settings.toml`, but `--padding 0` here wins over whatever the file says for padding — command-line flags always take priority over the file, setting by setting, not "all or nothing".
+
+### 10.5 A hand-written example
+
+You don't need `--out-toml` to create one — a settings file is just plain TOML, and you can write it by hand:
+
+```toml
+# my-settings.toml
+preset = "windows"
+chroma-key = "FFFFFF"
+tolerance = 25
+padding = 10
+grayscale = false
+```
+
+Field names match the long command-line flag names (minus the leading `--`, with dashes kept as-is, e.g. `chroma-key` for `--chroma-key`).
+
+### 10.6 Ready-made example files
+
+The [`examples/`](examples/) folder has several ready-to-use settings files for common scenarios — a Windows app icon, a favicon, a macOS `.icns`, a grayscale variant, and a hands-off setup for scripted/CI use — plus `reference-all-settings.toml`, which documents every possible field in one place (not meant to be used as-is, since several of its settings intentionally contradict each other; copy individual lines from it instead).
 
 ---
 
