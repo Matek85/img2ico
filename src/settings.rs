@@ -5,7 +5,7 @@
 
 use crate::chroma_key::DEFAULT_FIND_MIN_SIZE;
 use crate::cli::{Args, OutputFormat, SizePreset};
-use crate::config::{Settings, write_config};
+use crate::config::{Settings, settings_to_toml, write_config};
 use crate::util::delete_source_files;
 use std::path::{Path, PathBuf};
 
@@ -46,6 +46,10 @@ pub struct ResolvedSettings<'a> {
     pub combine: bool,
     pub index: Option<&'a str>,
     pub sizes: Option<&'a str>,
+    /// --verbose. Unlike everything above it has no settings-file
+    /// equivalent and isn't part of the --out-toml snapshot: it only
+    /// controls how much this particular run says about itself.
+    pub verbose: bool,
 }
 
 impl<'a> ResolvedSettings<'a> {
@@ -88,7 +92,32 @@ impl<'a> ResolvedSettings<'a> {
             combine: args.combine || settings.combine,
             index: args.index.as_deref().or(settings.index.as_deref()),
             sizes: args.sizes.as_deref().or(settings.sizes.as_deref()),
+            verbose: args.verbose,
         }
+    }
+
+    /// Prints one diagnostic line to standard error, but only with
+    /// --verbose. Standard error (not standard output) so the normal
+    /// output of a run - what a script might read - stays exactly as it is.
+    pub fn note(&self, message: impl std::fmt::Display) {
+        if self.verbose {
+            eprintln!("verbose: {message}");
+        }
+    }
+
+    /// With --verbose: shows the settings this run actually uses - what
+    /// the command line, the settings files and the built-in defaults
+    /// resolved to - in the same TOML form --out-toml would write.
+    pub fn print_effective_settings(&self) -> Result<(), String> {
+        if !self.verbose {
+            return Ok(());
+        }
+        let toml = settings_to_toml(&self.to_settings())?;
+        self.note("effective settings (command line, settings files and defaults combined):");
+        for line in toml.lines() {
+            self.note(format_args!("  {line}"));
+        }
+        Ok(())
     }
 
     /// Turns the resolved settings back into an owned `Settings` value,
@@ -346,6 +375,22 @@ mod tests {
         assert_eq!(second.preset, first.preset);
         assert_eq!(second.silent, first.silent);
         assert_eq!(second.padding, first.padding);
+    }
+
+    // --- --verbose -------------------------------------------------------------
+
+    #[test]
+    fn verbose_comes_from_the_command_line_only() {
+        let (off_cli, on_cli, file) = (args(&[]), args(&["-v"]), Settings::default());
+        assert!(!ResolvedSettings::resolve(&off_cli, &file).verbose);
+        assert!(ResolvedSettings::resolve(&on_cli, &file).verbose);
+    }
+
+    #[test]
+    fn verbose_is_not_part_of_the_settings_snapshot() {
+        let (cli, file) = (args(&["--verbose"]), Settings::default());
+        let toml = settings_to_toml(&ResolvedSettings::resolve(&cli, &file).to_settings()).unwrap();
+        assert!(!toml.contains("verbose"), "{toml}");
     }
 
     // --- maybe_write_out_toml ----------------------------------------------------

@@ -308,13 +308,20 @@ pub fn load_layered(
     Ok(loaded)
 }
 
+/// The given settings as the TOML text a settings file would contain -
+/// shared by --out-toml (which writes it to a file) and --verbose (which
+/// shows it).
+pub fn settings_to_toml(settings: &Settings) -> Result<String, String> {
+    toml::to_string_pretty(settings)
+        .map_err(|e| format!("Could not turn the current settings into TOML: {e}"))
+}
+
 /// Writes the given settings out as a TOML file - used by --out-toml to
 /// save a snapshot of the settings actually used for a run, for reuse
 /// later via --config, or by placing it as "img2ico.toml" in a project
 /// folder for automatic pickup.
 pub fn write_config(settings: &Settings, path: &Path) -> Result<(), String> {
-    let text = toml::to_string_pretty(settings)
-        .map_err(|e| format!("Could not turn the current settings into TOML: {e}"))?;
+    let text = settings_to_toml(settings)?;
     std::fs::write(path, text)
         .map_err(|e| format!("Could not write settings file '{}': {e}", path.display()))
 }

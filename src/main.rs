@@ -145,6 +145,7 @@ fn run() -> Result<(), String> {
     // the resolved settings, not just the normal conversion path.
     let settings = load_settings(&args)?;
     let resolved = ResolvedSettings::resolve(&args, &settings);
+    resolved.print_effective_settings()?;
 
     if args.extract {
         run_extract(&args, &resolved)

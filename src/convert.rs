@@ -15,6 +15,7 @@ use crate::settings::{ResolvedSettings, finish_run};
 use crate::util::{check_overwrite, parse_seed};
 use image::RgbaImage;
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 /// The sizes used when neither --sizes, a config file nor --preset says
 /// otherwise.
@@ -26,6 +27,8 @@ const MAX_ICO_SIZE: u32 = 256;
 /// Runs the complete image-to-icon conversion for the parsed `args` and
 /// the `resolved` settings (command line + config file + defaults).
 pub fn run(args: &Args, resolved: &ResolvedSettings) -> Result<(), String> {
+    let started = Instant::now();
+
     // Normal (non-merge) mode expects exactly one input image.
     let [input_path] = args.input.as_slice() else {
         return Err(format!(
@@ -45,7 +48,14 @@ pub fn run(args: &Args, resolved: &ResolvedSettings) -> Result<(), String> {
     // below) can print its report and exit without needing any of that:
     // it doesn't write a file, so it shouldn't need to know or care where
     // one WOULD have gone.
+    let load_started = Instant::now();
     let mut source = load_source_image(input_path, resolved)?;
+    let (width, height) = source.dimensions();
+    resolved.note(format_args!(
+        "source: {} ({width}x{height} pixels), loaded in {:.1?}",
+        input_path.display(),
+        load_started.elapsed()
+    ));
 
     // --find: look for regions matching this color that the border-based
     // flood fill in apply_chroma_key can't reach on its own (the same
@@ -73,6 +83,11 @@ pub fn run(args: &Args, resolved: &ResolvedSettings) -> Result<(), String> {
 
     let use_icns = wants_icns(resolved.output_format);
     let output_path = output_path(args.output.as_deref(), input_path, use_icns);
+    resolved.note(format_args!(
+        "output: {} ({})",
+        output_path.display(),
+        if use_icns { "icns" } else { "ico" }
+    ));
 
     // Fail fast, before doing any actual work (resizing the image), if
     // the resolved output already exists and --force wasn't given. This
@@ -86,6 +101,12 @@ pub fn run(args: &Args, resolved: &ResolvedSettings) -> Result<(), String> {
     let sizes = resolve_sizes(resolved)?;
     if !use_icns && sizes.is_empty() {
         return Err("At least one size must be given.".to_string());
+    }
+    if !use_icns {
+        resolved.note(format_args!(
+            "sizes: {sizes:?}, padding: {}%",
+            resolved.padding
+        ));
     }
 
     remove_background(&mut source, resolved, replacement, discovered_seeds)?;
@@ -115,6 +136,8 @@ pub fn run(args: &Args, resolved: &ResolvedSettings) -> Result<(), String> {
     } else {
         write_ico(&source, &sizes, has_alpha, resolved, &output_path)?;
     }
+
+    resolved.note(format_args!("finished in {:.1?}", started.elapsed()));
 
     finish_run(
         args,
@@ -308,6 +331,7 @@ fn remove_background(
     };
 
     let target = parse_hex_color(hex).map_err(|e| format!("Invalid {flag} value: {e}"))?;
+    let started = Instant::now();
     let mut seeds = parse_seeds(resolved.seeds)?;
     seeds.extend(discovered);
     apply_chroma_key(
@@ -318,6 +342,11 @@ fn remove_background(
         replacement,
         resolved.silent,
     );
+    resolved.note(format_args!(
+        "background removal ({flag} {hex}, {} seed point(s)) took {:.1?}",
+        seeds.len(),
+        started.elapsed()
+    ));
     Ok(())
 }
 
@@ -391,6 +420,7 @@ fn write_ico(
         // practically any use case.
         let entry = ico::IconDirEntry::encode_as_png(&icon_image)
             .map_err(|e| format!("Could not encode size {size}: {e}"))?;
+        resolved.note(format_args!("{size}x{size}: {} bytes", entry.data().len()));
         icon_dir.add_entry(entry);
     }
 

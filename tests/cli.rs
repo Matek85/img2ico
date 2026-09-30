@@ -1706,6 +1706,126 @@ fn completions_reject_other_arguments_and_unknown_shells() {
 }
 
 // =============================================================================
+// --verbose
+// =============================================================================
+
+#[test]
+fn verbose_explains_the_run_on_stderr_and_leaves_stdout_alone() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "logo.png", 64, RED);
+    let plain = convert(dir.path(), &["logo.png", "--sizes", "16,32", "-o", "a.ico"]);
+    let verbose = convert(
+        dir.path(),
+        &["logo.png", "--sizes", "16,32", "-o", "b.ico", "-v"],
+    );
+    assert_success(&plain);
+    assert_success(&verbose);
+
+    let text = stderr(&verbose);
+    for expected in [
+        "verbose: effective settings",
+        "verbose:   tolerance = 20",
+        "verbose: source: logo.png (64x64 pixels), loaded in",
+        "verbose: output: b.ico (ico)",
+        "verbose: sizes: [16, 32], padding: 0%",
+        "verbose: 16x16: ",
+        "verbose: 32x32: ",
+        "verbose: finished in",
+    ] {
+        assert!(
+            text.contains(expected),
+            "missing {expected:?}:\n{}",
+            describe(&verbose)
+        );
+    }
+    assert!(!stderr(&plain).contains("verbose:"), "{}", describe(&plain));
+    assert!(
+        !stdout(&verbose).contains("verbose:"),
+        "{}",
+        describe(&verbose)
+    );
+    // Only the file name in the final message differs between the two runs.
+    assert_eq!(
+        stdout(&verbose).replace("b.ico", "a.ico"),
+        stdout(&plain),
+        "standard output must be identical"
+    );
+}
+
+#[test]
+fn verbose_shows_which_settings_are_really_in_effect() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "logo.png", 64, RED);
+    write_user_config(dir.path(), "padding = 10\noutput-format = \"ico\"\n");
+    std::fs::write(dir.path().join("img2ico.toml"), "tolerance = 35\n").unwrap();
+
+    let out = img2ico(
+        dir.path(),
+        &["logo.png", "--sizes", "16", "-o", "v.ico", "-v"],
+    );
+    assert_success(&out);
+    let text = stderr(&out);
+    assert!(
+        text.contains("verbose:   padding = 10"),
+        "from the user file: {text}"
+    );
+    assert!(
+        text.contains("verbose:   tolerance = 35"),
+        "from the project file: {text}"
+    );
+    assert!(
+        text.contains("verbose:   sizes = \"16\""),
+        "from the command line: {text}"
+    );
+}
+
+#[test]
+fn verbose_reports_background_removal() {
+    let dir = tempfile::tempdir().unwrap();
+    write_green_background_red_square(dir.path(), "shot.png");
+    let out = convert(
+        dir.path(),
+        &[
+            "shot.png", "-c", "00FF00", "--sizes", "32", "-o", "o.ico", "-v",
+        ],
+    );
+    assert_success(&out);
+    assert!(
+        stderr(&out)
+            .contains("verbose: background removal (--chroma-key 00FF00, 0 seed point(s)) took"),
+        "{}",
+        describe(&out)
+    );
+}
+
+#[test]
+fn verbose_works_in_the_other_modes_too() {
+    let dir = tempfile::tempdir().unwrap();
+    make_icos(dir.path());
+    let out = img2ico(dir.path(), &["--extract", "b.ico", "-o", "pngs", "-v"]);
+    assert_success(&out);
+    assert!(
+        stderr(&out).contains("verbose: effective settings"),
+        "{}",
+        describe(&out)
+    );
+    assert!(dir.path().join("pngs").join("b_32x32.png").is_file());
+}
+
+#[test]
+fn verbose_and_silent_contradict_each_other() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "logo.png", 16, RED);
+    let out = img2ico(dir.path(), &["logo.png", "-v", "--silent"]);
+    assert_eq!(out.status.code(), Some(2), "{}", describe(&out));
+    assert!(
+        stderr(&out).contains("cannot be used with"),
+        "{}",
+        describe(&out)
+    );
+}
+
+// =============================================================================
 // Animated GIFs
 // =============================================================================
 

@@ -315,6 +315,17 @@ pub struct Args {
     #[arg(long = "silent")]
     pub silent: bool,
 
+    /// Prints diagnostic details to standard error while working: the
+    /// settings actually in effect (command line, settings files and
+    /// defaults combined - so you can see which value came from where), the
+    /// source image, the output, each generated size with its file size,
+    /// and how long the steps took. Standard output is left alone. Useful
+    /// for bug reports and for checking what a settings file really does.
+    /// Command-line only - it isn't a settings-file option - and cannot be
+    /// combined with --silent.
+    #[arg(short = 'v', long = "verbose", conflicts_with = "silent")]
+    pub verbose: bool,
+
     /// Which icon container format to write: "ico" (the Windows format)
     /// or "icns" (the macOS format, using a fixed, Apple-recommended set
     /// of sizes - 16, 32, 64, 128, 256, 512 and 1024 pixels, each
