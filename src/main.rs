@@ -663,3 +663,176 @@ fn run() -> Result<(), String> {
 
     Ok(())
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cli::SizePreset;
+
+    fn args(extra: &[&str]) -> Args {
+        let mut full = vec!["img2ico", "in.png"];
+        full.extend_from_slice(extra);
+        Args::parse_from(full)
+    }
+
+    // --- Built-in defaults -------------------------------------------------------
+
+    #[test]
+    fn without_cli_or_config_the_built_in_defaults_apply() {
+        let resolved = ResolvedSettings::resolve(&args(&[]), &Settings::default());
+        assert_eq!(resolved.tolerance, 20);
+        assert_eq!(resolved.padding, 0);
+        assert_eq!(resolved.gif_frame, 1);
+        assert_eq!(resolved.find_min_size, DEFAULT_FIND_MIN_SIZE);
+        assert_eq!(resolved.preset, None);
+        assert_eq!(resolved.sizes, None);
+        assert_eq!(resolved.chroma_key, None);
+        assert!(resolved.seeds.is_empty());
+        assert!(!resolved.grayscale && !resolved.force && !resolved.silent);
+        assert!(!resolved.delete_source && !resolved.combine && !resolved.auto_apply);
+    }
+
+    // --- Config file values ------------------------------------------------------
+
+    #[test]
+    fn config_values_are_used_when_the_command_line_says_nothing() {
+        let settings = Settings {
+            tolerance: Some(45),
+            padding: Some(10),
+            gif_frame: Some(4),
+            find_min_size: Some(2),
+            sizes: Some("16,64".to_string()),
+            preset: Some(SizePreset::Minimal),
+            chroma_key: Some("#00FF00".to_string()),
+            replace_color: Some("#000000".to_string()),
+            find: Some("#FF00FF".to_string()),
+            index: Some("1,2".to_string()),
+            output_format: Some(OutputFormat::Icns),
+            seeds: vec!["1,2".to_string()],
+            ..Settings::default()
+        };
+        let resolved = ResolvedSettings::resolve(&args(&[]), &settings);
+        assert_eq!(resolved.tolerance, 45);
+        assert_eq!(resolved.padding, 10);
+        assert_eq!(resolved.gif_frame, 4);
+        assert_eq!(resolved.find_min_size, 2);
+        assert_eq!(resolved.sizes.as_deref(), Some("16,64"));
+        assert_eq!(resolved.preset, Some(SizePreset::Minimal));
+        assert_eq!(resolved.chroma_key.as_deref(), Some("#00FF00"));
+        assert_eq!(resolved.replace_color.as_deref(), Some("#000000"));
+        assert_eq!(resolved.find.as_deref(), Some("#FF00FF"));
+        assert_eq!(resolved.index.as_deref(), Some("1,2"));
+        assert_eq!(resolved.output_format, Some(OutputFormat::Icns));
+        assert_eq!(resolved.seeds, vec!["1,2"]);
+    }
+
+    // --- Priority: command line wins ---------------------------------------------
+
+    #[test]
+    fn command_line_values_win_over_the_config_file() {
+        let settings = Settings {
+            tolerance: Some(45),
+            padding: Some(10),
+            gif_frame: Some(4),
+            sizes: Some("16,64".to_string()),
+            preset: Some(SizePreset::Minimal),
+            chroma_key: Some("#00FF00".to_string()),
+            output_format: Some(OutputFormat::Icns),
+            ..Settings::default()
+        };
+        let cli = args(&[
+            "--tolerance", "5",
+            "--padding", "0",
+            "--gif-frame", "2",
+            "--sizes", "32",
+            "--preset", "favicon",
+            "--chroma-key", "#FF0000",
+            "--output-format", "ico",
+        ]);
+        let resolved = ResolvedSettings::resolve(&cli, &settings);
+        assert_eq!(resolved.tolerance, 5);
+        assert_eq!(resolved.padding, 0, "an explicit 0 must not fall back to the config value");
+        assert_eq!(resolved.gif_frame, 2);
+        assert_eq!(resolved.sizes.as_deref(), Some("32"));
+        assert_eq!(resolved.preset, Some(SizePreset::Favicon));
+        assert_eq!(resolved.chroma_key.as_deref(), Some("#FF0000"));
+        assert_eq!(resolved.output_format, Some(OutputFormat::Ico));
+    }
+
+    #[test]
+    fn command_line_seeds_replace_config_seeds_instead_of_adding_to_them() {
+        let settings = Settings {
+            seeds: vec!["1,1".to_string(), "2,2".to_string()],
+            ..Settings::default()
+        };
+        let resolved = ResolvedSettings::resolve(&args(&["--seed", "9,9"]), &settings);
+        assert_eq!(resolved.seeds, vec!["9,9"]);
+    }
+
+    // --- On/off flags are OR-ed --------------------------------------------------
+
+    #[test]
+    fn a_flag_is_on_if_either_the_command_line_or_the_config_turns_it_on() {
+        let from_config = Settings {
+            grayscale: true,
+            force: true,
+            silent: true,
+            delete_source: true,
+            combine: true,
+            auto_apply: true,
+            ..Settings::default()
+        };
+        let resolved = ResolvedSettings::resolve(&args(&[]), &from_config);
+        assert!(resolved.grayscale && resolved.force && resolved.silent);
+        assert!(resolved.delete_source && resolved.combine && resolved.auto_apply);
+
+        let resolved = ResolvedSettings::resolve(
+            &args(&["--grayscale", "--force", "--silent", "--delete-source", "--combine", "--auto-apply"]),
+            &Settings::default(),
+        );
+        assert!(resolved.grayscale && resolved.force && resolved.silent);
+        assert!(resolved.delete_source && resolved.combine && resolved.auto_apply);
+    }
+
+    // --- Snapshot for --out-toml -------------------------------------------------
+
+    #[test]
+    fn to_settings_records_the_resolved_values_including_defaults() {
+        let resolved = ResolvedSettings::resolve(&args(&["--padding", "7", "--grayscale"]), &Settings::default());
+        let snapshot = resolved.to_settings();
+        assert_eq!(snapshot.padding, Some(7));
+        assert_eq!(snapshot.tolerance, Some(20), "defaults are written out explicitly");
+        assert_eq!(snapshot.gif_frame, Some(1));
+        assert_eq!(snapshot.find_min_size, Some(DEFAULT_FIND_MIN_SIZE));
+        assert!(snapshot.grayscale);
+    }
+
+    #[test]
+    fn a_snapshot_resolves_to_the_same_settings_again() {
+        let first = ResolvedSettings::resolve(
+            &args(&["--tolerance", "33", "--seed", "4,5", "--preset", "windows", "--silent"]),
+            &Settings::default(),
+        );
+        let second = ResolvedSettings::resolve(&args(&[]), &first.to_settings());
+        assert_eq!(second.tolerance, first.tolerance);
+        assert_eq!(second.seeds, first.seeds);
+        assert_eq!(second.preset, first.preset);
+        assert_eq!(second.silent, first.silent);
+        assert_eq!(second.padding, first.padding);
+    }
+
+    // --- maybe_write_out_toml ----------------------------------------------------
+
+    #[test]
+    fn out_toml_is_only_written_when_requested() {
+        let dir = tempfile::tempdir().unwrap();
+        let resolved = ResolvedSettings::resolve(&args(&["--silent"]), &Settings::default());
+
+        maybe_write_out_toml(&None, &resolved).unwrap();
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+
+        let path = dir.path().join("snapshot.toml");
+        maybe_write_out_toml(&Some(path.clone()), &resolved).unwrap();
+        let text = std::fs::read_to_string(path).unwrap();
+        assert!(text.contains("tolerance = 20"), "{text}");
+    }
+}

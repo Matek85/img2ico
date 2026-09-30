@@ -518,3 +518,421 @@ pub fn select_icons(
         Ok(None)
     }
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const RED: [u8; 3] = [255, 0, 0];
+    const GREEN: [u8; 3] = [0, 255, 0];
+    const BLUE: [u8; 3] = [0, 0, 255];
+
+    /// Writes an .ico with one solid-color, PNG-encoded square entry per
+    /// `(size, color)` pair, in the given order.
+    fn make_ico(path: &Path, entries: &[(u32, [u8; 3])]) {
+        let mut dir = ico::IconDir::new(ico::ResourceType::Icon);
+        for &(size, color) in entries {
+            let mut data = Vec::with_capacity((size * size * 4) as usize);
+            for _ in 0..size * size {
+                data.extend_from_slice(&[color[0], color[1], color[2], 255]);
+            }
+            let image = ico::IconImage::from_rgba_data(size, size, data);
+            dir.add_entry(ico::IconDirEntry::encode_as_png(&image).unwrap());
+        }
+        dir.write(std::fs::File::create(path).unwrap()).unwrap();
+    }
+
+    fn sizes_of(path: &Path) -> Vec<u32> {
+        read_icon_dir(path).unwrap().entries().iter().map(|e| e.width()).collect()
+    }
+
+    /// The first pixel's RGB of the entry at `index`.
+    fn first_pixel_of(path: &Path, index: usize) -> [u8; 3] {
+        let dir = read_icon_dir(path).unwrap();
+        let image = dir.entries()[index].decode().unwrap();
+        let data = image.rgba_data();
+        [data[0], data[1], data[2]]
+    }
+
+    fn file_names_in(dir: &Path) -> Vec<String> {
+        let mut names: Vec<String> = std::fs::read_dir(dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        names
+    }
+
+    // --- parse_indices -----------------------------------------------------------
+
+    #[test]
+    fn missing_index_argument_defaults_to_the_first_icon() {
+        assert_eq!(parse_indices(&None), Ok(vec![0]));
+    }
+
+    #[test]
+    fn indices_are_parsed_in_the_given_order() {
+        assert_eq!(parse_indices(&Some("0,2,4".to_string())), Ok(vec![0, 2, 4]));
+        assert_eq!(parse_indices(&Some("3,1".to_string())), Ok(vec![3, 1]));
+    }
+
+    #[test]
+    fn indices_tolerate_whitespace_and_empty_items() {
+        assert_eq!(parse_indices(&Some(" 1 , 3 ".to_string())), Ok(vec![1, 3]));
+        assert_eq!(parse_indices(&Some("1,,2,".to_string())), Ok(vec![1, 2]));
+    }
+
+    #[test]
+    fn indices_may_repeat() {
+        assert_eq!(parse_indices(&Some("1,1".to_string())), Ok(vec![1, 1]));
+    }
+
+    #[test]
+    fn an_index_list_without_any_number_is_an_error() {
+        assert!(parse_indices(&Some(String::new())).is_err());
+        assert!(parse_indices(&Some(" , ".to_string())).is_err());
+    }
+
+    #[test]
+    fn invalid_indices_are_errors_naming_the_bad_value() {
+        for bad in ["a", "-1", "1.5", "1,x"] {
+            assert!(parse_indices(&Some(bad.to_string())).is_err(), "{bad} should fail");
+        }
+        assert!(parse_indices(&Some("2,oops".to_string())).unwrap_err().contains("oops"));
+    }
+
+    // --- read_icon_dir -----------------------------------------------------------
+
+    #[test]
+    fn reading_a_missing_ico_is_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = read_icon_dir(&dir.path().join("none.ico")).map(|_| ()).unwrap_err();
+        assert!(err.contains("Could not open"), "unexpected message: {err}");
+    }
+
+    #[test]
+    fn reading_a_non_ico_file_is_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("fake.ico");
+        std::fs::write(&path, b"definitely not an icon").unwrap();
+        let err = read_icon_dir(&path).map(|_| ()).unwrap_err();
+        assert!(err.contains("as an ICO file"), "unexpected message: {err}");
+    }
+
+    // --- merge_icons -------------------------------------------------------------
+
+    #[test]
+    fn merge_combines_distinct_sizes_from_all_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let (a, b, out) = (dir.path().join("a.ico"), dir.path().join("b.ico"), dir.path().join("out.ico"));
+        make_ico(&a, &[(16, RED)]);
+        make_ico(&b, &[(32, GREEN), (64, BLUE)]);
+        merge_icons(&[a, b], &out, false, true).unwrap();
+        assert_eq!(sizes_of(&out), vec![16, 32, 64]);
+    }
+
+    #[test]
+    fn merge_keeps_the_first_occurrence_of_a_duplicate_size() {
+        let dir = tempfile::tempdir().unwrap();
+        let (a, b, out) = (dir.path().join("a.ico"), dir.path().join("b.ico"), dir.path().join("out.ico"));
+        make_ico(&a, &[(16, RED), (32, RED)]);
+        make_ico(&b, &[(32, GREEN), (64, GREEN)]);
+        merge_icons(&[a, b], &out, false, true).unwrap();
+        assert_eq!(sizes_of(&out), vec![16, 32, 64]);
+        assert_eq!(first_pixel_of(&out, 1), RED, "the 32px entry must come from the first file");
+        assert_eq!(first_pixel_of(&out, 2), GREEN);
+    }
+
+    #[test]
+    fn merge_needs_at_least_two_inputs() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = dir.path().join("a.ico");
+        make_ico(&a, &[(16, RED)]);
+        let err = merge_icons(&[a], &dir.path().join("out.ico"), false, true).unwrap_err();
+        assert!(err.contains("at least two"), "unexpected message: {err}");
+    }
+
+    #[test]
+    fn merge_refuses_to_overwrite_without_force_and_allows_it_with_force() {
+        let dir = tempfile::tempdir().unwrap();
+        let (a, b, out) = (dir.path().join("a.ico"), dir.path().join("b.ico"), dir.path().join("out.ico"));
+        make_ico(&a, &[(16, RED)]);
+        make_ico(&b, &[(32, GREEN)]);
+        std::fs::write(&out, b"precious").unwrap();
+
+        let err = merge_icons(&[a.clone(), b.clone()], &out, false, true).unwrap_err();
+        assert!(err.contains("--force"));
+        assert_eq!(std::fs::read(&out).unwrap(), b"precious", "the file must be untouched");
+
+        merge_icons(&[a, b], &out, true, true).unwrap();
+        assert_eq!(sizes_of(&out), vec![16, 32]);
+    }
+
+    #[test]
+    fn merge_fails_cleanly_on_an_unreadable_input() {
+        let dir = tempfile::tempdir().unwrap();
+        let (a, out) = (dir.path().join("a.ico"), dir.path().join("out.ico"));
+        make_ico(&a, &[(16, RED)]);
+        let missing = dir.path().join("missing.ico");
+        assert!(merge_icons(&[a, missing], &out, false, true).is_err());
+        assert!(!out.exists(), "no half-written output may be left behind");
+    }
+
+    #[test]
+    fn merged_entries_are_always_png_encoded() {
+        let dir = tempfile::tempdir().unwrap();
+        let (a, b, out) = (dir.path().join("a.ico"), dir.path().join("b.ico"), dir.path().join("out.ico"));
+        make_ico(&a, &[(16, RED)]);
+        make_ico(&b, &[(32, GREEN)]);
+        merge_icons(&[a, b], &out, false, true).unwrap();
+        assert!(read_icon_dir(&out).unwrap().entries().iter().all(|e| e.is_png()));
+    }
+
+    #[test]
+    fn merging_files_without_any_icons_is_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let (a, b, out) = (dir.path().join("a.ico"), dir.path().join("b.ico"), dir.path().join("out.ico"));
+        make_ico(&a, &[]);
+        make_ico(&b, &[]);
+        let err = merge_icons(&[a, b], &out, false, true).unwrap_err();
+        assert!(err.contains("No icons found"), "unexpected message: {err}");
+    }
+
+    // --- inspect_icons (report goes to stdout; here we check success/failure) ----
+
+    #[test]
+    fn inspecting_an_ico_succeeds() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("a.ico");
+        make_ico(&path, &[(16, RED), (256, GREEN)]);
+        assert_eq!(inspect_icons(&[path]), Ok(()));
+    }
+
+    #[test]
+    fn inspecting_an_empty_ico_succeeds() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("empty.ico");
+        make_ico(&path, &[]);
+        assert_eq!(inspect_icons(&[path]), Ok(()));
+    }
+
+    #[test]
+    fn inspecting_a_plain_image_succeeds() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("a.png");
+        image::RgbaImage::from_pixel(10, 10, image::Rgba([1, 2, 3, 255])).save(&path).unwrap();
+        assert_eq!(inspect_icons(&[path]), Ok(()));
+    }
+
+    #[test]
+    fn inspecting_several_files_succeeds() {
+        let dir = tempfile::tempdir().unwrap();
+        let (a, b) = (dir.path().join("a.ico"), dir.path().join("b.png"));
+        make_ico(&a, &[(32, RED)]);
+        image::RgbaImage::from_pixel(300, 300, image::Rgba([1, 2, 3, 255])).save(&b).unwrap();
+        assert_eq!(inspect_icons(&[a, b]), Ok(()));
+    }
+
+    #[test]
+    fn inspecting_something_that_is_neither_ico_nor_image_is_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("junk.bin");
+        std::fs::write(&path, b"junk").unwrap();
+        let err = inspect_icons(&[path]).unwrap_err();
+        assert!(err.contains("neither a readable .ico"), "unexpected message: {err}");
+    }
+
+    #[test]
+    fn inspecting_a_missing_file_is_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(inspect_icons(&[dir.path().join("none.ico")]).is_err());
+    }
+
+    // --- extract_icons -----------------------------------------------------------
+
+    #[test]
+    fn extract_writes_one_png_per_size_with_the_right_dimensions() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("logo.ico");
+        let out = dir.path().join("out");
+        make_ico(&input, &[(16, RED), (32, GREEN), (48, BLUE)]);
+        extract_icons(&input, Some(&out), false).unwrap();
+
+        assert_eq!(file_names_in(&out), vec!["logo_16x16.png", "logo_32x32.png", "logo_48x48.png"]);
+        let png = image::open(out.join("logo_32x32.png")).unwrap().to_rgba8();
+        assert_eq!(png.dimensions(), (32, 32));
+        assert_eq!(png.get_pixel(0, 0).0, [0, 255, 0, 255]);
+    }
+
+    #[test]
+    fn extract_defaults_to_a_directory_next_to_the_input() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("logo.ico");
+        make_ico(&input, &[(16, RED)]);
+        extract_icons(&input, None, false).unwrap();
+        assert!(dir.path().join("logo_extracted").join("logo_16x16.png").is_file());
+    }
+
+    #[test]
+    fn extract_gives_duplicate_sizes_distinct_names() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("dup.ico");
+        let out = dir.path().join("out");
+        make_ico(&input, &[(16, RED), (16, GREEN), (16, BLUE)]);
+        extract_icons(&input, Some(&out), false).unwrap();
+        assert_eq!(
+            file_names_in(&out),
+            vec!["dup_16x16.png", "dup_16x16_2.png", "dup_16x16_3.png"]
+        );
+    }
+
+    #[test]
+    fn extract_writes_nothing_if_any_target_file_already_exists() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("logo.ico");
+        let out = dir.path().join("out");
+        make_ico(&input, &[(16, RED), (32, GREEN)]);
+        std::fs::create_dir(&out).unwrap();
+        std::fs::write(out.join("logo_32x32.png"), b"precious").unwrap();
+
+        let err = extract_icons(&input, Some(&out), false).unwrap_err();
+        assert!(err.contains("--force"));
+        assert_eq!(file_names_in(&out), vec!["logo_32x32.png"], "no half-extracted directory");
+        assert_eq!(std::fs::read(out.join("logo_32x32.png")).unwrap(), b"precious");
+    }
+
+    #[test]
+    fn extract_overwrites_with_force() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("logo.ico");
+        let out = dir.path().join("out");
+        make_ico(&input, &[(16, RED)]);
+        std::fs::create_dir(&out).unwrap();
+        std::fs::write(out.join("logo_16x16.png"), b"old").unwrap();
+        extract_icons(&input, Some(&out), true).unwrap();
+        assert!(image::open(out.join("logo_16x16.png")).is_ok());
+    }
+
+    #[test]
+    fn extract_from_an_empty_ico_is_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("empty.ico");
+        make_ico(&input, &[]);
+        let err = extract_icons(&input, None, false).unwrap_err();
+        assert!(err.contains("no icons to extract"), "unexpected message: {err}");
+    }
+
+    #[test]
+    fn extract_from_a_missing_file_is_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(extract_icons(&dir.path().join("none.ico"), None, false).is_err());
+    }
+
+    // --- select_icons ------------------------------------------------------------
+
+    #[test]
+    fn selecting_one_icon_writes_a_single_ico_named_after_its_size() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("logo.ico");
+        make_ico(&input, &[(16, RED), (32, GREEN), (48, BLUE)]);
+
+        let written = select_icons(&input, &[1], false, None, false).unwrap();
+        let expected = dir.path().join("logo_32x32.ico");
+        assert_eq!(written, Some(expected.clone()));
+        assert_eq!(sizes_of(&expected), vec![32]);
+        assert_eq!(first_pixel_of(&expected, 0), GREEN);
+    }
+
+    #[test]
+    fn selecting_with_an_explicit_output_path_uses_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("logo.ico");
+        let out = dir.path().join("chosen.ico");
+        make_ico(&input, &[(16, RED), (32, GREEN)]);
+        let written = select_icons(&input, &[0], false, Some(&out), false).unwrap();
+        assert_eq!(written, Some(out.clone()));
+        assert_eq!(sizes_of(&out), vec![16]);
+    }
+
+    #[test]
+    fn combine_bundles_the_selection_into_one_file_in_the_given_order() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("logo.ico");
+        make_ico(&input, &[(16, RED), (32, GREEN), (48, BLUE)]);
+
+        let written = select_icons(&input, &[2, 0], true, None, false).unwrap();
+        let expected = dir.path().join("logo_selected.ico");
+        assert_eq!(written, Some(expected.clone()));
+        assert_eq!(sizes_of(&expected), vec![48, 16]);
+    }
+
+    #[test]
+    fn several_indices_without_combine_write_one_file_each_into_a_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("logo.ico");
+        make_ico(&input, &[(16, RED), (32, GREEN), (48, BLUE)]);
+
+        let written = select_icons(&input, &[0, 2], false, None, false).unwrap();
+        assert_eq!(written, None, "a directory was written, not a single file");
+        let target = dir.path().join("logo_selected");
+        assert_eq!(file_names_in(&target), vec!["logo_16x16.ico", "logo_48x48.ico"]);
+        assert_eq!(sizes_of(&target.join("logo_48x48.ico")), vec![48]);
+    }
+
+    #[test]
+    fn selecting_the_same_size_twice_gives_distinct_file_names() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("dup.ico");
+        make_ico(&input, &[(16, RED), (16, GREEN)]);
+        select_icons(&input, &[0, 1], false, None, false).unwrap();
+        assert_eq!(
+            file_names_in(&dir.path().join("dup_selected")),
+            vec!["dup_16x16.ico", "dup_16x16_2.ico"]
+        );
+    }
+
+    #[test]
+    fn an_out_of_range_index_reports_the_valid_range() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("logo.ico");
+        make_ico(&input, &[(16, RED), (32, GREEN)]);
+        let err = select_icons(&input, &[0, 2], false, None, false).unwrap_err();
+        assert!(err.contains("Index 2 is out of range"), "unexpected message: {err}");
+        assert!(err.contains("0..1"), "unexpected message: {err}");
+        assert!(!dir.path().join("logo_selected").exists(), "nothing may be written on error");
+    }
+
+    #[test]
+    fn selecting_from_an_empty_ico_is_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("empty.ico");
+        make_ico(&input, &[]);
+        let err = select_icons(&input, &[0], false, None, false).unwrap_err();
+        assert!(err.contains("no icons to select from"), "unexpected message: {err}");
+    }
+
+    #[test]
+    fn select_refuses_to_overwrite_a_single_output_without_force() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("logo.ico");
+        let out = dir.path().join("out.ico");
+        make_ico(&input, &[(16, RED)]);
+        std::fs::write(&out, b"precious").unwrap();
+
+        assert!(select_icons(&input, &[0], false, Some(&out), false).is_err());
+        assert_eq!(std::fs::read(&out).unwrap(), b"precious");
+        assert!(select_icons(&input, &[0], false, Some(&out), true).is_ok());
+    }
+
+    #[test]
+    fn select_writes_nothing_if_any_target_in_the_directory_exists() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("logo.ico");
+        let target = dir.path().join("logo_selected");
+        make_ico(&input, &[(16, RED), (32, GREEN)]);
+        std::fs::create_dir(&target).unwrap();
+        std::fs::write(target.join("logo_32x32.ico"), b"precious").unwrap();
+
+        assert!(select_icons(&input, &[0, 1], false, None, false).is_err());
+        assert_eq!(file_names_in(&target), vec!["logo_32x32.ico"]);
+    }
+}
