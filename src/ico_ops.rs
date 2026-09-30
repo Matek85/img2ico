@@ -126,7 +126,13 @@ pub fn inspect_icons(paths: &[PathBuf]) -> Result<(), String> {
                 // no-flags-given default does for macOS vs everyone else:
                 // meeting the user where they already are, rather than
                 // making them remember which mode to ask for.
-                match image::open(path) {
+                //
+                // The result is bound to a variable first (instead of being
+                // matched on directly) so it is dropped at the same point
+                // in every Rust edition - see the "tail-expr-drop-order"
+                // change in the 2024 edition guide.
+                let opened = image::open(path);
+                match opened {
                     Ok(img) => inspect_source_image(path, &img),
                     Err(image_error) => {
                         return Err(format!(
