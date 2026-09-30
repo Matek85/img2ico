@@ -28,6 +28,12 @@ pub const ICNS_SIZES: &[(u32, &[[u8; 4]])] = &[
     (1024, &[*b"ic10"]),
 ];
 
+/// Just the pixel sizes from `ICNS_SIZES` (16, 32, 64, ...), for code that
+/// only cares which sizes an .icns file contains, not their OSType codes.
+pub fn icns_sizes() -> Vec<u32> {
+    ICNS_SIZES.iter().map(|&(size, _)| size).collect()
+}
+
 /// Writes an .icns (macOS icon) file.
 ///
 /// Container format (verified against the public ICNS specification):

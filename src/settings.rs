@@ -1,0 +1,367 @@
+// Turns the three possible sources of a setting - the command line, a
+// config file and img2ico's own built-in defaults - into the one set of
+// values a run actually uses, and back into a `Settings` snapshot for
+// --out-toml.
+
+use crate::chroma_key::DEFAULT_FIND_MIN_SIZE;
+use crate::cli::{Args, OutputFormat, SizePreset};
+use crate::config::{Settings, write_config};
+use crate::util::delete_source_files;
+use std::path::{Path, PathBuf};
+
+/// The value of each "tuning" setting for THIS run, after combining the
+/// command line, the config file (config.rs) and the built-in defaults.
+/// Every field mirrors one from `Settings` - see that struct's doc comment
+/// for which settings are config-file-eligible in the first place (and why
+/// some, like the mode or the input file, deliberately aren't).
+///
+/// Resolution order for every field is the same: an explicit command-line
+/// flag wins outright; otherwise the config file's value is used (if any);
+/// otherwise img2ico's own built-in default applies. For plain on/off
+/// flags (no explicit "off" is possible on the command line, only
+/// "given" or "not given"), this is implemented as a simple OR: the
+/// setting ends up on if EITHER the command line or the config file turns
+/// it on.
+///
+/// Text values are borrowed from the `Args` and `Settings` they came from
+/// (hence the lifetime) instead of being copied: nothing here needs to
+/// outlive them, and the one place that needs owned values -
+/// --out-toml's snapshot in `to_settings` - makes its own copy.
+pub struct ResolvedSettings<'a> {
+    pub preset: Option<SizePreset>,
+    pub chroma_key: Option<&'a str>,
+    pub tolerance: u8,
+    pub seeds: &'a [String],
+    pub find: Option<&'a str>,
+    pub find_min_size: usize,
+    pub auto_apply: bool,
+    pub replace_color: Option<&'a str>,
+    pub grayscale: bool,
+    pub padding: u8,
+    pub gif_frame: usize,
+    pub silent: bool,
+    pub output_format: Option<OutputFormat>,
+    pub delete_source: bool,
+    pub force: bool,
+    pub combine: bool,
+    pub index: Option<&'a str>,
+    pub sizes: Option<&'a str>,
+}
+
+impl<'a> ResolvedSettings<'a> {
+    /// Merges the command-line `args` with a loaded (or default, if no
+    /// config file applied) `settings`, following the "CLI wins, then
+    /// config file, then built-in default" priority described on the
+    /// struct itself.
+    pub fn resolve(args: &'a Args, settings: &'a Settings) -> Self {
+        Self {
+            preset: args.preset.or(settings.preset),
+            chroma_key: args
+                .chroma_key
+                .as_deref()
+                .or(settings.chroma_key.as_deref()),
+            tolerance: args.tolerance.or(settings.tolerance).unwrap_or(20),
+            // Seeds from the command line replace the config file's seeds
+            // entirely rather than adding to them.
+            seeds: if args.seeds.is_empty() {
+                &settings.seeds
+            } else {
+                &args.seeds
+            },
+            find: args.find.as_deref().or(settings.find.as_deref()),
+            find_min_size: args
+                .find_min_size
+                .or(settings.find_min_size)
+                .unwrap_or(DEFAULT_FIND_MIN_SIZE),
+            auto_apply: args.auto_apply || settings.auto_apply,
+            replace_color: args
+                .replace_color
+                .as_deref()
+                .or(settings.replace_color.as_deref()),
+            grayscale: args.grayscale || settings.grayscale,
+            padding: args.padding.or(settings.padding).unwrap_or(0),
+            gif_frame: args.gif_frame.or(settings.gif_frame).unwrap_or(1),
+            silent: args.silent || settings.silent,
+            output_format: args.output_format.or(settings.output_format),
+            delete_source: args.delete_source || settings.delete_source,
+            force: args.force || settings.force,
+            combine: args.combine || settings.combine,
+            index: args.index.as_deref().or(settings.index.as_deref()),
+            sizes: args.sizes.as_deref().or(settings.sizes.as_deref()),
+        }
+    }
+
+    /// Turns the resolved settings back into an owned `Settings` value,
+    /// for --out-toml to write out as a snapshot of what was actually used
+    /// for this run.
+    pub fn to_settings(&self) -> Settings {
+        Settings {
+            sizes: self.sizes.map(str::to_owned),
+            preset: self.preset,
+            chroma_key: self.chroma_key.map(str::to_owned),
+            tolerance: Some(self.tolerance),
+            seeds: self.seeds.to_vec(),
+            find: self.find.map(str::to_owned),
+            find_min_size: Some(self.find_min_size),
+            auto_apply: self.auto_apply,
+            replace_color: self.replace_color.map(str::to_owned),
+            grayscale: self.grayscale,
+            padding: Some(self.padding),
+            gif_frame: Some(self.gif_frame),
+            output_format: self.output_format,
+            delete_source: self.delete_source,
+            force: self.force,
+            combine: self.combine,
+            index: self.index.map(str::to_owned),
+            silent: self.silent,
+        }
+    }
+}
+
+/// Writes `resolved` out to `path` as TOML, if `--out-toml` was given -
+/// shared by every mode that supports it (merge/extract/select/normal
+/// conversion). A no-op if `out_toml` is `None`. Called right at the end
+/// of each mode, so it only runs after everything else about the run
+/// already succeeded.
+pub fn maybe_write_out_toml(
+    out_toml: Option<&Path>,
+    resolved: &ResolvedSettings,
+) -> Result<(), String> {
+    if let Some(path) = out_toml {
+        write_config(&resolved.to_settings(), path)?;
+        if !resolved.silent {
+            println!("Settings written to '{}'.", path.display());
+        }
+    }
+    Ok(())
+}
+
+/// The shared last step of every mode, run only once everything else
+/// about it succeeded: delete the source files if --delete-source is on
+/// (never the `output` file itself - see util::delete_source_files), then
+/// write --out-toml's settings snapshot if requested.
+pub fn finish_run(
+    args: &Args,
+    resolved: &ResolvedSettings,
+    sources: &[PathBuf],
+    output: Option<&Path>,
+) -> Result<(), String> {
+    if resolved.delete_source {
+        delete_source_files(sources, output, resolved.silent);
+    }
+    maybe_write_out_toml(args.out_toml.as_deref(), resolved)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    fn args(extra: &[&str]) -> Args {
+        let mut full = vec!["img2ico", "in.png"];
+        full.extend_from_slice(extra);
+        Args::parse_from(full)
+    }
+
+    // --- Built-in defaults -------------------------------------------------------
+
+    #[test]
+    fn without_cli_or_config_the_built_in_defaults_apply() {
+        let (cli, file) = (args(&[]), Settings::default());
+        let resolved = ResolvedSettings::resolve(&cli, &file);
+        assert_eq!(resolved.tolerance, 20);
+        assert_eq!(resolved.padding, 0);
+        assert_eq!(resolved.gif_frame, 1);
+        assert_eq!(resolved.find_min_size, DEFAULT_FIND_MIN_SIZE);
+        assert_eq!(resolved.preset, None);
+        assert_eq!(resolved.sizes, None);
+        assert_eq!(resolved.chroma_key, None);
+        assert!(resolved.seeds.is_empty());
+        assert!(!resolved.grayscale && !resolved.force && !resolved.silent);
+        assert!(!resolved.delete_source && !resolved.combine && !resolved.auto_apply);
+    }
+
+    // --- Config file values ------------------------------------------------------
+
+    #[test]
+    fn config_values_are_used_when_the_command_line_says_nothing() {
+        let file = Settings {
+            tolerance: Some(45),
+            padding: Some(10),
+            gif_frame: Some(4),
+            find_min_size: Some(2),
+            sizes: Some("16,64".to_string()),
+            preset: Some(SizePreset::Minimal),
+            chroma_key: Some("#00FF00".to_string()),
+            replace_color: Some("#000000".to_string()),
+            find: Some("#FF00FF".to_string()),
+            index: Some("1,2".to_string()),
+            output_format: Some(OutputFormat::Icns),
+            seeds: vec!["1,2".to_string()],
+            ..Settings::default()
+        };
+        let cli = args(&[]);
+        let resolved = ResolvedSettings::resolve(&cli, &file);
+        assert_eq!(resolved.tolerance, 45);
+        assert_eq!(resolved.padding, 10);
+        assert_eq!(resolved.gif_frame, 4);
+        assert_eq!(resolved.find_min_size, 2);
+        assert_eq!(resolved.sizes, Some("16,64"));
+        assert_eq!(resolved.preset, Some(SizePreset::Minimal));
+        assert_eq!(resolved.chroma_key, Some("#00FF00"));
+        assert_eq!(resolved.replace_color, Some("#000000"));
+        assert_eq!(resolved.find, Some("#FF00FF"));
+        assert_eq!(resolved.index, Some("1,2"));
+        assert_eq!(resolved.output_format, Some(OutputFormat::Icns));
+        assert_eq!(resolved.seeds, ["1,2"]);
+    }
+
+    // --- Priority: command line wins ---------------------------------------------
+
+    #[test]
+    fn command_line_values_win_over_the_config_file() {
+        let file = Settings {
+            tolerance: Some(45),
+            padding: Some(10),
+            gif_frame: Some(4),
+            sizes: Some("16,64".to_string()),
+            preset: Some(SizePreset::Minimal),
+            chroma_key: Some("#00FF00".to_string()),
+            output_format: Some(OutputFormat::Icns),
+            ..Settings::default()
+        };
+        let cli = args(&[
+            "--tolerance",
+            "5",
+            "--padding",
+            "0",
+            "--gif-frame",
+            "2",
+            "--sizes",
+            "32",
+            "--preset",
+            "favicon",
+            "--chroma-key",
+            "#FF0000",
+            "--output-format",
+            "ico",
+        ]);
+        let resolved = ResolvedSettings::resolve(&cli, &file);
+        assert_eq!(resolved.tolerance, 5);
+        assert_eq!(
+            resolved.padding, 0,
+            "an explicit 0 must not fall back to the config value"
+        );
+        assert_eq!(resolved.gif_frame, 2);
+        assert_eq!(resolved.sizes, Some("32"));
+        assert_eq!(resolved.preset, Some(SizePreset::Favicon));
+        assert_eq!(resolved.chroma_key, Some("#FF0000"));
+        assert_eq!(resolved.output_format, Some(OutputFormat::Ico));
+    }
+
+    #[test]
+    fn command_line_seeds_replace_config_seeds_instead_of_adding_to_them() {
+        let file = Settings {
+            seeds: vec!["1,1".to_string(), "2,2".to_string()],
+            ..Settings::default()
+        };
+        let cli = args(&["--seed", "9,9"]);
+        let resolved = ResolvedSettings::resolve(&cli, &file);
+        assert_eq!(resolved.seeds, ["9,9"]);
+    }
+
+    // --- On/off flags are OR-ed --------------------------------------------------
+
+    #[test]
+    fn a_flag_is_on_if_either_the_command_line_or_the_config_turns_it_on() {
+        let file = Settings {
+            grayscale: true,
+            force: true,
+            silent: true,
+            delete_source: true,
+            combine: true,
+            auto_apply: true,
+            ..Settings::default()
+        };
+        let cli = args(&[]);
+        let resolved = ResolvedSettings::resolve(&cli, &file);
+        assert!(resolved.grayscale && resolved.force && resolved.silent);
+        assert!(resolved.delete_source && resolved.combine && resolved.auto_apply);
+
+        let cli = args(&[
+            "--grayscale",
+            "--force",
+            "--silent",
+            "--delete-source",
+            "--combine",
+            "--auto-apply",
+        ]);
+        let file = Settings::default();
+        let resolved = ResolvedSettings::resolve(&cli, &file);
+        assert!(resolved.grayscale && resolved.force && resolved.silent);
+        assert!(resolved.delete_source && resolved.combine && resolved.auto_apply);
+    }
+
+    // --- Snapshot for --out-toml -------------------------------------------------
+
+    #[test]
+    fn to_settings_records_the_resolved_values_including_defaults() {
+        let (cli, file) = (
+            args(&["--padding", "7", "--grayscale"]),
+            Settings::default(),
+        );
+        let snapshot = ResolvedSettings::resolve(&cli, &file).to_settings();
+        assert_eq!(snapshot.padding, Some(7));
+        assert_eq!(
+            snapshot.tolerance,
+            Some(20),
+            "defaults are written out explicitly"
+        );
+        assert_eq!(snapshot.gif_frame, Some(1));
+        assert_eq!(snapshot.find_min_size, Some(DEFAULT_FIND_MIN_SIZE));
+        assert!(snapshot.grayscale);
+    }
+
+    #[test]
+    fn a_snapshot_resolves_to_the_same_settings_again() {
+        let (first_cli, empty) = (
+            args(&[
+                "--tolerance",
+                "33",
+                "--seed",
+                "4,5",
+                "--preset",
+                "windows",
+                "--silent",
+            ]),
+            Settings::default(),
+        );
+        let first = ResolvedSettings::resolve(&first_cli, &empty);
+        let snapshot = first.to_settings();
+
+        let second_cli = args(&[]);
+        let second = ResolvedSettings::resolve(&second_cli, &snapshot);
+        assert_eq!(second.tolerance, first.tolerance);
+        assert_eq!(second.seeds, first.seeds);
+        assert_eq!(second.preset, first.preset);
+        assert_eq!(second.silent, first.silent);
+        assert_eq!(second.padding, first.padding);
+    }
+
+    // --- maybe_write_out_toml ----------------------------------------------------
+
+    #[test]
+    fn out_toml_is_only_written_when_requested() {
+        let dir = tempfile::tempdir().unwrap();
+        let (cli, file) = (args(&["--silent"]), Settings::default());
+        let resolved = ResolvedSettings::resolve(&cli, &file);
+
+        maybe_write_out_toml(None, &resolved).unwrap();
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+
+        let path = dir.path().join("snapshot.toml");
+        maybe_write_out_toml(Some(&path), &resolved).unwrap();
+        let text = std::fs::read_to_string(path).unwrap();
+        assert!(text.contains("tolerance = 20"), "{text}");
+    }
+}

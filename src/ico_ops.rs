@@ -6,7 +6,7 @@
 
 use crate::cli::RECOMMENDED_WINDOWS_SIZES;
 use crate::gif::{count_gif_frames, is_gif};
-use crate::icns::ICNS_SIZES;
+use crate::icns::icns_sizes;
 use crate::util::check_overwrite;
 use image::RgbaImage;
 use std::collections::HashSet;
@@ -222,9 +222,6 @@ fn inspect_source_image(path: &Path, img: &image::DynamicImage) {
         }
     }
 
-    let windows_sizes: Vec<u32> = RECOMMENDED_WINDOWS_SIZES.to_vec();
-    let icns_sizes: Vec<u32> = ICNS_SIZES.iter().map(|&(size, _)| size).collect();
-
     let report_one = |label: &str, sizes: &[u32]| {
         let (native, upscaled): (Vec<u32>, Vec<u32>) =
             sizes.iter().copied().partition(|&s| s <= native_max);
@@ -238,14 +235,35 @@ fn inspect_source_image(path: &Path, img: &image::DynamicImage) {
         }
     };
 
-    report_one("Windows", &windows_sizes);
-    report_one("macOS (.icns)", &icns_sizes);
+    report_one("Windows", &RECOMMENDED_WINDOWS_SIZES);
+    report_one("macOS (.icns)", &icns_sizes());
 
     if native_max < 256 {
         println!(
             "  tip: for consistently sharp icons at every common size, a source of at least 256x256 (1024x1024 if you also need .icns) is recommended."
         );
     }
+}
+
+/// The file name for the `width`x`height` icon of `stem` -
+/// "<stem>_<width>x<height>.<extension>" - made unique among the names
+/// already `taken` by appending "_2", "_3", ... if needed. Two entries of
+/// the same size only happen in a broken (or hand-built) .ico file, but
+/// without this one would silently overwrite the other.
+fn unique_file_name(
+    taken: &[String],
+    stem: &str,
+    width: u32,
+    height: u32,
+    extension: &str,
+) -> String {
+    let mut name = format!("{stem}_{width}x{height}.{extension}");
+    let mut suffix = 2;
+    while taken.contains(&name) {
+        name = format!("{stem}_{width}x{height}_{suffix}.{extension}");
+        suffix += 1;
+    }
+    name
 }
 
 /// Extracts every icon size out of an existing .ico file and saves each
@@ -288,16 +306,9 @@ pub fn extract_icons(input: &Path, output_dir: Option<&Path>, force: bool) -> Re
     // Guards against the (rare, but possible) case of a broken .ico file
     // that lists the same size more than once - without this we'd
     // silently overwrite one extracted file with another.
-    let mut used_names: HashSet<String> = HashSet::new();
     let mut names: Vec<String> = Vec::with_capacity(dir.entries().len());
     for entry in dir.entries() {
-        let (w, h) = (entry.width(), entry.height());
-        let mut name = format!("{stem}_{w}x{h}.png");
-        let mut suffix = 2;
-        while !used_names.insert(name.clone()) {
-            name = format!("{stem}_{w}x{h}_{suffix}.png");
-            suffix += 1;
-        }
+        let name = unique_file_name(&names, stem, entry.width(), entry.height(), "png");
         check_overwrite(&target_dir.join(&name), force)?;
         names.push(name);
     }
@@ -314,7 +325,7 @@ pub fn extract_icons(input: &Path, output_dir: Option<&Path>, force: bool) -> Re
             )
         })?;
 
-        let rgba = RgbaImage::from_raw(w, h, image.rgba_data().to_vec())
+        let rgba = RgbaImage::from_raw(w, h, image.into_rgba_data())
             .ok_or_else(|| format!("Unexpected pixel data size for the {w}x{h} icon"))?;
 
         let out_path = target_dir.join(name);
@@ -336,7 +347,7 @@ pub fn extract_icons(input: &Path, output_dir: Option<&Path>, force: bool) -> Re
 /// Falls back to just index 0 if the argument was omitted entirely - the
 /// agreed-on default for --select when the user doesn't care which exact
 /// icon they get.
-pub fn parse_indices(input: &Option<String>) -> Result<Vec<usize>, String> {
+pub fn parse_indices(input: Option<&str>) -> Result<Vec<usize>, String> {
     let Some(input) = input else {
         return Ok(vec![0]);
     };
@@ -476,16 +487,10 @@ pub fn select_icons(
         // for --force conflicts before writing anything at all - same
         // reasoning as --extract, so a conflict never leaves a
         // half-written directory behind.
-        let mut used_names: HashSet<String> = HashSet::new();
         let mut names: Vec<String> = Vec::with_capacity(indices.len());
         for &i in indices {
             let entry = &entries[i];
-            let mut name = format!("{stem}_{}x{}.ico", entry.width(), entry.height());
-            let mut suffix = 2;
-            while !used_names.insert(name.clone()) {
-                name = format!("{stem}_{}x{}_{suffix}.ico", entry.width(), entry.height());
-                suffix += 1;
-            }
+            let name = unique_file_name(&names, stem, entry.width(), entry.height(), "ico");
             check_overwrite(&target_dir.join(&name), force)?;
             names.push(name);
         }
@@ -572,49 +577,79 @@ mod tests {
         names
     }
 
+    // --- unique_file_name --------------------------------------------------------
+
+    #[test]
+    fn a_free_name_is_used_as_is() {
+        assert_eq!(
+            unique_file_name(&[], "logo", 16, 16, "png"),
+            "logo_16x16.png"
+        );
+        let taken = vec!["logo_32x32.png".to_string()];
+        assert_eq!(
+            unique_file_name(&taken, "logo", 16, 16, "png"),
+            "logo_16x16.png"
+        );
+    }
+
+    #[test]
+    fn taken_names_get_an_increasing_suffix() {
+        let mut taken = Vec::new();
+        for expected in [
+            "a_16x16.ico",
+            "a_16x16_2.ico",
+            "a_16x16_3.ico",
+            "a_16x16_4.ico",
+        ] {
+            let name = unique_file_name(&taken, "a", 16, 16, "ico");
+            assert_eq!(name, expected);
+            taken.push(name);
+        }
+    }
+
+    #[test]
+    fn the_extension_is_part_of_the_name_but_not_of_the_uniqueness_of_other_sizes() {
+        let taken = vec!["a_16x16.ico".to_string()];
+        assert_eq!(unique_file_name(&taken, "a", 16, 16, "png"), "a_16x16.png");
+        assert_eq!(unique_file_name(&taken, "a", 32, 32, "ico"), "a_32x32.ico");
+    }
+
     // --- parse_indices -----------------------------------------------------------
 
     #[test]
     fn missing_index_argument_defaults_to_the_first_icon() {
-        assert_eq!(parse_indices(&None), Ok(vec![0]));
+        assert_eq!(parse_indices(None), Ok(vec![0]));
     }
 
     #[test]
     fn indices_are_parsed_in_the_given_order() {
-        assert_eq!(parse_indices(&Some("0,2,4".to_string())), Ok(vec![0, 2, 4]));
-        assert_eq!(parse_indices(&Some("3,1".to_string())), Ok(vec![3, 1]));
+        assert_eq!(parse_indices(Some("0,2,4")), Ok(vec![0, 2, 4]));
+        assert_eq!(parse_indices(Some("3,1")), Ok(vec![3, 1]));
     }
 
     #[test]
     fn indices_tolerate_whitespace_and_empty_items() {
-        assert_eq!(parse_indices(&Some(" 1 , 3 ".to_string())), Ok(vec![1, 3]));
-        assert_eq!(parse_indices(&Some("1,,2,".to_string())), Ok(vec![1, 2]));
+        assert_eq!(parse_indices(Some(" 1 , 3 ")), Ok(vec![1, 3]));
+        assert_eq!(parse_indices(Some("1,,2,")), Ok(vec![1, 2]));
     }
 
     #[test]
     fn indices_may_repeat() {
-        assert_eq!(parse_indices(&Some("1,1".to_string())), Ok(vec![1, 1]));
+        assert_eq!(parse_indices(Some("1,1")), Ok(vec![1, 1]));
     }
 
     #[test]
     fn an_index_list_without_any_number_is_an_error() {
-        assert!(parse_indices(&Some(String::new())).is_err());
-        assert!(parse_indices(&Some(" , ".to_string())).is_err());
+        assert!(parse_indices(Some("")).is_err());
+        assert!(parse_indices(Some(" , ")).is_err());
     }
 
     #[test]
     fn invalid_indices_are_errors_naming_the_bad_value() {
         for bad in ["a", "-1", "1.5", "1,x"] {
-            assert!(
-                parse_indices(&Some(bad.to_string())).is_err(),
-                "{bad} should fail"
-            );
+            assert!(parse_indices(Some(bad)).is_err(), "{bad} should fail");
         }
-        assert!(
-            parse_indices(&Some("2,oops".to_string()))
-                .unwrap_err()
-                .contains("oops")
-        );
+        assert!(parse_indices(Some("2,oops")).unwrap_err().contains("oops"));
     }
 
     // --- read_icon_dir -----------------------------------------------------------
