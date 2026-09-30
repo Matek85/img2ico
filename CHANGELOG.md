@@ -10,6 +10,19 @@ when cutting a release.
 
 ## [Unreleased]
 
+### Changed
+
+- Release binaries are now built with link-time optimization, a single
+  codegen unit, stripped symbols and `panic = "abort"` - about 30%
+  smaller on Windows (1.93 MB to 1.33 MB). No behavior change.
+- The GitHub Actions workflow now runs the full test suite on Windows,
+  macOS and Linux before building; a failing test blocks the release.
+
+### Added
+
+- An automated test suite: unit tests for every module plus end-to-end
+  tests that run the real binary (254 tests in total).
+
 ## [1.3.0] - 2026-09-29
 
 ### Added

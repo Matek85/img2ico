@@ -38,6 +38,14 @@ jobs:
       - name: Cache Cargo dependencies
         uses: Swatinem/rust-cache@v2
 
+      # Runs the full test suite (unit tests plus the end-to-end tests in
+      # tests/) natively on every platform BEFORE anything is built for
+      # release: a failing test fails this job, and since the verify and
+      # release jobs depend on it, a red test suite means no GitHub
+      # Release gets published for that tag.
+      - name: Run tests
+        run: cargo test
+
       - name: Build release binary
         run: cargo build --release
 
