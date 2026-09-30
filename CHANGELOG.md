@@ -29,6 +29,10 @@ when cutting a release.
   loading). The results are identical - the colors are now compared once
   per pixel in whole numbers instead of repeatedly with square roots, and
   the background is filled row by row. No behavior change.
+- Internal restructuring with no change in behavior: the conversion
+  pipeline, settings resolution and mode handling are split into small,
+  focused, separately tested modules, and needless copying of settings and
+  pixel data was removed.
 
 ### Added
 

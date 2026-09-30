@@ -284,11 +284,10 @@ pub fn extract_icons(input: &Path, output_dir: Option<&Path>, force: bool) -> Re
     // created right next to the input file.
     let target_dir = match output_dir {
         Some(dir) => dir.to_path_buf(),
-        None => {
-            let mut dir = input.parent().map(|p| p.to_path_buf()).unwrap_or_default();
-            dir.push(format!("{stem}_extracted"));
-            dir
-        }
+        None => input
+            .parent()
+            .unwrap_or(Path::new(""))
+            .join(format!("{stem}_extracted")),
     };
     std::fs::create_dir_all(&target_dir).map_err(|e| {
         format!(
@@ -353,7 +352,7 @@ pub fn parse_indices(input: Option<&str>) -> Result<Vec<usize>, String> {
     };
     let indices: Vec<usize> = input
         .split(',')
-        .map(|s| s.trim())
+        .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(|s| {
             s.parse::<usize>()
@@ -416,118 +415,133 @@ pub fn select_icons(
     }
 
     let stem = input.file_stem().and_then(|s| s.to_str()).unwrap_or("icon");
+    let parent = input.parent().unwrap_or(Path::new(""));
 
     if combine || indices.len() == 1 {
         // A single output .ico file: either because the user only picked
         // one icon (no point creating a whole directory for that), or
         // because --combine was explicitly given for multiple.
-        let output_path = match output {
-            Some(p) => p.to_path_buf(),
-            None => {
-                let mut p = input.parent().map(|p| p.to_path_buf()).unwrap_or_default();
-                if let [only_index] = indices {
-                    let entry = &entries[*only_index];
-                    p.push(format!("{stem}_{}x{}.ico", entry.width(), entry.height()));
-                } else {
-                    p.push(format!("{stem}_selected.ico"));
-                }
-                p
+        let output_path = match (output, indices) {
+            (Some(path), _) => path.to_path_buf(),
+            (None, &[only_index]) => {
+                let entry = &entries[only_index];
+                parent.join(format!("{stem}_{}x{}.ico", entry.width(), entry.height()))
             }
+            (None, _) => parent.join(format!("{stem}_selected.ico")),
         };
-        check_overwrite(&output_path, force)?;
-
-        let mut out_dir = ico::IconDir::new(ico::ResourceType::Icon);
-        for &i in indices {
-            let entry = &entries[i];
-            let image = entry.decode().map_err(|e| {
-                format!(
-                    "Could not decode icon at index {i} in '{}': {e}",
-                    input.display()
-                )
-            })?;
-            let new_entry = ico::IconDirEntry::encode_as_png(&image)
-                .map_err(|e| format!("Could not re-encode icon at index {i}: {e}"))?;
-            out_dir.add_entry(new_entry);
-        }
-
-        let file = std::fs::File::create(&output_path)
-            .map_err(|e| format!("Could not create output file: {e}"))?;
-        out_dir
-            .write(file)
-            .map_err(|e| format!("Error writing ICO file: {e}"))?;
-
-        println!(
-            "Done: '{}' created with {} icon(s) selected from '{}'.",
-            output_path.display(),
-            indices.len(),
-            input.display()
-        );
-
+        select_into_one_file(input, entries, indices, &output_path, force)?;
         Ok(Some(output_path))
     } else {
         // Default for multiple indices: one separate .ico file per
         // selected icon, written into a directory - same shape as
         // --extract, just .ico output instead of .png.
         let target_dir = match output {
-            Some(p) => p.to_path_buf(),
-            None => {
-                let mut p = input.parent().map(|p| p.to_path_buf()).unwrap_or_default();
-                p.push(format!("{stem}_selected"));
-                p
-            }
+            Some(path) => path.to_path_buf(),
+            None => parent.join(format!("{stem}_selected")),
         };
-        std::fs::create_dir_all(&target_dir).map_err(|e| {
-            format!(
-                "Could not create output directory '{}': {e}",
-                target_dir.display()
-            )
-        })?;
-
-        // First pass: compute every target filename and check all of them
-        // for --force conflicts before writing anything at all - same
-        // reasoning as --extract, so a conflict never leaves a
-        // half-written directory behind.
-        let mut names: Vec<String> = Vec::with_capacity(indices.len());
-        for &i in indices {
-            let entry = &entries[i];
-            let name = unique_file_name(&names, stem, entry.width(), entry.height(), "ico");
-            check_overwrite(&target_dir.join(&name), force)?;
-            names.push(name);
-        }
-
-        // Second pass: now actually decode and write each one.
-        for (&i, name) in indices.iter().zip(names.iter()) {
-            let entry = &entries[i];
-            let image = entry.decode().map_err(|e| {
-                format!(
-                    "Could not decode icon at index {i} in '{}': {e}",
-                    input.display()
-                )
-            })?;
-            let new_entry = ico::IconDirEntry::encode_as_png(&image)
-                .map_err(|e| format!("Could not re-encode icon at index {i}: {e}"))?;
-
-            let mut single = ico::IconDir::new(ico::ResourceType::Icon);
-            single.add_entry(new_entry);
-
-            let out_path = target_dir.join(name);
-            let out_file = std::fs::File::create(&out_path)
-                .map_err(|e| format!("Could not save '{}': {e}", out_path.display()))?;
-            single
-                .write(out_file)
-                .map_err(|e| format!("Error writing '{}': {e}", out_path.display()))?;
-        }
-
-        println!(
-            "Done: {} icon(s) selected from '{}' into '{}'.",
-            indices.len(),
-            input.display(),
-            target_dir.display()
-        );
-
+        select_into_directory(input, entries, indices, &target_dir, stem, force)?;
         Ok(None)
     }
 }
+
+/// Decodes the icon at `index` and re-encodes it as PNG, so it gets the
+/// same full color depth and clean alpha channel as everything else this
+/// program writes, regardless of how the source file encoded it.
+fn reencode_as_png(
+    entry: &ico::IconDirEntry,
+    index: usize,
+    input: &Path,
+) -> Result<ico::IconDirEntry, String> {
+    let image = entry.decode().map_err(|e| {
+        format!(
+            "Could not decode icon at index {index} in '{}': {e}",
+            input.display()
+        )
+    })?;
+    ico::IconDirEntry::encode_as_png(&image)
+        .map_err(|e| format!("Could not re-encode icon at index {index}: {e}"))
+}
+
+/// Writes the selected icons together into ONE .ico file.
+fn select_into_one_file(
+    input: &Path,
+    entries: &[ico::IconDirEntry],
+    indices: &[usize],
+    output_path: &Path,
+    force: bool,
+) -> Result<(), String> {
+    check_overwrite(output_path, force)?;
+
+    let mut out_dir = ico::IconDir::new(ico::ResourceType::Icon);
+    for &i in indices {
+        out_dir.add_entry(reencode_as_png(&entries[i], i, input)?);
+    }
+
+    let file = std::fs::File::create(output_path)
+        .map_err(|e| format!("Could not create output file: {e}"))?;
+    out_dir
+        .write(file)
+        .map_err(|e| format!("Error writing ICO file: {e}"))?;
+
+    println!(
+        "Done: '{}' created with {} icon(s) selected from '{}'.",
+        output_path.display(),
+        indices.len(),
+        input.display()
+    );
+    Ok(())
+}
+
+/// Writes every selected icon as its own .ico file into `target_dir`.
+fn select_into_directory(
+    input: &Path,
+    entries: &[ico::IconDirEntry],
+    indices: &[usize],
+    target_dir: &Path,
+    stem: &str,
+    force: bool,
+) -> Result<(), String> {
+    std::fs::create_dir_all(target_dir).map_err(|e| {
+        format!(
+            "Could not create output directory '{}': {e}",
+            target_dir.display()
+        )
+    })?;
+
+    // First pass: compute every target filename and check all of them
+    // for --force conflicts before writing anything at all - same
+    // reasoning as --extract, so a conflict never leaves a
+    // half-written directory behind.
+    let mut names: Vec<String> = Vec::with_capacity(indices.len());
+    for &i in indices {
+        let entry = &entries[i];
+        let name = unique_file_name(&names, stem, entry.width(), entry.height(), "ico");
+        check_overwrite(&target_dir.join(&name), force)?;
+        names.push(name);
+    }
+
+    // Second pass: now actually decode and write each one.
+    for (&i, name) in indices.iter().zip(&names) {
+        let mut single = ico::IconDir::new(ico::ResourceType::Icon);
+        single.add_entry(reencode_as_png(&entries[i], i, input)?);
+
+        let out_path = target_dir.join(name);
+        let out_file = std::fs::File::create(&out_path)
+            .map_err(|e| format!("Could not save '{}': {e}", out_path.display()))?;
+        single
+            .write(out_file)
+            .map_err(|e| format!("Error writing '{}': {e}", out_path.display()))?;
+    }
+
+    println!(
+        "Done: {} icon(s) selected from '{}' into '{}'.",
+        indices.len(),
+        input.display(),
+        target_dir.display()
+    );
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -556,7 +570,7 @@ mod tests {
             .unwrap()
             .entries()
             .iter()
-            .map(|e| e.width())
+            .map(ico::IconDirEntry::width)
             .collect()
     }
 
@@ -767,7 +781,7 @@ mod tests {
                 .unwrap()
                 .entries()
                 .iter()
-                .all(|e| e.is_png())
+                .all(ico::IconDirEntry::is_png)
         );
     }
 

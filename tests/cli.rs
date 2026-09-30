@@ -130,7 +130,11 @@ fn read_ico(path: &Path) -> ico::IconDir {
 }
 
 fn ico_sizes(path: &Path) -> Vec<u32> {
-    read_ico(path).entries().iter().map(|e| e.width()).collect()
+    read_ico(path)
+        .entries()
+        .iter()
+        .map(ico::IconDirEntry::width)
+        .collect()
 }
 
 /// Decodes the entry of the given edge length into an image.
@@ -208,7 +212,7 @@ fn a_fully_opaque_source_still_gives_png_entries() {
     write_solid(dir.path(), "logo.png", 300, RED);
     assert_success(&convert(dir.path(), &["logo.png"]));
     let icons = read_ico(&dir.path().join("logo.ico"));
-    assert!(icons.entries().iter().all(|e| e.is_png()));
+    assert!(icons.entries().iter().all(ico::IconDirEntry::is_png));
 }
 
 #[test]

@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 /// coordinate pair. Returns an understandable error message if the format
 /// doesn't match.
 pub fn parse_seed(input: &str) -> Result<(u32, u32), String> {
-    let parts: Vec<&str> = input.split(',').map(|s| s.trim()).collect();
+    let parts: Vec<&str> = input.split(',').map(str::trim).collect();
     if parts.len() != 2 {
         return Err(format!(
             "'{input}' is not a valid seed point (expected format is 'x,y', e.g. '200,50')"
