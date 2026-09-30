@@ -89,7 +89,7 @@ fn color_distance(pixel: &Rgba<u8>, target: [u8; 3]) -> f32 {
 /// 195,075) is exact.
 ///
 /// `pixel` is one pixel's RGBA bytes; only the color channels are used.
-fn squared_color_distance(pixel: &[u8], target: [u8; 3]) -> u32 {
+fn squared_color_distance(pixel: &[u8; 4], target: [u8; 3]) -> u32 {
     let dr = u32::from(pixel[0].abs_diff(target[0]));
     let dg = u32::from(pixel[1].abs_diff(target[1]));
     let db = u32::from(pixel[2].abs_diff(target[2]));
@@ -131,7 +131,9 @@ fn squared_distance_limit(max_distance: f32) -> u32 {
 fn background_candidates(img: &RgbaImage, target: [u8; 3], tolerance_percent: u8) -> Vec<bool> {
     let limit = squared_distance_limit(tol_distance_from_percent(tolerance_percent));
     img.as_raw()
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .map(|pixel| pixel[3] == 0 || squared_color_distance(pixel, target) <= limit)
         .collect()
 }
