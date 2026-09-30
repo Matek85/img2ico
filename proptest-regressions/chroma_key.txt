@@ -1,0 +1,9 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 362a471055e40cc3fe95a4d9b59a3c41d52f21b0a39824bcf344ae279e1843a6 # shrinks to img = ImageBuffer { width: 1, height: 1, _phantom: PhantomData<image::color::Rgba<u8>>, color: CicpRgb { primaries: SRgb, transfer: SRgb, luminance: NonConstant }, data: [0, 255, 0, 128] }, target = [0, 255, 0], tolerance = 0, seeds = [], replacement = None
+cc 115220561b831c912dfad1a704c7d2982bb1e4ed9984b29155e3be385382a163 # shrinks to img = ImageBuffer { width: 1, height: 1, _phantom: PhantomData<image::color::Rgba<u8>>, color: CicpRgb { primaries: SRgb, transfer: SRgb, luminance: NonConstant }, data: [0, 255, 0, 255] }, target = [0, 255, 0], tolerance = 0, min_size = 1
+cc 795f59a1aa9b7c0948aa70284b8a10bf6039f7182e42ee9a9b55ef0f69d5669d # shrinks to img = ImageBuffer { width: 1, height: 1, _phantom: PhantomData<image::color::Rgba<u8>>, color: CicpRgb { primaries: SRgb, transfer: SRgb, luminance: NonConstant }, data: [0, 255, 0, 255] }, target = [0, 255, 0], tolerance = 0, seeds = []

@@ -859,6 +859,263 @@ mod tests {
         assert_eq!(DEFAULT_FIND_MIN_SIZE, 9);
     }
 
+    // --- Equivalence with a naive reference implementation -----------------------
+    //
+    // `reference` is the plain, unoptimized version of the three algorithms
+    // above, written for obviousness rather than speed (pixel by pixel,
+    // with a real square root for every comparison). The production code is
+    // free to be structured for speed, but it must give EXACTLY the same
+    // answer as this for every input - these property tests feed both
+    // random images, colors, tolerances and seeds and compare the results.
+    mod reference {
+        use crate::chroma_key::MAX_RGB_DISTANCE;
+        use image::{Rgba, RgbaImage};
+        use std::collections::VecDeque;
+
+        fn distance(pixel: &Rgba<u8>, target: [u8; 3]) -> f32 {
+            let dr = pixel[0] as f32 - target[0] as f32;
+            let dg = pixel[1] as f32 - target[1] as f32;
+            let db = pixel[2] as f32 - target[2] as f32;
+            (dr * dr + dg * dg + db * db).sqrt()
+        }
+
+        fn tolerance_distance(percent: u8) -> f32 {
+            MAX_RGB_DISTANCE * (percent.min(100) as f32 / 100.0)
+        }
+
+        fn neighbors(x: u32, y: u32, w: u32, h: u32) -> Vec<(u32, u32)> {
+            let mut out = Vec::new();
+            if x > 0 {
+                out.push((x - 1, y));
+            }
+            if x + 1 < w {
+                out.push((x + 1, y));
+            }
+            if y > 0 {
+                out.push((x, y - 1));
+            }
+            if y + 1 < h {
+                out.push((x, y + 1));
+            }
+            out
+        }
+
+        pub fn flood_fill(
+            img: &RgbaImage,
+            target: [u8; 3],
+            percent: u8,
+            seeds: &[(u32, u32)],
+        ) -> Vec<bool> {
+            let (w, h) = img.dimensions();
+            let tol = tolerance_distance(percent);
+            let candidate = |x: u32, y: u32| {
+                let p = img.get_pixel(x, y);
+                p[3] == 0 || distance(p, target) <= tol
+            };
+            let mut visited = vec![false; (w * h) as usize];
+            let mut queue = VecDeque::new();
+            for y in 0..h {
+                for x in 0..w {
+                    let on_border = x == 0 || y == 0 || x == w - 1 || y == h - 1;
+                    if on_border && candidate(x, y) {
+                        visited[(y * w + x) as usize] = true;
+                        queue.push_back((x, y));
+                    }
+                }
+            }
+            for &(x, y) in seeds {
+                if x < w && y < h && !visited[(y * w + x) as usize] {
+                    visited[(y * w + x) as usize] = true;
+                    queue.push_back((x, y));
+                }
+            }
+            while let Some((x, y)) = queue.pop_front() {
+                for (nx, ny) in neighbors(x, y, w, h) {
+                    if !visited[(ny * w + nx) as usize] && candidate(nx, ny) {
+                        visited[(ny * w + nx) as usize] = true;
+                        queue.push_back((nx, ny));
+                    }
+                }
+            }
+            visited
+        }
+
+        pub fn apply(
+            img: &mut RgbaImage,
+            target: [u8; 3],
+            percent: u8,
+            seeds: &[(u32, u32)],
+            replacement: Option<[u8; 3]>,
+        ) {
+            let (w, _) = img.dimensions();
+            let visited = flood_fill(img, target, percent, seeds);
+            let tol = tolerance_distance(percent);
+            let core = tol * 0.5;
+            for (x, y, pixel) in img.enumerate_pixels_mut() {
+                if !visited[(y * w + x) as usize] || pixel[3] == 0 {
+                    continue;
+                }
+                let d = distance(pixel, target);
+                let scale = if d <= core {
+                    0.0
+                } else if tol > core {
+                    ((d - core) / (tol - core)).clamp(0.0, 1.0)
+                } else {
+                    1.0
+                };
+                match replacement {
+                    None => pixel[3] = (pixel[3] as f32 * scale).round() as u8,
+                    Some(new) => {
+                        for c in 0..3 {
+                            pixel[c] = (pixel[c] as f32 * scale + new[c] as f32 * (1.0 - scale))
+                                .round()
+                                .clamp(0.0, 255.0) as u8;
+                        }
+                    }
+                }
+            }
+        }
+
+        /// Returns `(pixel_count, seed)` for every region, in discovery order.
+        pub fn find(
+            img: &RgbaImage,
+            target: [u8; 3],
+            percent: u8,
+            min_size: usize,
+        ) -> Vec<(usize, (u32, u32))> {
+            let (w, h) = img.dimensions();
+            let tol = tolerance_distance(percent);
+            let candidate = |x: u32, y: u32| {
+                let p = img.get_pixel(x, y);
+                p[3] == 0 || distance(p, target) <= tol
+            };
+            let mut labeled = flood_fill(img, target, percent, &[]);
+            let mut regions = Vec::new();
+            for y in 0..h {
+                for x in 0..w {
+                    if labeled[(y * w + x) as usize] || !candidate(x, y) {
+                        continue;
+                    }
+                    let mut queue = VecDeque::from([(x, y)]);
+                    let mut members = Vec::new();
+                    labeled[(y * w + x) as usize] = true;
+                    while let Some((cx, cy)) = queue.pop_front() {
+                        members.push((cx, cy));
+                        for (nx, ny) in neighbors(cx, cy, w, h) {
+                            if !labeled[(ny * w + nx) as usize] && candidate(nx, ny) {
+                                labeled[(ny * w + nx) as usize] = true;
+                                queue.push_back((nx, ny));
+                            }
+                        }
+                    }
+                    if members.len() < min_size {
+                        continue;
+                    }
+                    let n = members.len() as u64;
+                    let cx = (members.iter().map(|m| m.0 as u64).sum::<u64>() / n) as i64;
+                    let cy = (members.iter().map(|m| m.1 as u64).sum::<u64>() / n) as i64;
+                    let seed = *members
+                        .iter()
+                        .min_by_key(|m| (m.0 as i64 - cx).pow(2) + (m.1 as i64 - cy).pow(2))
+                        .unwrap();
+                    regions.push((members.len(), seed));
+                }
+            }
+            regions
+        }
+    }
+
+    /// A pixel drawn mostly from colors that matter for chroma keying
+    /// (the target, near-misses of it, other colors, transparent and
+    /// translucent variants), sometimes from anywhere in the RGBA space.
+    fn arbitrary_pixel() -> impl Strategy<Value = [u8; 4]> {
+        prop_oneof![
+            3 => proptest::sample::select(vec![
+                [0, 255, 0, 255],
+                [255, 0, 0, 255],
+                [0, 235, 0, 255],
+                [0, 215, 0, 255],
+                [0, 189, 0, 255],
+                [10, 250, 10, 255],
+                [0, 255, 0, 0],
+                [0, 255, 0, 128],
+                [255, 255, 255, 255],
+                [0, 0, 0, 255],
+            ]),
+            1 => any::<[u8; 4]>(),
+        ]
+    }
+
+    fn arbitrary_image() -> impl Strategy<Value = RgbaImage> {
+        (1u32..=12, 1u32..=12).prop_flat_map(|(w, h)| {
+            proptest::collection::vec(arbitrary_pixel(), (w * h) as usize).prop_map(move |px| {
+                let raw: Vec<u8> = px.into_iter().flatten().collect();
+                RgbaImage::from_raw(w, h, raw).unwrap()
+            })
+        })
+    }
+
+    fn arbitrary_target() -> impl Strategy<Value = [u8; 3]> {
+        prop_oneof![4 => Just(GREEN), 1 => any::<[u8; 3]>()]
+    }
+
+    /// Mostly the meaningful 0-100 range, sometimes any u8 (values above
+    /// 100 are clamped to 100).
+    fn arbitrary_tolerance() -> impl Strategy<Value = u8> {
+        prop_oneof![5 => 0u8..=100, 1 => any::<u8>()]
+    }
+
+    fn arbitrary_seeds() -> impl Strategy<Value = Vec<(u32, u32)>> {
+        proptest::collection::vec((0u32..16, 0u32..16), 0..=3)
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(1000))]
+
+        #[test]
+        fn flood_fill_matches_the_reference(
+            img in arbitrary_image(),
+            target in arbitrary_target(),
+            tolerance in arbitrary_tolerance(),
+            seeds in arbitrary_seeds(),
+        ) {
+            prop_assert_eq!(
+                flood_fill_reachable(&img, target, tolerance, &seeds, true),
+                reference::flood_fill(&img, target, tolerance, &seeds)
+            );
+        }
+
+        #[test]
+        fn apply_chroma_key_matches_the_reference(
+            img in arbitrary_image(),
+            target in arbitrary_target(),
+            tolerance in arbitrary_tolerance(),
+            seeds in arbitrary_seeds(),
+            replacement in proptest::option::of(any::<[u8; 3]>()),
+        ) {
+            let mut optimized = img.clone();
+            let mut expected = img;
+            apply_chroma_key(&mut optimized, target, tolerance, &seeds, replacement, true);
+            reference::apply(&mut expected, target, tolerance, &seeds, replacement);
+            prop_assert_eq!(optimized, expected);
+        }
+
+        #[test]
+        fn find_isolated_regions_matches_the_reference(
+            img in arbitrary_image(),
+            target in arbitrary_target(),
+            tolerance in arbitrary_tolerance(),
+            min_size in 1usize..=6,
+        ) {
+            let found: Vec<(usize, (u32, u32))> =
+                find_isolated_regions(&img, target, tolerance, min_size, true)
+                    .into_iter()
+                    .map(|r| (r.pixel_count, r.seed))
+                    .collect();
+            prop_assert_eq!(found, reference::find(&img, target, tolerance, min_size));
+        }
+    }
+
     proptest! {
         /// parse_hex_color must return a normal Ok/Err for absolutely any
         /// string - never panic. This property, run automatically, would
