@@ -33,3 +33,7 @@ desktop.ini
 # regenerable, not something to commit.
 *.pdb
 *.ico
+
+# ignore Markdownlint.json as it is only relevant for coding env
+
+.markdownlint.json
