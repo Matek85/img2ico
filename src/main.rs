@@ -38,7 +38,7 @@ use cli::Args;
 use config::{Settings, load_layered, user_config_path};
 use ico_ops::{extract_icons, inspect_icons, merge_icons, parse_indices, select_icons};
 use settings::{ResolvedSettings, finish_run};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 fn main() {
     install_broken_pipe_panic_hook();
@@ -121,6 +121,7 @@ fn run() -> Result<(), String> {
     let args = Args::parse();
 
     check_single_mode(&args)?;
+    reject_stdout_output(&args)?;
 
     if args.inspect {
         // --inspect never writes anything to disk (that's the whole
@@ -169,6 +170,21 @@ fn check_single_mode(args: &Args) -> Result<(), String> {
     if mode_count > 1 || (mode_count == 1 && args.output_format.is_some()) {
         return Err(
             "--merge, --inspect, --extract, --select and --output-format are mutually exclusive - please use only one at a time."
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
+/// `-o -` is the usual Unix spelling for "write to standard output", which
+/// img2ico doesn't support (yet). Without this check the run would quietly
+/// create a file literally named "-" and report success - exactly what
+/// nobody who types `-o -` wants. Saying so up front is safer; a file that
+/// really is called "-" can still be written as `-o ./-`.
+fn reject_stdout_output(args: &Args) -> Result<(), String> {
+    if args.output.as_deref() == Some(Path::new("-")) {
+        return Err(
+            "'-o -' (writing to standard output) is not supported. Give a file name instead - or use './-' for a file that is really called '-'."
                 .to_string(),
         );
     }

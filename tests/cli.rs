@@ -1620,6 +1620,46 @@ fn unknown_settings_in_the_user_file_are_reported_unless_silent() {
 }
 
 // =============================================================================
+// Writing to standard output is not supported (yet)
+// =============================================================================
+
+#[test]
+fn output_to_stdout_is_refused_instead_of_creating_a_file_named_dash() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "logo.png", 64, RED);
+    make_icos(dir.path());
+
+    let attempts: [&[&str]; 4] = [
+        &["logo.png", "--output-format", "ico", "-o", "-"],
+        &["--merge", "a.ico", "b.ico", "-o", "-"],
+        &["--extract", "a.ico", "-o", "-"],
+        &["--select", "b.ico", "-o", "-"],
+    ];
+    for args in attempts {
+        let out = img2ico(dir.path(), args);
+        assert_failure_containing(&out, "'-o -'");
+        assert!(
+            stderr(&out).contains("not supported"),
+            "{args:?}: {}",
+            describe(&out)
+        );
+    }
+    assert!(
+        !dir.path().join("-").exists(),
+        "no file or folder named '-' may have been created"
+    );
+}
+
+#[test]
+fn a_file_that_really_is_called_dash_can_still_be_written() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "logo.png", 64, RED);
+    let out = convert(dir.path(), &["logo.png", "--sizes", "16", "-o", "./-"]);
+    assert_success(&out);
+    assert_eq!(ico_sizes(&dir.path().join("-")), vec![16]);
+}
+
+// =============================================================================
 // Animated GIFs
 // =============================================================================
 
