@@ -17,6 +17,12 @@ when cutting a release.
   smaller on Windows (1.93 MB to 1.33 MB). No behavior change.
 - The GitHub Actions workflow now runs the full test suite on Windows,
   macOS and Linux before building; a failing test blocks the release.
+- The project now uses the Rust 2024 edition and requires Rust 1.88 or
+  newer to build from source (`rust-version` in `Cargo.toml`). Prebuilt
+  binaries are unaffected.
+- Dependencies are no longer pinned to old versions and were updated:
+  `image` 0.25.10, `clap` 4.6, `toml` 1.1 and `ico` 0.5. `--out-toml`
+  now writes standard double-quoted strings.
 
 ### Added
 

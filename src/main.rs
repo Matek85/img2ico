@@ -89,10 +89,10 @@ fn install_broken_pipe_panic_hook() {
             .map(String::as_str)
             .or_else(|| panic_info.payload().downcast_ref::<&str>().copied());
 
-        if let Some(message) = message {
-            if message.contains("Broken pipe") {
-                std::process::exit(0);
-            }
+        if let Some(message) = message
+            && message.contains("Broken pipe")
+        {
+            std::process::exit(0);
         }
 
         default_hook(panic_info);
@@ -275,10 +275,10 @@ fn run() -> Result<(), String> {
         Some((settings, path)) => (settings, Some(path)),
         None => (Settings::default(), None),
     };
-    if let Some(path) = &config_path {
-        if !args.silent {
-            println!("Using settings from '{}'.", path.display());
-        }
+    if let Some(path) = &config_path
+        && !args.silent
+    {
+        println!("Using settings from '{}'.", path.display());
     }
     let resolved = ResolvedSettings::resolve(&args, &settings);
 

@@ -134,15 +134,13 @@ pub fn load_config(
     // parse as a generic TOML table, this is simply skipped - the real
     // parse error from the typed parse a few lines below reports that
     // properly anyway.
-    if !cli_silent {
-        if let Ok(table) = toml::from_str::<toml::value::Table>(&text) {
-            for key in table.keys() {
-                if !KNOWN_SETTINGS_KEYS.contains(&key.as_str()) {
-                    eprintln!(
-                        "Warning: unknown setting '{key}' in '{}' - ignored. Check for a typo, or see `img2ico --help` for the exact setting names.",
-                        path.display()
-                    );
-                }
+    if !cli_silent && let Ok(table) = toml::from_str::<toml::value::Table>(&text) {
+        for key in table.keys() {
+            if !KNOWN_SETTINGS_KEYS.contains(&key.as_str()) {
+                eprintln!(
+                    "Warning: unknown setting '{key}' in '{}' - ignored. Check for a typo, or see `img2ico --help` for the exact setting names.",
+                    path.display()
+                );
             }
         }
     }

@@ -1,7 +1,8 @@
 [package]
 name = "img2ico"
 version = "1.3.0"
-edition = "2021"
+edition = "2024"
+rust-version = "1.88"
 
 [dependencies]
 # The "image" crate can read a wide range of image formats (PNG, JPG, BMP,
