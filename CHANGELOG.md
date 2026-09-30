@@ -15,7 +15,8 @@ when cutting a release.
 - Release binaries are now built with link-time optimization, a single
   codegen unit, stripped symbols and `panic = "abort"` - about 30%
   smaller on Windows (1.93 MB to 1.33 MB). No behavior change.
-- The GitHub Actions workflow now runs the full test suite on Windows,
+- The GitHub Actions workflow now checks formatting (`cargo fmt`), lints
+  with clippy (warnings are errors) and runs the full test suite on Windows,
   macOS and Linux before building; a failing test blocks the release.
 - The project now uses the Rust 2024 edition and requires Rust 1.88 or
   newer to build from source (`rust-version` in `Cargo.toml`). Prebuilt

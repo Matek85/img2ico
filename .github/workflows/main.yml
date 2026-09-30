@@ -31,12 +31,24 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
 
       # Caches ~/.cargo and target/ between runs, keyed by Cargo.lock.
       # Without this, every run recompiles every dependency from scratch,
       # which costs both time and (on a private repo) billed minutes.
       - name: Cache Cargo dependencies
         uses: Swatinem/rust-cache@v2
+
+      # Style and lint gates, run before the (slower) tests so a formatting
+      # slip or a clippy warning fails fast. "cargo fmt --check" only
+      # verifies, it never rewrites anything; "-D warnings" turns every
+      # clippy warning into an error so they can't pile up unnoticed.
+      - name: Check formatting
+        run: cargo fmt --check
+
+      - name: Lint with clippy
+        run: cargo clippy --all-targets -- -D warnings
 
       # Runs the full test suite (unit tests plus the end-to-end tests in
       # tests/) natively on every platform BEFORE anything is built for
