@@ -77,10 +77,24 @@ pub enum OutputFormat {
     Icns,
 }
 
+/// What `img2ico --version` prints (after the program name): the version,
+/// and the facts a bug report needs - the platform and the compiler the
+/// binary was built with. Both come from build.rs. `-V` prints just the
+/// version.
+const LONG_VERSION: &str = concat!(
+    env!("CARGO_PKG_VERSION"),
+    "\ntarget:   ",
+    env!("IMG2ICO_TARGET"),
+    "\ncompiler: ",
+    env!("IMG2ICO_COMPILER"),
+);
+
 #[derive(Parser, Debug)]
 #[command(
     name = "img2ico",
-    about = "Converts any image into an ICO file (with transparency)"
+    about = "Converts any image into an ICO file (with transparency)",
+    version,
+    long_version = LONG_VERSION,
 )]
 pub struct Args {
     /// Input file(s).
@@ -396,6 +410,41 @@ mod tests {
     #[test]
     fn the_clap_definition_is_internally_consistent() {
         Args::command().debug_assert();
+    }
+
+    // --- Version ---------------------------------------------------------------
+
+    #[test]
+    fn short_version_prints_only_the_version() {
+        let err = parse(&["-V"]).unwrap_err();
+        assert_eq!(err.kind(), clap::error::ErrorKind::DisplayVersion);
+        let text = err.to_string();
+        assert_eq!(
+            text.trim(),
+            format!("img2ico {}", env!("CARGO_PKG_VERSION"))
+        );
+    }
+
+    #[test]
+    fn long_version_adds_platform_and_compiler() {
+        let err = parse(&["--version"]).unwrap_err();
+        assert_eq!(err.kind(), clap::error::ErrorKind::DisplayVersion);
+        let text = err.to_string();
+        assert!(
+            text.starts_with(&format!("img2ico {}", env!("CARGO_PKG_VERSION"))),
+            "{text}"
+        );
+        assert!(text.contains("target:"), "{text}");
+        assert!(text.contains("compiler: rustc"), "{text}");
+    }
+
+    #[test]
+    fn version_does_not_need_an_input_file() {
+        // Without special handling, the required INPUT would be reported missing.
+        assert_eq!(
+            parse(&["--version"]).unwrap_err().kind(),
+            clap::error::ErrorKind::DisplayVersion
+        );
     }
 
     // --- Presets ---------------------------------------------------------------

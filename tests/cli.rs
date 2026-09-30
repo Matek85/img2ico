@@ -385,6 +385,30 @@ fn help_and_version_style_flags_succeed() {
     assert!(stdout(&out).contains("--chroma-key"));
 }
 
+#[test]
+fn version_prints_the_version_platform_and_compiler() {
+    let dir = tempfile::tempdir().unwrap();
+    let out = img2ico(dir.path(), &["--version"]);
+    assert_success(&out);
+    let text = stdout(&out);
+    let first_line = text.lines().next().unwrap();
+    assert_eq!(first_line, format!("img2ico {}", env!("CARGO_PKG_VERSION")));
+    assert!(text.contains("target:"), "{text}");
+    assert!(text.contains("compiler: rustc"), "{text}");
+    assert_eq!(stderr(&out), "");
+}
+
+#[test]
+fn short_version_flag_prints_only_the_version() {
+    let dir = tempfile::tempdir().unwrap();
+    let out = img2ico(dir.path(), &["-V"]);
+    assert_success(&out);
+    assert_eq!(
+        stdout(&out).trim(),
+        format!("img2ico {}", env!("CARGO_PKG_VERSION"))
+    );
+}
+
 // =============================================================================
 // Warnings and --silent
 // =============================================================================
