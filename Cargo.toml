@@ -16,6 +16,12 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 # instead of parsing them by hand from std::env::args().
 clap = { version = "4", features = ["derive"] }
 
+# Generates shell completion scripts (bash, zsh, fish, PowerShell, elvish)
+# straight from the same argument definition clap already has - so the
+# scripts can never fall out of date when a flag is added (see
+# --completions in cli.rs).
+clap_complete = "4"
+
 # The "ico" crate can specifically build multi-resolution ICO files (a
 # single .ico can contain several sizes of the same image at once, e.g.
 # 16x16 and 256x256 together). The "image" crate alone can't do that as

@@ -1660,6 +1660,52 @@ fn a_file_that_really_is_called_dash_can_still_be_written() {
 }
 
 // =============================================================================
+// Shell completions
+// =============================================================================
+
+#[test]
+fn completion_scripts_are_printed_for_every_shell() {
+    let dir = tempfile::tempdir().unwrap();
+    for (shell, marker) in [
+        ("bash", "_img2ico"),
+        ("zsh", "#compdef img2ico"),
+        ("fish", "complete -c img2ico"),
+        ("powershell", "Register-ArgumentCompleter"),
+        ("elvish", "edit:completion:arg-completer"),
+    ] {
+        let out = img2ico(dir.path(), &["--completions", shell]);
+        assert_success(&out);
+        assert!(stdout(&out).contains(marker), "{shell}: {}", describe(&out));
+        assert!(
+            stdout(&out).contains("no-config"),
+            "{shell} script is missing a flag"
+        );
+        assert_eq!(stderr(&out), "", "{shell}");
+    }
+    assert!(names_in(dir.path()).is_empty(), "nothing may be written");
+}
+
+#[test]
+fn completions_reject_other_arguments_and_unknown_shells() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "logo.png", 16, RED);
+    let with_input = img2ico(dir.path(), &["logo.png", "--completions", "bash"]);
+    assert_eq!(
+        with_input.status.code(),
+        Some(2),
+        "{}",
+        describe(&with_input)
+    );
+    let unknown = img2ico(dir.path(), &["--completions", "cmd"]);
+    assert_eq!(unknown.status.code(), Some(2), "{}", describe(&unknown));
+    assert!(
+        stderr(&unknown).contains("possible values"),
+        "{}",
+        describe(&unknown)
+    );
+}
+
+// =============================================================================
 // Animated GIFs
 // =============================================================================
 

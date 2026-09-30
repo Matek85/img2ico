@@ -120,6 +120,12 @@ fn run() -> Result<(), String> {
     // the input file is missing.
     let args = Args::parse();
 
+    // --completions only prints a script; it needs none of the rest (and, by
+    // the way it's declared in cli.rs, can't be combined with anything).
+    if let Some(shell) = args.completions {
+        return cli::write_completions(shell, &mut std::io::stdout());
+    }
+
     check_single_mode(&args)?;
     reject_stdout_output(&args)?;
 

@@ -4,7 +4,8 @@
 // really one unit - clap reads all of it together to build a single
 // coherent --help output.
 
-use clap::Parser;
+use clap::{CommandFactory, Parser};
+use clap_complete::Shell;
 use std::path::PathBuf;
 
 /// Sizes Microsoft recommends including so Windows always has an exact
@@ -101,7 +102,7 @@ pub struct Args {
     /// - Normal mode: exactly one image file (PNG, JPG, BMP, GIF) to convert.
     /// - With --merge: two or more existing .ico files whose icons should
     ///   be combined into one output file.
-    #[arg(required = true)]
+    #[arg(required_unless_present = "completions")]
     pub input: Vec<PathBuf>,
 
     /// Path to the output file. If not given, the input file's name is
@@ -407,6 +408,38 @@ pub struct Args {
     /// snapshot of the settings that were actually used.
     #[arg(long = "out-toml")]
     pub out_toml: Option<PathBuf>,
+
+    /// Prints a tab-completion script for the given shell (bash, zsh, fish,
+    /// powershell or elvish) to standard output and exits - nothing is
+    /// converted. Save it where your shell looks for completions, e.g.
+    /// `img2ico --completions bash > ~/.local/share/bash-completion/completions/img2ico`
+    /// or, for PowerShell, add `img2ico --completions powershell | Out-String | Invoke-Expression`
+    /// to your profile. Cannot be combined with any other option.
+    #[arg(
+        long = "completions",
+        value_enum,
+        value_name = "SHELL",
+        exclusive = true
+    )]
+    pub completions: Option<Shell>,
+}
+
+/// Writes the tab-completion script for `shell` to `out`.
+///
+/// The whole script is built in memory first and written in one go, so a
+/// reader that closes the pipe early (e.g. `img2ico --completions bash | head`)
+/// is handled here as an ordinary, quiet stop - instead of as a panic from
+/// inside the generator, which writes piece by piece and treats any failure
+/// as fatal.
+pub fn write_completions(shell: Shell, out: &mut dyn std::io::Write) -> Result<(), String> {
+    let mut script: Vec<u8> = Vec::new();
+    clap_complete::generate(shell, &mut Args::command(), "img2ico", &mut script);
+    match out.write_all(&script).and_then(|()| out.flush()) {
+        Err(e) if e.kind() != std::io::ErrorKind::BrokenPipe => {
+            Err(format!("Could not write the completion script: {e}"))
+        }
+        _ => Ok(()),
+    }
 }
 #[cfg(test)]
 mod tests {
@@ -457,6 +490,86 @@ mod tests {
             parse(&["--version"]).unwrap_err().kind(),
             clap::error::ErrorKind::DisplayVersion
         );
+    }
+
+    // --- Completions -----------------------------------------------------------
+
+    #[test]
+    fn completions_need_no_input_file() {
+        let args = parse(&["--completions", "bash"]).unwrap();
+        assert_eq!(args.completions, Some(Shell::Bash));
+        assert!(args.input.is_empty());
+    }
+
+    #[test]
+    fn every_supported_shell_is_accepted() {
+        for (name, shell) in [
+            ("bash", Shell::Bash),
+            ("zsh", Shell::Zsh),
+            ("fish", Shell::Fish),
+            ("powershell", Shell::PowerShell),
+            ("elvish", Shell::Elvish),
+        ] {
+            assert_eq!(
+                parse(&["--completions", name]).unwrap().completions,
+                Some(shell)
+            );
+        }
+        assert!(parse(&["--completions", "cmd"]).is_err());
+        assert!(parse(&["--completions"]).is_err());
+    }
+
+    #[test]
+    fn completions_cannot_be_combined_with_anything_else() {
+        assert!(parse(&["logo.png", "--completions", "bash"]).is_err());
+        assert!(parse(&["--completions", "bash", "--force"]).is_err());
+    }
+
+    #[test]
+    fn a_completion_script_mentions_the_program_and_its_flags() {
+        for shell in [
+            Shell::Bash,
+            Shell::Zsh,
+            Shell::Fish,
+            Shell::PowerShell,
+            Shell::Elvish,
+        ] {
+            let mut out: Vec<u8> = Vec::new();
+            write_completions(shell, &mut out).unwrap();
+            let script = String::from_utf8(out).unwrap();
+            assert!(script.contains("img2ico"), "{shell:?}");
+            assert!(script.contains("chroma-key"), "{shell:?}");
+            assert!(script.contains("no-config"), "{shell:?}");
+        }
+    }
+
+    #[test]
+    fn a_closed_pipe_is_not_an_error() {
+        struct ClosedPipe;
+        impl std::io::Write for ClosedPipe {
+            fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+                Err(std::io::ErrorKind::BrokenPipe.into())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        assert_eq!(write_completions(Shell::Bash, &mut ClosedPipe), Ok(()));
+    }
+
+    #[test]
+    fn other_write_failures_are_reported() {
+        struct Full;
+        impl std::io::Write for Full {
+            fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+                Err(std::io::Error::other("disk full"))
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let err = write_completions(Shell::Bash, &mut Full).unwrap_err();
+        assert!(err.contains("disk full"), "{err}");
     }
 
     // --- Presets ---------------------------------------------------------------
