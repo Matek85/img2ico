@@ -10,6 +10,8 @@ when cutting a release.
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-09-30
+
 ### Changed
 
 - Release binaries are now built with link-time optimization, a single
