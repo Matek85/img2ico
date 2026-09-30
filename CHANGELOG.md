@@ -33,6 +33,10 @@ when cutting a release.
   pipeline, settings resolution and mode handling are split into small,
   focused, separately tested modules, and needless copying of settings and
   pixel data was removed.
+- The README was reorganized by task instead of by feature number, trimmed
+  of duplicated and outdated passages (old dependency-pin note, an
+  unverifiable audit claim) and extended with a contents line, exit codes,
+  a scripting/CI section and a development section.
 
 ### Added
 
