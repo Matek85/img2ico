@@ -380,11 +380,23 @@ pub struct Args {
     /// If this is omitted entirely, img2ico looks for "img2ico.toml" in
     /// the current directory instead and uses it automatically if
     /// present - --config takes priority over that automatic lookup
-    /// entirely (the two are never combined). Either way, a short notice
-    /// is printed naming the file actually used, so this never silently
-    /// changes behavior without saying so.
+    /// entirely (the two are never combined). Below that project file sits
+    /// an optional per-user file (Windows: %APPDATA%\img2ico\config.toml,
+    /// macOS: ~/Library/Application Support/img2ico/config.toml, elsewhere:
+    /// ~/.config/img2ico/config.toml) that supplies defaults for anything
+    /// the project file doesn't set. Either way, a short notice is printed
+    /// naming each file actually used, so this never silently changes
+    /// behavior without saying so.
     #[arg(long = "config")]
     pub config: Option<PathBuf>,
+
+    /// Ignores every settings file for this run: no --config, no
+    /// "img2ico.toml" in the current directory and no per-user file -
+    /// only the command line and img2ico's built-in defaults apply. Handy
+    /// for reproducing a result, or when an automatically picked-up file
+    /// gets in the way. Cannot be combined with --config.
+    #[arg(long = "no-config", conflicts_with = "config")]
+    pub no_config: bool,
 
     /// After resolving all the "tuning" settings for this run (built-in
     /// defaults, any config file, and command-line flags - in that

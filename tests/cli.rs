@@ -23,11 +23,35 @@ const RED: [u8; 4] = [255, 0, 0, 255];
 // --- Running the binary --------------------------------------------------------
 
 fn img2ico(dir: &Path, args: &[&str]) -> Output {
+    // Every run gets its own fake home directory, so what a test does never
+    // depends on a real per-user settings file on the machine running it.
+    // Setting all three variables makes this work on every platform (Windows
+    // reads APPDATA, Linux XDG_CONFIG_HOME or HOME, macOS HOME).
+    let home = fake_home(dir);
     Command::new(env!("CARGO_BIN_EXE_img2ico"))
         .current_dir(dir)
+        .env("APPDATA", &home)
+        .env("XDG_CONFIG_HOME", &home)
+        .env("HOME", &home)
         .args(args)
         .output()
         .expect("failed to start img2ico")
+}
+
+/// The fake home directory used for runs in `dir` (it doesn't exist until a
+/// test creates something in it).
+fn fake_home(dir: &Path) -> PathBuf {
+    dir.join("home")
+}
+
+/// Where img2ico looks for the per-user settings file when run in `dir`.
+fn user_config_file(dir: &Path) -> PathBuf {
+    let config_base = if cfg!(target_os = "macos") {
+        fake_home(dir).join("Library").join("Application Support")
+    } else {
+        fake_home(dir)
+    };
+    config_base.join("img2ico").join("config.toml")
 }
 
 /// A normal image conversion with the output format pinned to .ico.
@@ -1395,6 +1419,204 @@ fn out_toml_is_also_supported_by_the_other_modes() {
         &["--select", "m.ico", "--out-toml", "s.toml"],
     ));
     assert!(dir.path().join("s.toml").is_file());
+}
+
+// =============================================================================
+// Per-user settings file and --no-config
+// =============================================================================
+
+/// Writes the per-user settings file into the fake home of this test.
+fn write_user_config(dir: &Path, text: &str) -> PathBuf {
+    let path = user_config_file(dir);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, text).unwrap();
+    path
+}
+
+#[test]
+fn a_user_config_file_supplies_defaults_and_is_announced() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "logo.png", 300, RED);
+    let user = write_user_config(dir.path(), "sizes = \"20\"\noutput-format = \"ico\"\n");
+
+    let out = img2ico(dir.path(), &["logo.png"]);
+    assert_success(&out);
+    assert_eq!(ico_sizes(&dir.path().join("logo.ico")), vec![20]);
+    let notice = format!("Using settings from '{}'.", user.display());
+    assert!(stdout(&out).contains(&notice), "{}", describe(&out));
+}
+
+#[test]
+fn the_project_file_overrides_the_user_file_setting_by_setting() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "logo.png", 300, RED);
+    let user = write_user_config(
+        dir.path(),
+        "sizes = \"20\"\npadding = 10\noutput-format = \"ico\"\n",
+    );
+    std::fs::write(dir.path().join("img2ico.toml"), "sizes = \"40\"\n").unwrap();
+
+    let out = img2ico(dir.path(), &["logo.png", "--out-toml", "snap.toml"]);
+    assert_success(&out);
+    assert_eq!(
+        ico_sizes(&dir.path().join("logo.ico")),
+        vec![40],
+        "the project file's sizes win"
+    );
+    let snapshot = std::fs::read_to_string(dir.path().join("snap.toml")).unwrap();
+    assert!(
+        snapshot.contains("padding = 10"),
+        "the user file fills the gap: {snapshot}"
+    );
+
+    // Both files are announced, the project file first.
+    let text = stdout(&out);
+    let project_at = text.find("Using settings from 'img2ico.toml'").unwrap();
+    let user_at = text.find(&user.display().to_string()).unwrap();
+    assert!(project_at < user_at, "{}", describe(&out));
+}
+
+#[test]
+fn the_command_line_beats_both_settings_files() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "logo.png", 300, RED);
+    write_user_config(
+        dir.path(),
+        "sizes = \"20\"\npadding = 10\noutput-format = \"ico\"\n",
+    );
+    std::fs::write(dir.path().join("img2ico.toml"), "sizes = \"40\"\n").unwrap();
+
+    let out = img2ico(
+        dir.path(),
+        &[
+            "logo.png",
+            "--sizes",
+            "48",
+            "--padding",
+            "0",
+            "--out-toml",
+            "snap.toml",
+        ],
+    );
+    assert_success(&out);
+    assert_eq!(ico_sizes(&dir.path().join("logo.ico")), vec![48]);
+    let snapshot = std::fs::read_to_string(dir.path().join("snap.toml")).unwrap();
+    assert!(snapshot.contains("padding = 0"), "{snapshot}");
+}
+
+#[test]
+fn an_explicit_config_replaces_img2ico_toml_but_the_user_file_still_applies() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "logo.png", 300, RED);
+    write_user_config(
+        dir.path(),
+        "padding = 10\noutput-format = \"ico\"\nsizes = \"20\"\n",
+    );
+    std::fs::write(dir.path().join("img2ico.toml"), "sizes = \"30\"\n").unwrap();
+    std::fs::write(dir.path().join("other.toml"), "sizes = \"40\"\n").unwrap();
+
+    let out = img2ico(
+        dir.path(),
+        &[
+            "logo.png",
+            "--config",
+            "other.toml",
+            "--out-toml",
+            "snap.toml",
+        ],
+    );
+    assert_success(&out);
+    assert_eq!(ico_sizes(&dir.path().join("logo.ico")), vec![40]);
+    assert!(
+        !stdout(&out).contains("img2ico.toml"),
+        "the automatic file must not be used: {}",
+        describe(&out)
+    );
+    let snapshot = std::fs::read_to_string(dir.path().join("snap.toml")).unwrap();
+    assert!(snapshot.contains("padding = 10"), "{snapshot}");
+}
+
+#[test]
+fn no_config_ignores_every_settings_file() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "logo.png", 300, RED);
+    write_user_config(dir.path(), "sizes = \"20\"\npadding = 10\nforce = true\n");
+    std::fs::write(dir.path().join("img2ico.toml"), "sizes = \"40\"\n").unwrap();
+
+    let out = convert(
+        dir.path(),
+        &["logo.png", "--no-config", "--out-toml", "snap.toml"],
+    );
+    assert_success(&out);
+    assert_eq!(
+        ico_sizes(&dir.path().join("logo.ico")),
+        vec![16, 32, 48, 64, 128, 256],
+        "built-in default sizes"
+    );
+    assert!(
+        !stdout(&out).contains("Using settings from"),
+        "{}",
+        describe(&out)
+    );
+    let snapshot = std::fs::read_to_string(dir.path().join("snap.toml")).unwrap();
+    assert!(snapshot.contains("padding = 0"), "{snapshot}");
+    assert!(snapshot.contains("force = false"), "{snapshot}");
+}
+
+#[test]
+fn no_config_cannot_be_combined_with_config() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "logo.png", 64, RED);
+    std::fs::write(dir.path().join("c.toml"), "padding = 5\n").unwrap();
+    let out = img2ico(
+        dir.path(),
+        &["logo.png", "--no-config", "--config", "c.toml"],
+    );
+    assert_eq!(out.status.code(), Some(2), "{}", describe(&out));
+    assert!(
+        stderr(&out).contains("cannot be used with"),
+        "{}",
+        describe(&out)
+    );
+}
+
+#[test]
+fn a_broken_user_config_is_an_error_but_no_config_avoids_it() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "logo.png", 64, RED);
+    write_user_config(dir.path(), "tolerance = \"high\"\n");
+
+    let out = convert(dir.path(), &["logo.png", "--sizes", "16"]);
+    assert_failure_containing(&out, "Could not parse config file");
+    assert!(stderr(&out).contains("config.toml"), "{}", describe(&out));
+
+    assert_success(&convert(
+        dir.path(),
+        &["logo.png", "--sizes", "16", "--no-config"],
+    ));
+}
+
+#[test]
+fn unknown_settings_in_the_user_file_are_reported_unless_silent() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "logo.png", 64, RED);
+    write_user_config(dir.path(), "toleranse = 5\noutput-format = \"ico\"\n");
+
+    let loud = img2ico(dir.path(), &["logo.png", "--sizes", "16"]);
+    assert_success(&loud);
+    assert!(
+        stderr(&loud).contains("unknown setting 'toleranse'"),
+        "{}",
+        describe(&loud)
+    );
+
+    let quiet = img2ico(
+        dir.path(),
+        &["logo.png", "--sizes", "16", "--silent", "--force"],
+    );
+    assert_success(&quiet);
+    assert_eq!(stderr(&quiet), "");
+    assert!(!stdout(&quiet).contains("Using settings from"));
 }
 
 // =============================================================================

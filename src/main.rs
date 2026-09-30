@@ -35,7 +35,7 @@ mod util;
 
 use clap::Parser;
 use cli::Args;
-use config::{Settings, load_config};
+use config::{Settings, load_layered, user_config_path};
 use ico_ops::{extract_icons, inspect_icons, merge_icons, parse_indices, select_icons};
 use settings::{ResolvedSettings, finish_run};
 use std::path::PathBuf;
@@ -175,21 +175,28 @@ fn check_single_mode(args: &Args) -> Result<(), String> {
     Ok(())
 }
 
-/// Loads the config file for this run (explicit --config, or an
-/// auto-discovered "img2ico.toml"), or plain defaults if there is none.
-/// Announces the file it used - img2ico never silently changes its own
-/// behavior because of a file sitting in the current directory without
-/// saying so out loud.
+/// Loads the settings files for this run (an explicit --config or an
+/// auto-discovered "img2ico.toml", layered over the per-user file), or plain
+/// defaults if there are none - or if --no-config says to ignore them.
+/// Announces every file it used - img2ico never silently changes its own
+/// behavior because of a file sitting in the current directory or in the
+/// user's profile without saying so out loud.
 fn load_settings(args: &Args) -> Result<Settings, String> {
-    match load_config(args.config.as_deref(), args.silent)? {
-        Some((settings, path)) => {
-            if !args.silent {
-                println!("Using settings from '{}'.", path.display());
-            }
-            Ok(settings)
-        }
-        None => Ok(Settings::default()),
+    if args.no_config {
+        return Ok(Settings::default());
     }
+
+    let loaded = load_layered(
+        args.config.as_deref(),
+        user_config_path().as_deref(),
+        args.silent,
+    )?;
+    if !args.silent {
+        for path in &loaded.sources {
+            println!("Using settings from '{}'.", path.display());
+        }
+    }
+    Ok(loaded.settings)
 }
 
 /// The single input path of a mode that works on exactly one existing .ico

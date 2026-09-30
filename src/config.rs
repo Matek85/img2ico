@@ -1,9 +1,11 @@
-// Everything related to the optional TOML settings file: loading it
-// (--config, or auto-discovered "img2ico.toml" in the current directory)
-// and writing one back out (--out-toml).
+// Everything related to the optional TOML settings files: loading them
+// (--config, an auto-discovered "img2ico.toml" in the current directory,
+// and a per-user file), layering them on top of each other, and writing
+// the settings back out (--out-toml).
 
 use crate::cli::{OutputFormat, SizePreset};
 use serde::{Deserialize, Serialize};
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 /// The filename looked for in the current directory when --config isn't
@@ -27,7 +29,7 @@ const AUTO_CONFIG_FILENAME: &str = "img2ico.toml";
 /// `chroma-key` in the file, matching `--chroma-key`) - so anything you
 /// already know from `--help` carries over directly to the file, without
 /// a second naming scheme to learn.
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct Settings {
     pub sizes: Option<String>,
@@ -55,6 +57,50 @@ pub struct Settings {
     pub index: Option<String>,
     #[serde(default)]
     pub silent: bool,
+}
+
+impl Settings {
+    /// Layers two sets of settings: every value `self` has an opinion about
+    /// wins, and `fallback` fills in whatever `self` leaves open. This is
+    /// how a project's "img2ico.toml" (higher priority) sits on top of the
+    /// per-user file (lower priority) - setting by setting, not "all or
+    /// nothing".
+    ///
+    /// The rules match how the command line is resolved against a file
+    /// (see settings.rs): an absent value falls through, an on/off flag is
+    /// on if EITHER layer turns it on (a file can't say "explicitly off"),
+    /// and a non-empty list of seeds replaces the lower layer's list
+    /// instead of adding to it.
+    ///
+    /// Written without `..` on purpose: if a field is ever added to
+    /// `Settings`, this stops compiling until it says how that field
+    /// layers - so a new setting can't silently be ignored here.
+    pub fn layered_over(self, fallback: Settings) -> Settings {
+        Settings {
+            sizes: self.sizes.or(fallback.sizes),
+            preset: self.preset.or(fallback.preset),
+            chroma_key: self.chroma_key.or(fallback.chroma_key),
+            tolerance: self.tolerance.or(fallback.tolerance),
+            seeds: if self.seeds.is_empty() {
+                fallback.seeds
+            } else {
+                self.seeds
+            },
+            find: self.find.or(fallback.find),
+            find_min_size: self.find_min_size.or(fallback.find_min_size),
+            auto_apply: self.auto_apply || fallback.auto_apply,
+            replace_color: self.replace_color.or(fallback.replace_color),
+            grayscale: self.grayscale || fallback.grayscale,
+            padding: self.padding.or(fallback.padding),
+            gif_frame: self.gif_frame.or(fallback.gif_frame),
+            output_format: self.output_format.or(fallback.output_format),
+            delete_source: self.delete_source || fallback.delete_source,
+            force: self.force || fallback.force,
+            combine: self.combine || fallback.combine,
+            index: self.index.or(fallback.index),
+            silent: self.silent || fallback.silent,
+        }
+    }
 }
 
 /// Every valid top-level key a settings file can contain - the exact
@@ -87,44 +133,17 @@ const KNOWN_SETTINGS_KEYS: &[&str] = &[
     "silent",
 ];
 
-/// Resolves and loads the config file for this run, if any:
-/// - `explicit_path` (from --config) always wins outright when given -
-///   the automatic lookup below is skipped entirely in that case, the two
-///   are never combined.
-/// - Otherwise, looks for "img2ico.toml" in the current directory and
-///   uses it automatically if present.
-/// - If neither applies, returns `Ok(None)` - not an error, just "no
-///   config file for this run", and img2ico proceeds with pure
-///   command-line + built-in defaults exactly as before this feature
-///   existed.
-///
-/// Returns the parsed `Settings` together with the path that was
-/// actually used, so the caller can print an info message about it -
-/// img2ico never silently changes its own behavior because of a file
-/// sitting in the current directory without saying so out loud.
+/// Reads one settings file: parses it as TOML into `Settings`, warning
+/// about any setting name img2ico doesn't recognize.
 ///
 /// `cli_silent` is the RAW --silent flag as given on the command line
 /// (NOT the fully resolved value, which isn't known yet at this point -
-/// resolving it requires the config file that's still being loaded right
+/// resolving it requires the config files that are still being loaded right
 /// here). It only controls whether THIS function's own warnings (an
 /// unrecognized setting name) are printed; every warning elsewhere in the
 /// program instead respects the fully resolved --silent once it's known.
-pub fn load_config(
-    explicit_path: Option<&Path>,
-    cli_silent: bool,
-) -> Result<Option<(Settings, PathBuf)>, String> {
-    let path: PathBuf = match explicit_path {
-        Some(p) => p.to_path_buf(),
-        None => {
-            let candidate = PathBuf::from(AUTO_CONFIG_FILENAME);
-            if !candidate.is_file() {
-                return Ok(None);
-            }
-            candidate
-        }
-    };
-
-    let text = std::fs::read_to_string(&path)
+fn read_settings_file(path: &Path, cli_silent: bool) -> Result<Settings, String> {
+    let text = std::fs::read_to_string(path)
         .map_err(|e| format!("Could not read config file '{}': {e}", path.display()))?;
 
     // Warn about any top-level key that isn't one of img2ico's own
@@ -145,14 +164,148 @@ pub fn load_config(
         }
     }
 
-    let settings: Settings = toml::from_str(&text).map_err(|e| {
+    toml::from_str(&text).map_err(|e| {
         format!(
             "Could not parse config file '{}' as TOML: {e}",
             path.display()
         )
-    })?;
+    })
+}
 
+/// Resolves and loads the PROJECT config file for this run, if any:
+/// - `explicit_path` (from --config) always wins outright when given -
+///   the automatic lookup below is skipped entirely in that case, the two
+///   are never combined.
+/// - Otherwise, looks for "img2ico.toml" in the current directory and
+///   uses it automatically if present.
+/// - If neither applies, returns `Ok(None)` - not an error, just "no
+///   project config file for this run".
+///
+/// Returns the parsed `Settings` together with the path that was
+/// actually used, so the caller can print an info message about it -
+/// img2ico never silently changes its own behavior because of a file
+/// sitting in the current directory without saying so out loud.
+pub fn load_config(
+    explicit_path: Option<&Path>,
+    cli_silent: bool,
+) -> Result<Option<(Settings, PathBuf)>, String> {
+    let path: PathBuf = match explicit_path {
+        Some(p) => p.to_path_buf(),
+        None => {
+            let candidate = PathBuf::from(AUTO_CONFIG_FILENAME);
+            if !candidate.is_file() {
+                return Ok(None);
+            }
+            candidate
+        }
+    };
+
+    let settings = read_settings_file(&path, cli_silent)?;
     Ok(Some((settings, path)))
+}
+
+/// The operating systems whose conventions for a per-user config location
+/// differ. A parameter (instead of `cfg!` inside the lookup) so all three
+/// can be tested on any machine.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Platform {
+    Windows,
+    MacOs,
+    Other,
+}
+
+impl Platform {
+    /// The platform this binary was built for.
+    pub const CURRENT: Platform = if cfg!(windows) {
+        Platform::Windows
+    } else if cfg!(target_os = "macos") {
+        Platform::MacOs
+    } else {
+        Platform::Other
+    };
+}
+
+/// Where the per-user settings file lives on `platform`, given a way to
+/// look up environment variables (a parameter so tests don't have to touch
+/// the real environment). `None` if the location can't be determined, e.g.
+/// no home directory is set - then there is simply no user file.
+///
+/// The locations follow each platform's own convention:
+/// - Windows: `%APPDATA%\img2ico\config.toml`
+/// - macOS: `~/Library/Application Support/img2ico/config.toml`
+/// - elsewhere: `$XDG_CONFIG_HOME/img2ico/config.toml`, or
+///   `~/.config/img2ico/config.toml` if that variable isn't set. (The XDG
+///   specification says a relative `XDG_CONFIG_HOME` must be ignored.)
+///
+/// An environment variable that is set but empty counts as not set.
+pub fn user_config_path_for(
+    platform: Platform,
+    env: impl Fn(&str) -> Option<OsString>,
+) -> Option<PathBuf> {
+    let var = |name: &str| {
+        env(name)
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from)
+    };
+
+    let base = match platform {
+        Platform::Windows => var("APPDATA")?,
+        Platform::MacOs => var("HOME")?.join("Library").join("Application Support"),
+        Platform::Other => match var("XDG_CONFIG_HOME").filter(|dir| dir.is_absolute()) {
+            Some(dir) => dir,
+            None => var("HOME")?.join(".config"),
+        },
+    };
+    Some(base.join("img2ico").join("config.toml"))
+}
+
+/// The per-user settings file location on this machine - see
+/// `user_config_path_for`.
+pub fn user_config_path() -> Option<PathBuf> {
+    user_config_path_for(Platform::CURRENT, |name| std::env::var_os(name))
+}
+
+/// Everything the settings files contributed to this run.
+#[derive(Debug, Default, PartialEq)]
+pub struct LoadedConfig {
+    /// The project file's settings layered over the user file's settings.
+    pub settings: Settings,
+    /// The files actually used, highest priority first - so the caller can
+    /// announce each of them.
+    pub sources: Vec<PathBuf>,
+}
+
+/// Loads all settings files that apply to this run and layers them. From
+/// highest to lowest priority:
+/// 1. the project file: `explicit_path` (--config) if given, otherwise an
+///    "img2ico.toml" in the current directory (see `load_config`);
+/// 2. the per-user file at `user_path`, if it exists.
+///
+/// A file that doesn't exist simply contributes nothing; one that exists
+/// but can't be read or parsed is an error naming the file. Whatever
+/// neither file sets falls through to the built-in defaults.
+pub fn load_layered(
+    explicit_path: Option<&Path>,
+    user_path: Option<&Path>,
+    cli_silent: bool,
+) -> Result<LoadedConfig, String> {
+    let mut loaded = LoadedConfig::default();
+
+    let project = load_config(explicit_path, cli_silent)?;
+    let user = match user_path {
+        Some(path) if path.is_file() => Some((read_settings_file(path, cli_silent)?, path)),
+        _ => None,
+    };
+
+    if let Some((settings, path)) = project {
+        loaded.settings = settings;
+        loaded.sources.push(path);
+    }
+    if let Some((settings, path)) = user {
+        loaded.settings = loaded.settings.layered_over(settings);
+        loaded.sources.push(path.to_path_buf());
+    }
+    Ok(loaded)
 }
 
 /// Writes the given settings out as a TOML file - used by --out-toml to
@@ -165,6 +318,7 @@ pub fn write_config(settings: &Settings, path: &Path) -> Result<(), String> {
     std::fs::write(path, text)
         .map_err(|e| format!("Could not write settings file '{}': {e}", path.display()))
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -373,6 +527,195 @@ mod tests {
             err.contains("Could not write settings file"),
             "unexpected message: {err}"
         );
+    }
+
+    // --- Layering ----------------------------------------------------------------
+
+    #[test]
+    fn layering_prefers_the_higher_layer_and_fills_gaps_from_the_lower() {
+        let high = Settings {
+            tolerance: Some(40),
+            sizes: Some("16".to_string()),
+            ..Settings::default()
+        };
+        let low = Settings {
+            tolerance: Some(10),
+            padding: Some(5),
+            preset: Some(SizePreset::Favicon),
+            ..Settings::default()
+        };
+        let merged = high.layered_over(low);
+        assert_eq!(merged.tolerance, Some(40), "higher layer wins");
+        assert_eq!(merged.sizes.as_deref(), Some("16"));
+        assert_eq!(merged.padding, Some(5), "gap filled from the lower layer");
+        assert_eq!(merged.preset, Some(SizePreset::Favicon));
+    }
+
+    #[test]
+    fn layering_with_an_empty_layer_changes_nothing() {
+        assert_eq!(
+            fully_populated().layered_over(Settings::default()),
+            fully_populated()
+        );
+        assert_eq!(
+            Settings::default().layered_over(fully_populated()),
+            fully_populated()
+        );
+    }
+
+    #[test]
+    fn layered_flags_are_on_if_either_layer_turns_them_on() {
+        let high = Settings {
+            force: true,
+            ..Settings::default()
+        };
+        let low = Settings {
+            grayscale: true,
+            silent: true,
+            ..Settings::default()
+        };
+        let merged = high.layered_over(low);
+        assert!(merged.force && merged.grayscale && merged.silent);
+        assert!(!merged.delete_source && !merged.combine && !merged.auto_apply);
+    }
+
+    #[test]
+    fn non_empty_seeds_replace_the_lower_layers_seeds() {
+        let with_seeds = |seeds: &[&str]| Settings {
+            seeds: seeds.iter().map(|s| s.to_string()).collect(),
+            ..Settings::default()
+        };
+        let merged = with_seeds(&["1,1"]).layered_over(with_seeds(&["2,2", "3,3"]));
+        assert_eq!(merged.seeds, ["1,1"]);
+        let merged = with_seeds(&[]).layered_over(with_seeds(&["2,2", "3,3"]));
+        assert_eq!(merged.seeds, ["2,2", "3,3"]);
+    }
+
+    // --- Per-user config location ---------------------------------------------------
+
+    fn env_with(pairs: &[(&str, PathBuf)]) -> impl Fn(&str) -> Option<OsString> + use<> {
+        let vars: Vec<(String, OsString)> = pairs
+            .iter()
+            .map(|(name, value)| (name.to_string(), value.clone().into_os_string()))
+            .collect();
+        move |name| {
+            vars.iter()
+                .find(|(key, _)| key == name)
+                .map(|(_, value)| value.clone())
+        }
+    }
+
+    fn config_under(base: &Path) -> PathBuf {
+        base.join("img2ico").join("config.toml")
+    }
+
+    #[test]
+    fn windows_uses_appdata() {
+        let appdata = PathBuf::from("AppDataRoaming");
+        let path =
+            user_config_path_for(Platform::Windows, env_with(&[("APPDATA", appdata.clone())]));
+        assert_eq!(path, Some(config_under(&appdata)));
+    }
+
+    #[test]
+    fn windows_without_appdata_has_no_user_file() {
+        assert_eq!(user_config_path_for(Platform::Windows, env_with(&[])), None);
+        assert_eq!(
+            user_config_path_for(Platform::Windows, env_with(&[("APPDATA", PathBuf::new())])),
+            None,
+            "an empty variable counts as not set"
+        );
+    }
+
+    #[test]
+    fn macos_uses_application_support_under_home() {
+        let home = PathBuf::from("Users").join("me");
+        let path = user_config_path_for(Platform::MacOs, env_with(&[("HOME", home.clone())]));
+        let expected = config_under(&home.join("Library").join("Application Support"));
+        assert_eq!(path, Some(expected));
+        assert_eq!(user_config_path_for(Platform::MacOs, env_with(&[])), None);
+    }
+
+    #[test]
+    fn other_platforms_prefer_an_absolute_xdg_config_home() {
+        let xdg = std::env::temp_dir(); // absolute on every platform
+        let env = env_with(&[
+            ("XDG_CONFIG_HOME", xdg.clone()),
+            ("HOME", PathBuf::from("home")),
+        ]);
+        assert_eq!(
+            user_config_path_for(Platform::Other, env),
+            Some(config_under(&xdg))
+        );
+    }
+
+    #[test]
+    fn other_platforms_fall_back_to_dot_config_under_home() {
+        let home = PathBuf::from("home").join("me");
+        let expected = Some(config_under(&home.join(".config")));
+
+        let only_home = env_with(&[("HOME", home.clone())]);
+        assert_eq!(user_config_path_for(Platform::Other, only_home), expected);
+
+        // A relative XDG_CONFIG_HOME must be ignored (XDG specification).
+        let relative = env_with(&[
+            ("XDG_CONFIG_HOME", PathBuf::from("relative").join("dir")),
+            ("HOME", home),
+        ]);
+        assert_eq!(user_config_path_for(Platform::Other, relative), expected);
+    }
+
+    #[test]
+    fn other_platforms_without_any_variable_have_no_user_file() {
+        assert_eq!(user_config_path_for(Platform::Other, env_with(&[])), None);
+    }
+
+    // --- Loading and layering files -----------------------------------------------------
+
+    #[test]
+    fn a_project_file_is_layered_over_the_user_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = write_file(
+            dir.path(),
+            "project.toml",
+            "tolerance = 40\nsizes = \"16\"\n",
+        );
+        let user = write_file(dir.path(), "user.toml", "tolerance = 10\npadding = 5\n");
+
+        let loaded = load_layered(Some(&project), Some(&user), true).unwrap();
+        assert_eq!(loaded.settings.tolerance, Some(40), "project wins");
+        assert_eq!(loaded.settings.sizes.as_deref(), Some("16"));
+        assert_eq!(loaded.settings.padding, Some(5), "user fills the gap");
+        assert_eq!(
+            loaded.sources,
+            vec![project, user],
+            "highest priority first"
+        );
+    }
+
+    #[test]
+    fn a_missing_user_file_contributes_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = write_file(dir.path(), "project.toml", "padding = 7\n");
+        let absent = dir.path().join("no-such").join("config.toml");
+
+        let loaded = load_layered(Some(&project), Some(&absent), true).unwrap();
+        assert_eq!(loaded.settings.padding, Some(7));
+        assert_eq!(loaded.sources, vec![project]);
+
+        let loaded = load_layered(Some(&loaded.sources[0]), None, true).unwrap();
+        assert_eq!(loaded.settings.padding, Some(7));
+    }
+
+    #[test]
+    fn a_broken_user_file_is_an_error_naming_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = write_file(dir.path(), "project.toml", "padding = 7\n");
+        let user = write_file(dir.path(), "user.toml", "tolerance = \"high\"\n");
+
+        let err = load_layered(Some(&project), Some(&user), true).unwrap_err();
+        assert!(err.contains("Could not parse config file"), "{err}");
+        assert!(err.contains("user.toml"), "{err}");
     }
 
     // --- Drift guard -------------------------------------------------------------
