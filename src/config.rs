@@ -145,8 +145,12 @@ pub fn load_config(
         }
     }
 
-    let settings: Settings = toml::from_str(&text)
-        .map_err(|e| format!("Could not parse config file '{}' as TOML: {e}", path.display()))?;
+    let settings: Settings = toml::from_str(&text).map_err(|e| {
+        format!(
+            "Could not parse config file '{}' as TOML: {e}",
+            path.display()
+        )
+    })?;
 
     Ok(Some((settings, path)))
 }
@@ -289,7 +293,10 @@ mod tests {
     fn a_missing_explicit_config_file_is_an_error() {
         let dir = tempfile::tempdir().unwrap();
         let err = load_config(Some(&dir.path().join("nope.toml")), true).unwrap_err();
-        assert!(err.contains("Could not read config file"), "unexpected message: {err}");
+        assert!(
+            err.contains("Could not read config file"),
+            "unexpected message: {err}"
+        );
     }
 
     #[test]
@@ -362,7 +369,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("no-such-dir").join("out.toml");
         let err = write_config(&Settings::default(), &path).unwrap_err();
-        assert!(err.contains("Could not write settings file"), "unexpected message: {err}");
+        assert!(
+            err.contains("Could not write settings file"),
+            "unexpected message: {err}"
+        );
     }
 
     // --- Drift guard -------------------------------------------------------------

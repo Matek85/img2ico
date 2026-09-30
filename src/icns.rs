@@ -82,7 +82,8 @@ pub fn write_icns(
     file_bytes.extend_from_slice(&total_len.to_be_bytes());
     file_bytes.extend_from_slice(&body);
 
-    std::fs::write(output_path, &file_bytes).map_err(|e| format!("Could not write ICNS file: {e}"))?;
+    std::fs::write(output_path, &file_bytes)
+        .map_err(|e| format!("Could not write ICNS file: {e}"))?;
 
     println!(
         "Done: '{}' created with {} icon size(s) (icns format).",
@@ -110,21 +111,32 @@ mod tests {
     fn parse_icns(bytes: &[u8]) -> Vec<Entry> {
         assert_eq!(&bytes[0..4], b"icns", "missing magic");
         let total = u32::from_be_bytes(bytes[4..8].try_into().unwrap()) as usize;
-        assert_eq!(total, bytes.len(), "header length must equal the file length");
+        assert_eq!(
+            total,
+            bytes.len(),
+            "header length must equal the file length"
+        );
 
         let mut entries = Vec::new();
         let mut pos = 8;
         while pos < bytes.len() {
             let os_type: [u8; 4] = bytes[pos..pos + 4].try_into().unwrap();
             let len = u32::from_be_bytes(bytes[pos + 4..pos + 8].try_into().unwrap()) as usize;
-            assert!(len >= 8 && pos + len <= bytes.len(), "entry length out of range");
+            assert!(
+                len >= 8 && pos + len <= bytes.len(),
+                "entry length out of range"
+            );
             entries.push(Entry {
                 os_type,
                 payload: bytes[pos + 8..pos + len].to_vec(),
             });
             pos += len;
         }
-        assert_eq!(pos, bytes.len(), "entries must end exactly at the end of the file");
+        assert_eq!(
+            pos,
+            bytes.len(),
+            "entries must end exactly at the end of the file"
+        );
         entries
     }
 
@@ -143,7 +155,10 @@ mod tests {
 
     #[test]
     fn every_os_type_is_unique() {
-        let mut all: Vec<[u8; 4]> = ICNS_SIZES.iter().flat_map(|&(_, codes)| codes.iter().copied()).collect();
+        let mut all: Vec<[u8; 4]> = ICNS_SIZES
+            .iter()
+            .flat_map(|&(_, codes)| codes.iter().copied())
+            .collect();
         let before = all.len();
         all.sort();
         all.dedup();
@@ -168,7 +183,11 @@ mod tests {
         let written: Vec<[u8; 4]> = entries.iter().map(|e| e.os_type).collect();
         for &(_, codes) in ICNS_SIZES {
             for code in codes {
-                assert!(written.contains(code), "missing {}", String::from_utf8_lossy(code));
+                assert!(
+                    written.contains(code),
+                    "missing {}",
+                    String::from_utf8_lossy(code)
+                );
             }
         }
     }
@@ -194,7 +213,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let source = RgbaImage::from_pixel(64, 64, Rgba([1, 2, 3, 255]));
         let entries = parse_icns(&write_sample(dir.path(), &source, 0));
-        let payload = |code: &[u8; 4]| entries.iter().find(|e| e.os_type == *code).unwrap().payload.clone();
+        let payload = |code: &[u8; 4]| {
+            entries
+                .iter()
+                .find(|e| e.os_type == *code)
+                .unwrap()
+                .payload
+                .clone()
+        };
         assert_eq!(payload(b"icp5"), payload(b"ic11"));
         assert_eq!(payload(b"icp6"), payload(b"ic12"));
     }
@@ -227,6 +253,9 @@ mod tests {
         let source = RgbaImage::from_pixel(8, 8, Rgba([0, 0, 0, 255]));
         let path = dir.path().join("no-such-dir").join("out.icns");
         let err = write_icns(&source, 0, false, &path).unwrap_err();
-        assert!(err.contains("Could not write ICNS file"), "unexpected message: {err}");
+        assert!(
+            err.contains("Could not write ICNS file"),
+            "unexpected message: {err}"
+        );
     }
 }

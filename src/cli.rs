@@ -35,7 +35,9 @@ pub const RECOMMENDED_WINDOWS_SIZES: [u32; 10] = [16, 20, 24, 32, 40, 48, 64, 96
 /// Adding a new preset later is just: add a variant here, add its doc
 /// comment, and add one line to `SizePreset::sizes()` below - the CLI
 /// parsing and --help text update themselves automatically.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum, serde::Serialize, serde::Deserialize,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum SizePreset {
     /// Microsoft's recommended set for full DPI-scaling coverage (16, 20,
@@ -64,7 +66,9 @@ impl SizePreset {
 /// If --output-format isn't given at all (the field stays `None` in
 /// `Args`), img2ico falls back to a platform-based default instead - see
 /// where `use_icns` is computed in `run()` (main.rs).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum, serde::Serialize, serde::Deserialize,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum OutputFormat {
     /// The Windows icon format.
@@ -440,7 +444,10 @@ mod tests {
 
     #[test]
     fn short_flags_work() {
-        let args = parse(&["in.png", "-o", "out.ico", "-s", "16,32", "-c", "#00FF00", "-t", "30", "-f"]).unwrap();
+        let args = parse(&[
+            "in.png", "-o", "out.ico", "-s", "16,32", "-c", "#00FF00", "-t", "30", "-f",
+        ])
+        .unwrap();
         assert_eq!(args.output, Some(PathBuf::from("out.ico")));
         assert_eq!(args.sizes.as_deref(), Some("16,32"));
         assert_eq!(args.chroma_key.as_deref(), Some("#00FF00"));

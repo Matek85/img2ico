@@ -179,7 +179,10 @@ fn flood_fill_reachable(
     // and add them to the queue. This continues until no new connected
     // area is found.
     while let Some((x, y)) = queue.pop_front() {
-        for (nx, ny) in in_bounds_neighbors(x, y, width, height).into_iter().flatten() {
+        for (nx, ny) in in_bounds_neighbors(x, y, width, height)
+            .into_iter()
+            .flatten()
+        {
             if !visited[idx(nx, ny)] && is_background_candidate(img, nx, ny) {
                 visited[idx(nx, ny)] = true;
                 queue.push_back((nx, ny));
@@ -369,7 +372,10 @@ pub fn find_isolated_regions(
 
             while let Some((cx, cy)) = queue.pop_front() {
                 members.push((cx, cy));
-                for (nx, ny) in in_bounds_neighbors(cx, cy, width, height).into_iter().flatten() {
+                for (nx, ny) in in_bounds_neighbors(cx, cy, width, height)
+                    .into_iter()
+                    .flatten()
+                {
                     if !labeled[idx(nx, ny)] && is_candidate(nx, ny) {
                         labeled[idx(nx, ny)] = true;
                         queue.push_back((nx, ny));
@@ -386,11 +392,9 @@ pub fn find_isolated_regions(
             // could land outside the region for a concave/oddly-shaped
             // area (e.g. a crescent) - snapping to the nearest real member
             // guarantees the suggested --seed value is actually inside it.
-            let (sum_x, sum_y) = members
-                .iter()
-                .fold((0u64, 0u64), |(sx, sy), &(px, py)| {
-                    (sx + px as u64, sy + py as u64)
-                });
+            let (sum_x, sum_y) = members.iter().fold((0u64, 0u64), |(sx, sy), &(px, py)| {
+                (sx + px as u64, sy + py as u64)
+            });
             let centroid_x = (sum_x / members.len() as u64) as u32;
             let centroid_y = (sum_y / members.len() as u64) as u32;
 
@@ -537,7 +541,10 @@ mod tests {
 
     #[test]
     fn neighbors_in_the_middle_are_all_four_directions() {
-        let neighbors: Vec<_> = in_bounds_neighbors(2, 2, 5, 5).into_iter().flatten().collect();
+        let neighbors: Vec<_> = in_bounds_neighbors(2, 2, 5, 5)
+            .into_iter()
+            .flatten()
+            .collect();
         assert_eq!(neighbors.len(), 4);
         for expected in [(1, 2), (3, 2), (2, 1), (2, 3)] {
             assert!(neighbors.contains(&expected), "missing {expected:?}");
@@ -546,16 +553,28 @@ mod tests {
 
     #[test]
     fn neighbors_at_a_corner_stay_inside_the_image() {
-        let top_left: Vec<_> = in_bounds_neighbors(0, 0, 5, 5).into_iter().flatten().collect();
+        let top_left: Vec<_> = in_bounds_neighbors(0, 0, 5, 5)
+            .into_iter()
+            .flatten()
+            .collect();
         assert_eq!(top_left.len(), 2);
-        let bottom_right: Vec<_> = in_bounds_neighbors(4, 4, 5, 5).into_iter().flatten().collect();
+        let bottom_right: Vec<_> = in_bounds_neighbors(4, 4, 5, 5)
+            .into_iter()
+            .flatten()
+            .collect();
         assert_eq!(bottom_right.len(), 2);
         assert!(bottom_right.contains(&(3, 4)) && bottom_right.contains(&(4, 3)));
     }
 
     #[test]
     fn neighbors_of_a_single_pixel_image_are_empty() {
-        assert_eq!(in_bounds_neighbors(0, 0, 1, 1).into_iter().flatten().count(), 0);
+        assert_eq!(
+            in_bounds_neighbors(0, 0, 1, 1)
+                .into_iter()
+                .flatten()
+                .count(),
+            0
+        );
     }
 
     // --- flood_fill_reachable ------------------------------------------------
@@ -576,7 +595,11 @@ mod tests {
         for y in 0..7u32 {
             for x in 0..7u32 {
                 let inside_subject = (2..=4).contains(&x) && (2..=4).contains(&y);
-                assert_eq!(visited[(y * 7 + x) as usize], !inside_subject, "pixel ({x},{y})");
+                assert_eq!(
+                    visited[(y * 7 + x) as usize],
+                    !inside_subject,
+                    "pixel ({x},{y})"
+                );
             }
         }
     }
@@ -584,7 +607,10 @@ mod tests {
     #[test]
     fn flood_fill_does_not_reach_an_enclosed_patch() {
         let visited = flood_fill_reachable(&image_with_enclosed_patch(), GREEN, 20, &[], true);
-        assert!(!visited[4 * 9 + 4], "the enclosed centre must stay unreached");
+        assert!(
+            !visited[4 * 9 + 4],
+            "the enclosed centre must stay unreached"
+        );
         assert!(visited[0], "the border must be reached");
     }
 
@@ -594,7 +620,10 @@ mod tests {
             flood_fill_reachable(&image_with_enclosed_patch(), GREEN, 20, &[(4, 4)], true);
         assert!(visited[4 * 9 + 4]);
         assert!(visited[3 * 9 + 3]);
-        assert!(!visited[2 * 9 + 2], "the red ring itself must stay unreached");
+        assert!(
+            !visited[2 * 9 + 2],
+            "the red ring itself must stay unreached"
+        );
     }
 
     #[test]
@@ -638,7 +667,10 @@ mod tests {
         fill_rect(&mut img, (2, 2), (2, 2), RED);
         let strict = flood_fill_reachable(&img, GREEN, 5, &[], true);
         let lenient = flood_fill_reachable(&img, GREEN, 20, &[], true);
-        assert!(!strict[2 * 5 + 1], "5% (~22) must not cross the 55-distance ring");
+        assert!(
+            !strict[2 * 5 + 1],
+            "5% (~22) must not cross the 55-distance ring"
+        );
         assert!(lenient[2 * 5 + 1], "20% (~88) crosses the ring");
         assert!(!lenient[2 * 5 + 2], "but never the red centre");
     }
@@ -686,7 +718,11 @@ mod tests {
         img.put_pixel(0, 0, rgba([0, 250, 0]));
         apply_chroma_key(&mut img, GREEN, 0, &[], None, true);
         assert_eq!(img.get_pixel(1, 1)[3], 0, "exact match is removed");
-        assert_eq!(img.get_pixel(0, 0)[3], 255, "a slightly different shade survives");
+        assert_eq!(
+            img.get_pixel(0, 0)[3],
+            255,
+            "a slightly different shade survives"
+        );
     }
 
     #[test]
@@ -703,7 +739,10 @@ mod tests {
         img.put_pixel(0, 0, rgba([0, 189, 0])); // distance 66, between core (44) and limit (88)
         apply_chroma_key(&mut img, GREEN, 20, &[], None, true);
         let alpha = img.get_pixel(0, 0)[3];
-        assert!(alpha > 0 && alpha < 255, "expected a partial alpha, got {alpha}");
+        assert!(
+            alpha > 0 && alpha < 255,
+            "expected a partial alpha, got {alpha}"
+        );
     }
 
     #[test]
@@ -748,8 +787,13 @@ mod tests {
 
     #[test]
     fn find_discovers_an_enclosed_patch() {
-        let regions =
-            find_isolated_regions(&image_with_enclosed_patch(), GREEN, 20, DEFAULT_FIND_MIN_SIZE, true);
+        let regions = find_isolated_regions(
+            &image_with_enclosed_patch(),
+            GREEN,
+            20,
+            DEFAULT_FIND_MIN_SIZE,
+            true,
+        );
         assert_eq!(regions.len(), 1);
         assert_eq!(regions[0].pixel_count, 9);
         assert_eq!(regions[0].seed, (4, 4));
@@ -793,7 +837,11 @@ mod tests {
         let regions = find_isolated_regions(&img, GREEN, 20, 1, true);
         assert_eq!(regions.len(), 1);
         let (x, y) = regions[0].seed;
-        assert_eq!(*img.get_pixel(x, y), rgba(GREEN), "seed ({x},{y}) is not part of the region");
+        assert_eq!(
+            *img.get_pixel(x, y),
+            rgba(GREEN),
+            "seed ({x},{y}) is not part of the region"
+        );
     }
 
     #[test]

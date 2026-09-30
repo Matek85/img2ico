@@ -6,8 +6,8 @@
 // This module fills that one gap; everything else about a GIF (or any
 // other format) still goes through the normal image::open() path.
 
-use image::codecs::gif::GifDecoder;
 use image::AnimationDecoder;
+use image::codecs::gif::GifDecoder;
 use std::path::Path;
 
 /// Returns true if `path` is actually a GIF file, detected from its
@@ -31,8 +31,8 @@ pub fn is_gif(path: &Path) -> Result<bool, String> {
 /// exist is to actually walk through decoding all of them, which is
 /// exactly what this does.
 pub fn count_gif_frames(path: &Path) -> Result<usize, String> {
-    let file =
-        std::fs::File::open(path).map_err(|e| format!("Could not read '{}': {e}", path.display()))?;
+    let file = std::fs::File::open(path)
+        .map_err(|e| format!("Could not read '{}': {e}", path.display()))?;
     let decoder = GifDecoder::new(std::io::BufReader::new(file))
         .map_err(|e| format!("Could not read '{}' as a GIF: {e}", path.display()))?;
 
@@ -57,8 +57,8 @@ pub fn extract_gif_frame(path: &Path, frame_number: usize) -> Result<image::Rgba
         );
     }
 
-    let file =
-        std::fs::File::open(path).map_err(|e| format!("Could not read '{}': {e}", path.display()))?;
+    let file = std::fs::File::open(path)
+        .map_err(|e| format!("Could not read '{}': {e}", path.display()))?;
     let decoder = GifDecoder::new(std::io::BufReader::new(file))
         .map_err(|e| format!("Could not read '{}' as a GIF: {e}", path.display()))?;
 

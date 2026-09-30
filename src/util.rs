@@ -184,7 +184,10 @@ mod tests {
     fn nonexistent_paths_fall_back_to_plain_comparison() {
         let a = Path::new("does/not/exist.png");
         assert!(paths_refer_to_same_file(a, a));
-        assert!(!paths_refer_to_same_file(a, Path::new("does/not/exist2.png")));
+        assert!(!paths_refer_to_same_file(
+            a,
+            Path::new("does/not/exist2.png")
+        ));
     }
 
     // --- delete_source_files ---------------------------------------------------
@@ -221,7 +224,10 @@ mod tests {
         let present = dir.path().join("here.png");
         std::fs::write(&present, b"x").unwrap();
         delete_source_files(&[missing, present.clone()], None, true);
-        assert!(!present.exists(), "the failure on one file must not stop the others");
+        assert!(
+            !present.exists(),
+            "the failure on one file must not stop the others"
+        );
     }
 
     proptest! {

@@ -76,7 +76,9 @@ pub fn warn_about_thin_content(
             let content_size = size as f32 * (1.0 - padding_percent as f32 / 100.0);
             let minor_scaled = (content_size * minor / major).round() as u32;
             if minor_scaled <= MIN_RECOGNIZABLE_CONTENT_PIXELS {
-                Some(format!("{size}x{size} (~{minor_scaled}px of actual content)"))
+                Some(format!(
+                    "{size}x{size} (~{minor_scaled}px of actual content)"
+                ))
             } else {
                 None
             }
@@ -115,7 +117,9 @@ pub fn apply_grayscale(img: &mut RgbaImage) {
         // brightness of the original colors intact - a naive average
         // makes pure blue look almost as bright as pure yellow, even
         // though blue looks much darker to us.
-        let gray = (0.299 * r + 0.587 * g + 0.114 * b).round().clamp(0.0, 255.0) as u8;
+        let gray = (0.299 * r + 0.587 * g + 0.114 * b)
+            .round()
+            .clamp(0.0, 255.0) as u8;
         pixel[0] = gray;
         pixel[1] = gray;
         pixel[2] = gray;
@@ -181,12 +185,8 @@ fn resize_rgba_premultiplied(src: &RgbaImage, new_width: u32, new_height: u32) -
     // Step 2: resize completely normally, as before. Since the color
     // channels now already have the alpha weighting "baked in", the
     // resize behaves consistently across all four channels.
-    let resized = image::imageops::resize(
-        &premultiplied,
-        new_width,
-        new_height,
-        FilterType::Lanczos3,
-    );
+    let resized =
+        image::imageops::resize(&premultiplied, new_width, new_height, FilterType::Lanczos3);
 
     // Step 3: compute back ("un-premultiply") - divide every color channel
     // by its (new, resized) alpha value again. Without this step, all
@@ -231,7 +231,12 @@ fn resize_rgba_premultiplied(src: &RgbaImage, new_width: u32, new_height: u32) -
 /// `has_alpha` should be the result of has_transparency() on `rgba`,
 /// computed ONCE by the caller and passed in here - see resize_rgba() for
 /// why this matters.
-pub fn make_square_icon(rgba: &RgbaImage, size: u32, padding_percent: u8, has_alpha: bool) -> RgbaImage {
+pub fn make_square_icon(
+    rgba: &RgbaImage,
+    size: u32,
+    padding_percent: u8,
+    has_alpha: bool,
+) -> RgbaImage {
     let (orig_w, orig_h) = rgba.dimensions();
 
     // The artwork is fitted into a smaller "content box" inside the full
@@ -353,7 +358,11 @@ mod tests {
         assert_eq!(icon.get_pixel(16, 16)[3], 255, "centre is content");
         assert_eq!(icon.get_pixel(16, 0)[3], 0, "top margin is transparent");
         assert_eq!(icon.get_pixel(16, 31)[3], 0, "bottom margin is transparent");
-        assert_eq!(icon.get_pixel(0, 16)[3], 255, "content spans the full width");
+        assert_eq!(
+            icon.get_pixel(0, 16)[3],
+            255,
+            "content spans the full width"
+        );
         assert_eq!(icon.get_pixel(31, 16)[3], 255);
     }
 

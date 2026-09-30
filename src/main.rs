@@ -26,12 +26,12 @@ mod ico_ops;
 mod resize;
 mod util;
 
-use chroma_key::{apply_chroma_key, find_isolated_regions, parse_hex_color, DEFAULT_FIND_MIN_SIZE};
+use chroma_key::{DEFAULT_FIND_MIN_SIZE, apply_chroma_key, find_isolated_regions, parse_hex_color};
 use clap::Parser;
 use cli::{Args, OutputFormat};
-use config::{load_config, write_config, Settings};
+use config::{Settings, load_config, write_config};
 use gif::{extract_gif_frame, is_gif};
-use icns::{write_icns, ICNS_SIZES};
+use icns::{ICNS_SIZES, write_icns};
 use ico_ops::{extract_icons, inspect_icons, merge_icons, parse_indices, select_icons};
 use resize::{
     apply_grayscale, has_transparency, make_square_icon, warn_about_thin_content,
@@ -143,7 +143,10 @@ impl ResolvedSettings {
     fn resolve(args: &Args, settings: &Settings) -> ResolvedSettings {
         ResolvedSettings {
             preset: args.preset.or(settings.preset),
-            chroma_key: args.chroma_key.clone().or_else(|| settings.chroma_key.clone()),
+            chroma_key: args
+                .chroma_key
+                .clone()
+                .or_else(|| settings.chroma_key.clone()),
             tolerance: args.tolerance.or(settings.tolerance).unwrap_or(20),
             seeds: if !args.seeds.is_empty() {
                 args.seeds.clone()
@@ -205,7 +208,10 @@ impl ResolvedSettings {
 /// conversion). A no-op if `out_toml` is `None`. Called right before each
 /// mode's own final `Ok(())`, so it only runs after everything else about
 /// the run already succeeded.
-fn maybe_write_out_toml(out_toml: &Option<std::path::PathBuf>, resolved: &ResolvedSettings) -> Result<(), String> {
+fn maybe_write_out_toml(
+    out_toml: &Option<std::path::PathBuf>,
+    resolved: &ResolvedSettings,
+) -> Result<(), String> {
     if let Some(path) = out_toml {
         write_config(&resolved.to_settings(), path)?;
         if !resolved.silent {
@@ -320,7 +326,11 @@ fn run() -> Result<(), String> {
             // written (protect against deleting it if it happens to equal
             // the source), or None when a whole directory of separate
             // files was written instead (can't collide with a file path).
-            delete_source_files(std::slice::from_ref(input_path), written_file.as_deref(), resolved.silent);
+            delete_source_files(
+                std::slice::from_ref(input_path),
+                written_file.as_deref(),
+                resolved.silent,
+            );
         }
         maybe_write_out_toml(&args.out_toml, &resolved)?;
         return Ok(());
@@ -420,9 +430,14 @@ fn run() -> Result<(), String> {
     // about the FINAL settings yet in that case).
     let mut auto_found_seeds: Vec<(u32, u32)> = Vec::new();
     if let Some(find_hex) = &resolved.find {
-        let target =
-            parse_hex_color(find_hex).map_err(|e| format!("Invalid --find value: {e}"))?;
-        let regions = find_isolated_regions(&rgba_source, target, resolved.tolerance, resolved.find_min_size, resolved.silent);
+        let target = parse_hex_color(find_hex).map_err(|e| format!("Invalid --find value: {e}"))?;
+        let regions = find_isolated_regions(
+            &rgba_source,
+            target,
+            resolved.tolerance,
+            resolved.find_min_size,
+            resolved.silent,
+        );
 
         if regions.is_empty() {
             println!(
@@ -536,13 +551,21 @@ fn run() -> Result<(), String> {
     // was already parsed into `replacement` above and gets passed through
     // to both.
     if let Some(hex) = &resolved.chroma_key {
-        let target = parse_hex_color(hex).map_err(|e| format!("Invalid --chroma-key value: {e}"))?;
+        let target =
+            parse_hex_color(hex).map_err(|e| format!("Invalid --chroma-key value: {e}"))?;
         let seeds: Vec<(u32, u32)> = resolved
             .seeds
             .iter()
             .map(|s| parse_seed(s).map_err(|e| format!("Invalid --seed value: {e}")))
             .collect::<Result<Vec<(u32, u32)>, String>>()?;
-        apply_chroma_key(&mut rgba_source, target, resolved.tolerance, &seeds, replacement, resolved.silent);
+        apply_chroma_key(
+            &mut rgba_source,
+            target,
+            resolved.tolerance,
+            &seeds,
+            replacement,
+            resolved.silent,
+        );
     } else if let Some(hex) = &resolved.find {
         // Only reachable when --auto-apply was given too - the plain
         // "--find" preview case already returned Ok(()) further up.
@@ -553,7 +576,14 @@ fn run() -> Result<(), String> {
             .map(|s| parse_seed(s).map_err(|e| format!("Invalid --seed value: {e}")))
             .collect::<Result<Vec<(u32, u32)>, String>>()?;
         seeds.extend(auto_found_seeds);
-        apply_chroma_key(&mut rgba_source, target, resolved.tolerance, &seeds, replacement, resolved.silent);
+        apply_chroma_key(
+            &mut rgba_source,
+            target,
+            resolved.tolerance,
+            &seeds,
+            replacement,
+            resolved.silent,
+        );
     }
 
     // --grayscale runs LAST, after any --chroma-key/--replace-color
@@ -580,10 +610,22 @@ fn run() -> Result<(), String> {
     if use_icns {
         let icns_sizes: Vec<u32> = ICNS_SIZES.iter().map(|&(size, _)| size).collect();
         warn_about_upscaling(source_w, source_h, &icns_sizes, resolved.silent);
-        warn_about_thin_content(source_w, source_h, resolved.padding, &icns_sizes, resolved.silent);
+        warn_about_thin_content(
+            source_w,
+            source_h,
+            resolved.padding,
+            &icns_sizes,
+            resolved.silent,
+        );
     } else {
         warn_about_upscaling(source_w, source_h, &sizes, resolved.silent);
-        warn_about_thin_content(source_w, source_h, resolved.padding, &sizes, resolved.silent);
+        warn_about_thin_content(
+            source_w,
+            source_h,
+            resolved.padding,
+            &sizes,
+            resolved.silent,
+        );
     }
 
     // .icns branches off here (whether from an explicit --output-format icns or from
@@ -593,7 +635,11 @@ fn run() -> Result<(), String> {
     if use_icns {
         write_icns(&rgba_source, resolved.padding, has_alpha, &output_path)?;
         if resolved.delete_source {
-            delete_source_files(std::slice::from_ref(input_path), Some(&output_path), resolved.silent);
+            delete_source_files(
+                std::slice::from_ref(input_path),
+                Some(&output_path),
+                resolved.silent,
+            );
         }
         maybe_write_out_toml(&args.out_toml, &resolved)?;
         return Ok(());
@@ -643,8 +689,8 @@ fn run() -> Result<(), String> {
     }
 
     // Create the target file and write all the collected resolutions into it.
-    let file =
-        std::fs::File::create(&output_path).map_err(|e| format!("Could not create output file: {e}"))?;
+    let file = std::fs::File::create(&output_path)
+        .map_err(|e| format!("Could not create output file: {e}"))?;
     icon_dir
         .write(file)
         .map_err(|e| format!("Error writing ICO file: {e}"))?;
@@ -656,7 +702,11 @@ fn run() -> Result<(), String> {
     );
 
     if resolved.delete_source {
-        delete_source_files(std::slice::from_ref(input_path), Some(&output_path), resolved.silent);
+        delete_source_files(
+            std::slice::from_ref(input_path),
+            Some(&output_path),
+            resolved.silent,
+        );
     }
 
     maybe_write_out_toml(&args.out_toml, &resolved)?;
@@ -740,17 +790,27 @@ mod tests {
             ..Settings::default()
         };
         let cli = args(&[
-            "--tolerance", "5",
-            "--padding", "0",
-            "--gif-frame", "2",
-            "--sizes", "32",
-            "--preset", "favicon",
-            "--chroma-key", "#FF0000",
-            "--output-format", "ico",
+            "--tolerance",
+            "5",
+            "--padding",
+            "0",
+            "--gif-frame",
+            "2",
+            "--sizes",
+            "32",
+            "--preset",
+            "favicon",
+            "--chroma-key",
+            "#FF0000",
+            "--output-format",
+            "ico",
         ]);
         let resolved = ResolvedSettings::resolve(&cli, &settings);
         assert_eq!(resolved.tolerance, 5);
-        assert_eq!(resolved.padding, 0, "an explicit 0 must not fall back to the config value");
+        assert_eq!(
+            resolved.padding, 0,
+            "an explicit 0 must not fall back to the config value"
+        );
         assert_eq!(resolved.gif_frame, 2);
         assert_eq!(resolved.sizes.as_deref(), Some("32"));
         assert_eq!(resolved.preset, Some(SizePreset::Favicon));
@@ -786,7 +846,14 @@ mod tests {
         assert!(resolved.delete_source && resolved.combine && resolved.auto_apply);
 
         let resolved = ResolvedSettings::resolve(
-            &args(&["--grayscale", "--force", "--silent", "--delete-source", "--combine", "--auto-apply"]),
+            &args(&[
+                "--grayscale",
+                "--force",
+                "--silent",
+                "--delete-source",
+                "--combine",
+                "--auto-apply",
+            ]),
             &Settings::default(),
         );
         assert!(resolved.grayscale && resolved.force && resolved.silent);
@@ -797,10 +864,17 @@ mod tests {
 
     #[test]
     fn to_settings_records_the_resolved_values_including_defaults() {
-        let resolved = ResolvedSettings::resolve(&args(&["--padding", "7", "--grayscale"]), &Settings::default());
+        let resolved = ResolvedSettings::resolve(
+            &args(&["--padding", "7", "--grayscale"]),
+            &Settings::default(),
+        );
         let snapshot = resolved.to_settings();
         assert_eq!(snapshot.padding, Some(7));
-        assert_eq!(snapshot.tolerance, Some(20), "defaults are written out explicitly");
+        assert_eq!(
+            snapshot.tolerance,
+            Some(20),
+            "defaults are written out explicitly"
+        );
         assert_eq!(snapshot.gif_frame, Some(1));
         assert_eq!(snapshot.find_min_size, Some(DEFAULT_FIND_MIN_SIZE));
         assert!(snapshot.grayscale);
@@ -809,7 +883,15 @@ mod tests {
     #[test]
     fn a_snapshot_resolves_to_the_same_settings_again() {
         let first = ResolvedSettings::resolve(
-            &args(&["--tolerance", "33", "--seed", "4,5", "--preset", "windows", "--silent"]),
+            &args(&[
+                "--tolerance",
+                "33",
+                "--seed",
+                "4,5",
+                "--preset",
+                "windows",
+                "--silent",
+            ]),
             &Settings::default(),
         );
         let second = ResolvedSettings::resolve(&args(&[]), &first.to_settings());
