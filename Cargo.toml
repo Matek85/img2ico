@@ -20,7 +20,7 @@ clap = { version = "4", features = ["derive"] }
 # 16x16 and 256x256 together). The "image" crate alone can't do that as
 # conveniently, so we combine both: "image" for reading/resizing, "ico"
 # for finally assembling the .ico file.
-ico = "0.3"
+ico = "0.5"
 
 # For the --config/--out-toml settings file: "serde" handles converting
 # our Rust structs to/from a generic data format, "toml" is the actual
