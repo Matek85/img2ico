@@ -80,12 +80,67 @@ fn color_distance(pixel: &Rgba<u8>, target: [u8; 3]) -> f32 {
     (dr * dr + dg * dg + db * db).sqrt()
 }
 
+/// The SQUARED distance between a pixel's color and the target, as a whole
+/// number. Comparing squared distances against a squared threshold gives
+/// the same answer as comparing real distances, but needs no square root.
+/// That matters because this comparison runs once for every pixel of the
+/// image, which is where the time goes for large sources. The per-channel
+/// differences are whole numbers of at most 255, so the sum (at most
+/// 195,075) is exact.
+///
+/// `pixel` is one pixel's RGBA bytes; only the color channels are used.
+fn squared_color_distance(pixel: &[u8], target: [u8; 3]) -> u32 {
+    let dr = u32::from(pixel[0].abs_diff(target[0]));
+    let dg = u32::from(pixel[1].abs_diff(target[1]));
+    let db = u32::from(pixel[2].abs_diff(target[2]));
+    dr * dr + dg * dg + db * db
+}
+
+/// The largest squared distance that still counts as "within
+/// `max_distance`" - so `squared_color_distance(..) <= limit` is exactly
+/// equivalent to `color_distance(..) <= max_distance`, without taking a
+/// square root per pixel.
+///
+/// Starting from the mathematical answer (`max_distance` squared, rounded
+/// down) and then nudging it until it agrees with the real `sqrt`
+/// comparison makes the equivalence hold even at the boundary, where
+/// floating-point rounding could otherwise decide a pixel differently
+/// than before - the two approaches must never disagree about a single
+/// pixel.
+fn squared_distance_limit(max_distance: f32) -> u32 {
+    let mut limit = (max_distance * max_distance) as u32;
+    while ((limit + 1) as f32).sqrt() <= max_distance {
+        limit += 1;
+    }
+    while limit > 0 && (limit as f32).sqrt() > max_distance {
+        limit -= 1;
+    }
+    limit
+}
+
+/// Decides for every pixel, in one linear pass over the image, whether it
+/// counts as "background": either already fully transparent (then it
+/// already belongs to the background anyway, and the flood fill should be
+/// able to pass through such areas), or close enough to the target color.
+///
+/// Computing this once up front (instead of re-checking a pixel every
+/// time a neighbor looks at it) means each pixel's color is examined
+/// exactly once, no matter how often the flood fill visits its
+/// neighborhood. Shared by the border flood fill and --find's region
+/// labeling, so both agree on what "background" means.
+fn background_candidates(img: &RgbaImage, target: [u8; 3], tolerance_percent: u8) -> Vec<bool> {
+    let limit = squared_distance_limit(tol_distance_from_percent(tolerance_percent));
+    img.as_raw()
+        .chunks_exact(4)
+        .map(|pixel| pixel[3] == 0 || squared_color_distance(pixel, target) <= limit)
+        .collect()
+}
+
 /// The 4 direct neighbors (up/down/left/right) of (x, y), each as
 /// `Some((nx, ny))` when it's actually inside the image, `None` when it
-/// would fall outside. Shared by the two flood-fill algorithms in this
-/// file (the border-based one in flood_fill_reachable, and the
-/// component-labeling one in find_isolated_regions) so both walk the
-/// image the exact same way.
+/// would fall outside. Used by --find's region labeling, which has to
+/// visit a region's pixels in breadth-first order (see
+/// find_isolated_regions for why the order matters there).
 fn in_bounds_neighbors(x: u32, y: u32, width: u32, height: u32) -> [Option<(u32, u32)>; 4] {
     [
         x.checked_sub(1).map(|nx| (nx, y)),
@@ -93,6 +148,13 @@ fn in_bounds_neighbors(x: u32, y: u32, width: u32, height: u32) -> [Option<(u32,
         y.checked_sub(1).map(|ny| (x, ny)),
         Some(y + 1).filter(|&v| v < height).map(|ny| (x, ny)),
     ]
+}
+
+/// The position of pixel (x, y) in a flat, row-by-row `width * height`
+/// buffer such as the ones below. Computed in `usize` so large images
+/// can't overflow a 32-bit multiplication.
+fn flat_index(x: u32, y: u32, width: u32) -> usize {
+    y as usize * width as usize + x as usize
 }
 
 /// Computes which pixels are reachable via flood fill from the image
@@ -113,43 +175,64 @@ fn flood_fill_reachable(
     extra_seeds: &[(u32, u32)],
     silent: bool,
 ) -> Vec<bool> {
-    let (width, height) = img.dimensions();
-    let tol_distance = tol_distance_from_percent(tolerance_percent);
+    let candidates = background_candidates(img, target, tolerance_percent);
+    flood_fill_from_candidates(img.width(), img.height(), &candidates, extra_seeds, silent)
+}
+
+/// The flood fill itself, working on a precomputed candidate mask (see
+/// background_candidates) instead of on colors: starting from every
+/// candidate pixel on the image border (plus the extra seeds), it spreads
+/// through all 4-connected candidate pixels.
+///
+/// This is a "scanline" fill: rather than handling one pixel at a time, it
+/// grows a whole horizontal run of candidates at once, then looks at the
+/// rows directly above and below that run for the next runs to grow.
+/// That reaches exactly the same set of pixels as stepping from pixel to
+/// pixel would (the result doesn't depend on the order), but touches
+/// memory in long sequential stretches and needs far fewer stack
+/// operations - a large, uniform background is a handful of runs per row
+/// instead of one queue entry per pixel.
+fn flood_fill_from_candidates(
+    width: u32,
+    height: u32,
+    candidates: &[bool],
+    extra_seeds: &[(u32, u32)],
+    silent: bool,
+) -> Vec<bool> {
+    let (w, h) = (width as usize, height as usize);
 
     // "visited" tracks, for every pixel, whether it's part of the
     // background region found from the border. Organized as a
     // one-dimensional vector (index = y * width + x), since Rust doesn't
     // have native dynamically-sized 2D arrays.
-    let mut visited = vec![false; (width * height) as usize];
-    let idx = |x: u32, y: u32| -> usize { (y * width + x) as usize };
+    let mut visited = vec![false; w * h];
+    if w == 0 || h == 0 {
+        return visited;
+    }
 
-    // Checks whether a pixel should count as "background": either already
-    // fully transparent (then it already belongs to the background anyway,
-    // and the flood fill should be able to pass through such areas), or
-    // close enough to the target color.
-    let is_background_candidate = |img: &RgbaImage, x: u32, y: u32| -> bool {
-        let pixel = img.get_pixel(x, y);
-        pixel[3] == 0 || color_distance(pixel, target) <= tol_distance
+    // Run starting points: pixels that are already marked as visited, but
+    // whose horizontal run hasn't been grown (and whose neighboring rows
+    // haven't been looked at) yet.
+    let mut starts: Vec<(usize, usize)> = Vec::new();
+
+    // Marks (x, y) as visited and queues it, if it's a background
+    // candidate that hasn't been reached yet.
+    let mut start_at = |visited: &mut [bool], x: usize, y: usize| {
+        let i = y * w + x;
+        if !visited[i] && candidates[i] {
+            visited[i] = true;
+            starts.push((x, y));
+        }
     };
 
-    // The queue for the breadth-first search (BFS). We start with all
-    // border pixels that satisfy the condition above.
-    let mut queue: VecDeque<(u32, u32)> = VecDeque::new();
-    for x in 0..width {
-        for &y in &[0, height - 1] {
-            if !visited[idx(x, y)] && is_background_candidate(img, x, y) {
-                visited[idx(x, y)] = true;
-                queue.push_back((x, y));
-            }
-        }
+    // Start with all border pixels that satisfy the condition.
+    for x in 0..w {
+        start_at(&mut visited, x, 0);
+        start_at(&mut visited, x, h - 1);
     }
-    for y in 0..height {
-        for &x in &[0, width - 1] {
-            if !visited[idx(x, y)] && is_background_candidate(img, x, y) {
-                visited[idx(x, y)] = true;
-                queue.push_back((x, y));
-            }
-        }
+    for y in 0..h {
+        start_at(&mut visited, 0, y);
+        start_at(&mut visited, w - 1, y);
     }
 
     // Enqueue extra, user-specified (or --find --auto-apply-discovered)
@@ -158,7 +241,7 @@ fn flood_fill_reachable(
     // lets the flood fill "jump into" an enclosed area that would
     // otherwise be unreachable from the image border (e.g. because a
     // frame/ring sits in between). The actual spreading from that point
-    // then works exactly as normal, via the tolerance comparison.
+    // then works exactly as normal, via the candidate mask.
     for &(x, y) in extra_seeds {
         if x >= width || y >= height {
             if !silent {
@@ -168,24 +251,45 @@ fn flood_fill_reachable(
             }
             continue;
         }
-        if !visited[idx(x, y)] {
-            visited[idx(x, y)] = true;
-            queue.push_back((x, y));
+        let (x, y) = (x as usize, y as usize);
+        if !visited[y * w + x] {
+            visited[y * w + x] = true;
+            starts.push((x, y));
         }
     }
 
-    // Breadth-first search: from every pixel marked as "background", check
-    // the 4 direct neighbors and, on a match, mark them as background too
-    // and add them to the queue. This continues until no new connected
-    // area is found.
-    while let Some((x, y)) = queue.pop_front() {
-        for (nx, ny) in in_bounds_neighbors(x, y, width, height)
+    while let Some((x, y)) = starts.pop() {
+        let row = y * w;
+
+        // Grow the run left and right from the starting pixel, for as long
+        // as the neighboring pixel is an unreached candidate.
+        let mut left = x;
+        while left > 0 && !visited[row + left - 1] && candidates[row + left - 1] {
+            left -= 1;
+            visited[row + left] = true;
+        }
+        let mut right = x;
+        while right + 1 < w && !visited[row + right + 1] && candidates[row + right + 1] {
+            right += 1;
+            visited[row + right] = true;
+        }
+
+        // Look at the pixels directly above and below the run. Only the
+        // first pixel of each stretch of reachable candidates needs to
+        // become a new starting point - growing it sideways finds the rest.
+        for neighbor_y in [y.checked_sub(1), Some(y + 1).filter(|&ny| ny < h)]
             .into_iter()
             .flatten()
         {
-            if !visited[idx(nx, ny)] && is_background_candidate(img, nx, ny) {
-                visited[idx(nx, ny)] = true;
-                queue.push_back((nx, ny));
+            let neighbor_row = neighbor_y * w;
+            let mut in_stretch = false;
+            for nx in left..=right {
+                let reachable = !visited[neighbor_row + nx] && candidates[neighbor_row + nx];
+                if reachable && !in_stretch {
+                    visited[neighbor_row + nx] = true;
+                    starts.push((nx, neighbor_y));
+                }
+                in_stretch = reachable;
             }
         }
     }
@@ -226,9 +330,7 @@ pub fn apply_chroma_key(
     replacement: Option<[u8; 3]>,
     silent: bool,
 ) {
-    let (width, height) = img.dimensions();
     let tol_distance = tol_distance_from_percent(tolerance_percent);
-    let idx = |x: u32, y: u32| -> usize { (y * width + x) as usize };
 
     let visited = flood_fill_reachable(img, target, tolerance_percent, extra_seeds, silent);
 
@@ -253,49 +355,47 @@ pub fn apply_chroma_key(
     //     then only affects real edges of the subject, not the whole
     //     background area anymore.
     let core_distance = tol_distance * 0.5;
+    // The core zone covers the bulk of a typical background, so it gets
+    // the cheap whole-number test; only pixels outside it need the real
+    // distance (for the feather's gradual blend).
+    let core_limit = squared_distance_limit(core_distance);
 
-    for y in 0..height {
-        for x in 0..width {
-            if !visited[idx(x, y)] {
-                continue;
-            }
-            let pixel = img.get_pixel_mut(x, y);
-            if pixel[3] == 0 {
-                continue; // already fully transparent, nothing to do
-            }
+    for (pixel, &reached) in img.pixels_mut().zip(&visited) {
+        if !reached || pixel[3] == 0 {
+            continue; // not background, or already fully transparent
+        }
+        // scale = 0.0 in the core zone (full effect), ramping up to
+        // 1.0 at the tolerance boundary (no effect) - shared by both
+        // modes below, just applied to a different channel.
+        let scale = if squared_color_distance(&pixel.0, target) <= core_limit {
+            0.0
+        } else if tol_distance > core_distance {
             let distance = color_distance(pixel, target);
-            // scale = 0.0 in the core zone (full effect), ramping up to
-            // 1.0 at the tolerance boundary (no effect) - shared by both
-            // modes below, just applied to a different channel.
-            let scale = if distance <= core_distance {
-                0.0
-            } else if tol_distance > core_distance {
-                ((distance - core_distance) / (tol_distance - core_distance)).clamp(0.0, 1.0)
-            } else {
-                // Edge case (tolerance very small/0): no feather zone
-                // exists, everything outside the core zone stays unchanged.
-                1.0
-            };
+            ((distance - core_distance) / (tol_distance - core_distance)).clamp(0.0, 1.0)
+        } else {
+            // Edge case (tolerance very small/0): no feather zone
+            // exists, everything outside the core zone stays unchanged.
+            1.0
+        };
 
-            match replacement {
-                None => {
-                    // Transparency mode (the original behavior): fade
-                    // alpha down towards 0.
-                    pixel[3] = (pixel[3] as f32 * scale).round() as u8;
-                }
-                Some(new_color) => {
-                    // Replacement mode: blend the pixel's RGB towards the
-                    // new color instead - "how much of the original color
-                    // to keep" is just `scale` again, applied per
-                    // channel. Alpha is deliberately left untouched: this
-                    // is a solid recolor, not a transparency change.
-                    for channel in 0..3 {
-                        let original = pixel[channel] as f32;
-                        let target_channel = new_color[channel] as f32;
-                        pixel[channel] = (original * scale + target_channel * (1.0 - scale))
-                            .round()
-                            .clamp(0.0, 255.0) as u8;
-                    }
+        match replacement {
+            None => {
+                // Transparency mode (the original behavior): fade
+                // alpha down towards 0.
+                pixel[3] = (pixel[3] as f32 * scale).round() as u8;
+            }
+            Some(new_color) => {
+                // Replacement mode: blend the pixel's RGB towards the
+                // new color instead - "how much of the original color
+                // to keep" is just `scale` again, applied per
+                // channel. Alpha is deliberately left untouched: this
+                // is a solid recolor, not a transparency change.
+                for channel in 0..3 {
+                    let original = pixel[channel] as f32;
+                    let target_channel = new_color[channel] as f32;
+                    pixel[channel] = (original * scale + target_channel * (1.0 - scale))
+                        .round()
+                        .clamp(0.0, 255.0) as u8;
                 }
             }
         }
@@ -324,7 +424,7 @@ pub const DEFAULT_FIND_MIN_SIZE: usize = 9;
 /// someone to hunt for pixel coordinates in an image editor first.
 ///
 /// How: first compute what the normal border flood fill would already
-/// reach (flood_fill_reachable, with no extra seeds). Then scan every
+/// reach (flood_fill_from_candidates, with no extra seeds). Then scan every
 /// remaining pixel for a color match; whatever's left is grouped into
 /// separate connected regions the same way (flood fill), just without
 /// requiring a path back to the border. Each resulting region becomes one
@@ -341,33 +441,32 @@ pub fn find_isolated_regions(
     silent: bool,
 ) -> Vec<FoundRegion> {
     let (width, height) = img.dimensions();
-    let tol_distance = tol_distance_from_percent(tolerance_percent);
-    let idx = |x: u32, y: u32| -> usize { (y * width + x) as usize };
-
-    let is_candidate = |x: u32, y: u32| -> bool {
-        let pixel = img.get_pixel(x, y);
-        pixel[3] == 0 || color_distance(pixel, target) <= tol_distance
-    };
+    let candidates = background_candidates(img, target, tolerance_percent);
 
     // Anything the normal border-based flood fill already reaches doesn't
     // need to be "found" - it'll be handled anyway. We start our own
     // labeling from this, treating those pixels as already accounted for.
-    let mut labeled = flood_fill_reachable(img, target, tolerance_percent, &[], silent);
+    let mut labeled = flood_fill_from_candidates(width, height, &candidates, &[], silent);
 
     let mut regions = Vec::new();
 
     for y in 0..height {
         for x in 0..width {
-            if labeled[idx(x, y)] || !is_candidate(x, y) {
+            let start = flat_index(x, y, width);
+            if labeled[start] || !candidates[start] {
                 continue;
             }
 
             // Found the start of a new, previously-unaccounted-for region -
-            // flood fill across it (same 4-connectivity as everywhere else
-            // in this file), collecting every member pixel.
+            // flood fill across it (same 4-connectivity as the border
+            // fill), collecting every member pixel. Unlike the border
+            // fill, this deliberately walks the region breadth-first, pixel
+            // by pixel: the order members are collected in decides which
+            // of several equally-central pixels becomes the suggested
+            // seed below, and --find's output should stay stable.
             let mut queue: VecDeque<(u32, u32)> = VecDeque::new();
             let mut members: Vec<(u32, u32)> = Vec::new();
-            labeled[idx(x, y)] = true;
+            labeled[start] = true;
             queue.push_back((x, y));
 
             while let Some((cx, cy)) = queue.pop_front() {
@@ -376,8 +475,9 @@ pub fn find_isolated_regions(
                     .into_iter()
                     .flatten()
                 {
-                    if !labeled[idx(nx, ny)] && is_candidate(nx, ny) {
-                        labeled[idx(nx, ny)] = true;
+                    let neighbor = flat_index(nx, ny, width);
+                    if !labeled[neighbor] && candidates[neighbor] {
+                        labeled[neighbor] = true;
                         queue.push_back((nx, ny));
                     }
                 }
@@ -1113,6 +1213,150 @@ mod tests {
                     .map(|r| (r.pixel_count, r.seed))
                     .collect();
             prop_assert_eq!(found, reference::find(&img, target, tolerance, min_size));
+        }
+    }
+
+    // --- Whole-number distance comparison ---------------------------------------
+
+    #[test]
+    fn squared_limit_agrees_with_the_real_distance_for_every_possible_distance() {
+        // Every tolerance the program can produce (0-100%), against every
+        // squared distance that can occur between two RGB colors.
+        const MAX_SQUARED: u32 = 3 * 255 * 255;
+        for percent in 0..=100u8 {
+            let max_distance = tol_distance_from_percent(percent);
+            let limit = squared_distance_limit(max_distance);
+            for squared in 0..=MAX_SQUARED {
+                let by_sqrt = (squared as f32).sqrt() <= max_distance;
+                assert_eq!(
+                    squared <= limit,
+                    by_sqrt,
+                    "{percent}% at squared distance {squared}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn squared_limit_is_right_for_the_core_zone_thresholds_too() {
+        const MAX_SQUARED: u32 = 3 * 255 * 255;
+        for percent in 0..=100u8 {
+            let core_distance = tol_distance_from_percent(percent) * 0.5;
+            let limit = squared_distance_limit(core_distance);
+            for squared in (0..=MAX_SQUARED).step_by(7) {
+                let by_sqrt = (squared as f32).sqrt() <= core_distance;
+                assert_eq!(
+                    squared <= limit,
+                    by_sqrt,
+                    "{percent}% core, squared {squared}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn squared_color_distance_matches_the_real_distance() {
+        let a = [12u8, 200, 99, 255];
+        let target = [250u8, 3, 99];
+        let real = color_distance(&Rgba(a), target);
+        assert_eq!((squared_color_distance(&a, target) as f32).sqrt(), real);
+        assert_eq!(
+            squared_color_distance(&[0, 0, 0, 0], [255, 255, 255]),
+            195_075
+        );
+        assert_eq!(squared_color_distance(&[7, 8, 9, 0], [7, 8, 9]), 0);
+    }
+
+    #[test]
+    fn candidate_mask_marks_matching_and_transparent_pixels() {
+        let mut img = solid(3, 1, RED);
+        img.put_pixel(0, 0, rgba(GREEN));
+        img.put_pixel(1, 0, Rgba([255, 0, 0, 0])); // transparent, wrong color
+        let mask = background_candidates(&img, GREEN, 20);
+        assert_eq!(mask, vec![true, true, false]);
+    }
+
+    #[test]
+    fn flood_fill_of_an_empty_image_does_not_panic() {
+        let img = RgbaImage::new(0, 0);
+        assert!(flood_fill_reachable(&img, GREEN, 20, &[(0, 0)], true).is_empty());
+        assert!(find_isolated_regions(&img, GREEN, 20, 1, true).is_empty());
+    }
+
+    #[test]
+    fn flood_fill_handles_single_row_and_single_column_images() {
+        for (w, h) in [(9, 1), (1, 9)] {
+            let img = solid(w, h, GREEN);
+            assert!(
+                flood_fill_reachable(&img, GREEN, 20, &[], true)
+                    .iter()
+                    .all(|&v| v)
+            );
+        }
+    }
+
+    #[test]
+    fn flood_fill_follows_a_winding_corridor() {
+        // A 1-pixel-wide serpentine path of green through red walls: the
+        // fill has to turn around many times to get from one end to the
+        // other.
+        let mut img = solid(9, 9, RED);
+        for y in (0..9).step_by(2) {
+            fill_rect(&mut img, (0, y), (8, y), GREEN);
+        }
+        for (i, y) in (1..9).step_by(2).enumerate() {
+            let x = if i % 2 == 0 { 8 } else { 0 };
+            img.put_pixel(x, y, rgba(GREEN));
+        }
+        let visited = flood_fill_reachable(&img, GREEN, 20, &[], true);
+        assert_eq!(visited, reference::flood_fill(&img, GREEN, 20, &[]));
+        assert!(visited[8 * 9 + 8], "the far end of the corridor is reached");
+    }
+
+    /// Larger images with mostly background-colored pixels, so there are
+    /// long runs and irregular shapes that stress the row-by-row fill
+    /// (the small images above are dominated by the border).
+    fn arbitrary_large_image() -> impl Strategy<Value = RgbaImage> {
+        (20u32..=60, 20u32..=60).prop_flat_map(|(w, h)| {
+            let pixel = prop_oneof![
+                8 => Just([0u8, 255, 0, 255]),
+                2 => Just([255u8, 0, 0, 255]),
+                1 => arbitrary_pixel(),
+            ];
+            proptest::collection::vec(pixel, (w * h) as usize).prop_map(move |px| {
+                let raw: Vec<u8> = px.into_iter().flatten().collect();
+                RgbaImage::from_raw(w, h, raw).unwrap()
+            })
+        })
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(300))]
+
+        #[test]
+        fn large_images_match_the_reference(
+            img in arbitrary_large_image(),
+            tolerance in arbitrary_tolerance(),
+            seeds in proptest::collection::vec((0u32..70, 0u32..70), 0..=4),
+            replacement in proptest::option::of(any::<[u8; 3]>()),
+        ) {
+            prop_assert_eq!(
+                flood_fill_reachable(&img, GREEN, tolerance, &seeds, true),
+                reference::flood_fill(&img, GREEN, tolerance, &seeds)
+            );
+
+            let mut optimized = img.clone();
+            let mut expected = img.clone();
+            apply_chroma_key(&mut optimized, GREEN, tolerance, &seeds, replacement, true);
+            reference::apply(&mut expected, GREEN, tolerance, &seeds, replacement);
+            prop_assert_eq!(optimized, expected);
+
+            let found: Vec<(usize, (u32, u32))> =
+                find_isolated_regions(&img, GREEN, tolerance, 1, true)
+                    .into_iter()
+                    .map(|r| (r.pixel_count, r.seed))
+                    .collect();
+            prop_assert_eq!(found, reference::find(&img, GREEN, tolerance, 1));
         }
     }
 

@@ -24,6 +24,11 @@ when cutting a release.
 - Dependencies are no longer pinned to old versions and were updated:
   `image` 0.25.10, `clap` 4.6, `toml` 1.1 and `ico` 0.5. `--out-toml`
   now writes standard double-quoted strings.
+- `--chroma-key` and `--find` are considerably faster on large images
+  (a 6000x6000 source: 0.75 s to 0.45 s and 0.48 s to 0.17 s, including
+  loading). The results are identical - the colors are now compared once
+  per pixel in whole numbers instead of repeatedly with square roots, and
+  the background is filled row by row. No behavior change.
 
 ### Added
 
