@@ -44,6 +44,37 @@ cargo build --release
 
 The binary is at `target/release/img2ico` (`img2ico.exe` on Windows). The source is platform-neutral — the same command builds it on Windows, macOS and Linux.
 
+### Check the installation
+
+```
+img2ico --version
+```
+
+```
+img2ico 1.4.0
+target:   x86_64-pc-windows-msvc
+compiler: rustc 1.97.1 (8bab26f4f 2026-07-14)
+```
+
+`-V` prints just the first line. The platform and compiler lines are what a bug report needs, so please include them.
+
+### Tab completion (optional)
+
+`--completions <shell>` prints a completion script for `bash`, `zsh`, `fish`, `powershell` or `elvish`, generated from the program's own option definitions so it always matches your version. Save it where your shell looks for completions, for example:
+
+```
+# bash
+img2ico --completions bash > ~/.local/share/bash-completion/completions/img2ico
+
+# fish
+img2ico --completions fish > ~/.config/fish/completions/img2ico.fish
+
+# PowerShell: add this line to your profile ($PROFILE)
+img2ico --completions powershell | Out-String | Invoke-Expression
+```
+
+For zsh, put the output of `img2ico --completions zsh` in a file named `_img2ico` in a directory on your `fpath`.
+
 ## Quick start
 
 ```
@@ -62,7 +93,7 @@ Usage: img2ico [OPTIONS] <INPUT>...
 
 | Flag | Short | Value | Purpose |
 |---|---|---|---|
-| `--output` | `-o` | path | Where to write the result (a file, or a directory for some modes) |
+| `--output` | `-o` | path | Where to write the result (a file, or a directory for some modes); `-o -` (standard output) is not supported |
 | `--sizes` | `-s` | comma list | Icon sizes to generate (default `16,32,48,64,128,256`) |
 | `--preset` | | `windows` / `favicon` / `minimal` | A predefined size set, instead of `--sizes` |
 | `--padding` | | 0–100 (default 0) | Transparent margin around the artwork, in percent |
@@ -85,8 +116,12 @@ Usage: img2ico [OPTIONS] <INPUT>...
 | `--force` | `-f` | | Allow overwriting existing output |
 | `--delete-source` | | | Delete the input file(s) after a successful run |
 | `--config` | | path | Load default settings from a TOML file |
+| `--no-config` | | | Ignore every settings file (cannot be combined with `--config`) |
 | `--out-toml` | | path | Save the settings used for this run as a TOML file |
 | `--silent` | | | Suppress warnings and notices |
+| `--verbose` | `-v` | | Print diagnostic details to stderr (cannot be combined with `--silent`) |
+| `--completions` | | shell | Print a tab-completion script and exit |
+| `--version` | `-V` | | Print the version, platform and compiler (`-V`: just the version) |
 | `--help` | `-h` | | Full built-in help |
 
 **Modes.** `--merge`, `--inspect`, `--extract`, `--select` and `--output-format` are mutually exclusive: each changes what the tool does with its input, so only one can be active per run. Everything else can be combined freely. The exclusivity check looks at what you actually typed, not at the automatic macOS default — so `--merge` works normally on a Mac without ever mentioning `--output-format`.
@@ -327,7 +362,7 @@ img2ico --merge small.ico large.ico -o combined.ico --delete-source
 
 ## Settings files
 
-With more than twenty flags, typing the same combination each time gets old. A TOML settings file sets defaults for the "tuning" options: sizes or preset, the chroma-key/`--find` options, padding, grayscale, GIF frame, `--output-format`, `--force`, `--delete-source`, `--silent`, and `--select`'s `--combine`/`--index`. **Not** covered: the input file(s), `-o`, and the mode (`--merge`/`--inspect`/`--extract`/`--select`) — those change with every run. An explicit command-line flag always wins over the file; the file only fills in what you didn't type.
+With more than twenty flags, typing the same combination each time gets old. A TOML settings file sets defaults for the "tuning" options: sizes or preset, the chroma-key/`--find` options, padding, grayscale, GIF frame, `--output-format`, `--force`, `--delete-source`, `--silent`, and `--select`'s `--combine`/`--index`. **Not** covered: the input file(s), `-o`, and the mode (`--merge`/`--inspect`/`--extract`/`--select`) — those change with every run. An explicit command-line flag always wins over a file; a file only fills in what you didn't type. Where the files sit, and how they layer, is described under [Which settings files apply](#which-settings-files-apply).
 
 ### TOML in brief
 
@@ -383,9 +418,25 @@ A notice names the file that was used, so behavior never changes silently:
 Using settings from 'my-settings.toml'.
 ```
 
-### Automatic pickup
+### Which settings files apply
 
-If `--config` isn't given, img2ico uses a file named exactly `img2ico.toml` in the current directory, if there is one — handy for a project folder where you always want the same settings. An explicit `--config` replaces this lookup entirely; the two are never merged.
+Up to two files can contribute, plus the built-in defaults. From highest to lowest priority:
+
+1. **The command line.**
+2. **The project file:** the one named with `--config`, or else a file called exactly `img2ico.toml` in the current directory — handy for a project folder where you always want the same settings. An explicit `--config` replaces this lookup entirely; the two are never merged.
+3. **The per-user file**, for your own defaults everywhere:
+
+   | Platform | Location |
+   |---|---|
+   | Windows | `%APPDATA%\img2ico\config.toml` |
+   | macOS | `~/Library/Application Support/img2ico/config.toml` |
+   | Linux and others | `$XDG_CONFIG_HOME/img2ico/config.toml`, or `~/.config/img2ico/config.toml` |
+
+4. **The built-in defaults.**
+
+The layers combine setting by setting, not all or nothing: a project file that only sets `sizes` still gets `padding` from your user file. A setting that takes a list (`seeds`) is replaced by the higher layer's list, not added to, and on/off settings (`grayscale`, `force`, …) are on if any layer turns them on. Every file that was used is named in a notice, so nothing changes silently.
+
+`--no-config` ignores all settings files for one run — handy to reproduce a result or when an automatically found file gets in the way. To see what the layers add up to, use `--verbose` (below): it prints the settings actually in effect.
 
 ### Typos are reported
 
@@ -409,15 +460,21 @@ The [`examples/`](examples/) folder has ready-to-use settings files for a Window
 
 `--silent` can also be set in a settings file, with one nuance: it only takes effect once that file has been loaded, so it can never hide a warning about the file itself.
 
+**Diagnostics.** `--verbose` (`-v`) prints details to standard error while it works: the settings actually in effect after all layers are combined (in the same form `--out-toml` writes), the source image, the output, background removal, each generated size with its byte count, and how long the steps took. Standard output is unchanged, so scripts keep working. It is command-line only and cannot be combined with `--silent`.
+
 **Exit codes.**
 
 | Code | Meaning |
 |---|---|
 | `0` | Success |
 | `1` | The run failed (unreadable input, refused overwrite, invalid option value, …); the reason is printed to stderr |
-| `2` | The command line itself is invalid (missing input, unknown flag) |
+| `2` | The command line itself is invalid (missing input, unknown flag, options that can't be combined) |
 
-**Pipes.** Piping output into a program that closes early (for example `img2ico --inspect big.ico | head`) exits cleanly instead of showing a panic.
+`--help`, `--version` and `--completions` exit with `0`.
+
+**Pipes.** Piping output into a program that closes early (for example `img2ico --inspect big.ico | head`) exits cleanly instead of showing a panic. The reports of `--inspect` and `--find` go to standard output and warnings and errors to standard error, so `grep` and friends see only the report.
+
+img2ico reads and writes files only: it does not read an image from standard input, and `-o -` (write to standard output) is rejected with an error rather than creating a file called `-`. To really write a file named `-`, use `-o ./-`.
 
 `examples/automated-pipeline.toml` is a ready-made starting point for build scripts.
 
@@ -456,6 +513,7 @@ img2ico logo.png --output-format icns --force
 - Every icon size is PNG-encoded at full color depth — never the older, lower-quality BMP-with-reduced-palette format. Whenever the image has any transparency, the PNG carries a full alpha channel; a fully opaque icon is stored without one, since there is nothing to preserve.
 - Resizing is alpha-aware (premultiplied), so shrinking a transparent image doesn't leave a colored fringe around soft edges.
 - Destructive operations are opt-in and fail safe: nothing is overwritten without `--force`, and nothing is deleted unless the run succeeded.
+- **Privacy:** img2ico works entirely on your machine. It never opens a network connection, has no telemetry, no update check and uploads nothing; it only reads the files you name and writes the files you ask for.
 - Input parsing is hardened against malformed and adversarial input and covered by property-based tests.
 - Every change is checked by the automated test suite, `rustfmt` and `clippy` (warnings are errors) on Windows, macOS and Linux — see [Development](#development).
 

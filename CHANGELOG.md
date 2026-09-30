@@ -10,6 +10,43 @@ when cutting a release.
 
 ## [Unreleased]
 
+### Added
+
+- `--version` prints the version together with the platform and the
+  compiler the binary was built with - what a bug report needs. `-V`
+  prints just the version.
+- An optional per-user settings file (Windows:
+  `%APPDATA%\img2ico\config.toml`, macOS:
+  `~/Library/Application Support/img2ico/config.toml`, elsewhere:
+  `$XDG_CONFIG_HOME/img2ico/config.toml` or
+  `~/.config/img2ico/config.toml`). Settings now layer, setting by
+  setting: command line, then the project file
+  (`--config` or `img2ico.toml`), then the user file, then the built-in
+  defaults. Every file used is named in a notice.
+- `--no-config` ignores every settings file for one run. It cannot be
+  combined with `--config`.
+- `--verbose` / `-v` prints diagnostics to standard error: the settings
+  actually in effect, the source image, the output, each generated size
+  with its byte count, and timings. Standard output is unchanged; it
+  cannot be combined with `--silent`.
+- `--completions <shell>` prints a tab-completion script for bash, zsh,
+  fish, PowerShell or elvish, generated from the program's own option
+  definitions.
+- README: a privacy statement (no network access, no telemetry) and a
+  description of how the settings files layer.
+
+### Changed
+
+- The release binary grows by about 120 KB (1.57 MB to 1.69 MB on
+  Windows) because of the completion generator and the additional help
+  text.
+
+### Fixed
+
+- `-o -` (the usual spelling for standard output, which is not supported)
+  no longer creates a file literally named `-` and reports success; it is
+  now an error for every mode. `-o ./-` still writes a file with that name.
+
 ## [1.4.0] - 2026-09-30
 
 ### Changed
