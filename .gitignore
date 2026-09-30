@@ -37,3 +37,4 @@ desktop.ini
 # ignore Markdownlint.json as it is only relevant for coding env
 
 .markdownlint.json
+features.json
