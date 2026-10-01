@@ -1,0 +1,200 @@
+name: Release
+
+# Publishes a GitHub Release when a version tag like "v1.7.0" is pushed:
+#   1. checks that the tag, Cargo.toml and CHANGELOG.md agree,
+#   2. runs the whole CI workflow as a gate - a red test suite means no
+#      release (the tag then has to be deleted and set again after the fix),
+#   3. builds the release binaries on Windows, macOS and Linux, smoke-tests
+#      each one and packages it with the examples, README and LICENSE,
+#   4. creates the release with the matching CHANGELOG.md section as its
+#      description and the three bundles attached.
+#
+# Started by hand from the GitHub UI ("Run workflow") it does steps 1 to 3
+# only - a rehearsal that builds the bundles without publishing anything.
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+
+# Read-only by default; only the publishing job gets write access.
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # The version the release is about must be the same everywhere, and the
+  # changelog must say what is in it - this also produces the description.
+  check:
+    name: Check tag, version and changelog
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.versions.outputs.version }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Compare tag, Cargo.toml and CHANGELOG.md
+        id: versions
+        shell: bash
+        run: |
+          cargo_version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
+          echo "Cargo.toml version: $cargo_version"
+
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            tag_version="${GITHUB_REF_NAME#v}"
+            echo "Tag version:        $tag_version"
+            if [ "$tag_version" != "$cargo_version" ]; then
+              echo "::error::The tag $GITHUB_REF_NAME does not match version $cargo_version in Cargo.toml."
+              exit 1
+            fi
+          else
+            echo "Not a tag run (rehearsal): using the version from Cargo.toml."
+          fi
+
+          # The section of the changelog for this version: the lines after
+          # its "## [x.y.z]" heading up to the next "## [" heading.
+          awk -v heading="## [$cargo_version]" '
+            index($0, heading) == 1 { found = 1; next }
+            found && index($0, "## [") == 1 { exit }
+            found { print }
+          ' CHANGELOG.md > release-notes.md
+
+          if ! grep -q '[^[:space:]]' release-notes.md; then
+            echo "::error::CHANGELOG.md has no (or an empty) section '## [$cargo_version]'."
+            exit 1
+          fi
+          echo "Release notes:"
+          cat release-notes.md
+          echo "version=$cargo_version" >> "$GITHUB_OUTPUT"
+
+      - name: Keep the release notes for the publishing job
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-notes
+          path: release-notes.md
+
+  # The gate: the complete CI workflow (format, clippy and tests on all
+  # three platforms, the minimum Rust version, the .icns check on macOS).
+  ci:
+    name: CI
+    needs: check
+    uses: ./.github/workflows/ci.yml
+
+  # Builds a native release binary on real Windows, macOS and Linux
+  # machines, tries it, and packages it.
+  build:
+    name: Bundle (${{ matrix.os }})
+    needs: [check, ci]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release binary
+        run: cargo build --release --locked
+
+      # The binary that is about to be shipped, not just the test build: it
+      # reports the right version and converts a real image.
+      - name: Smoke-test the release binary
+        shell: bash
+        env:
+          EXPECTED_VERSION: ${{ needs.check.outputs.version }}
+        run: |
+          binary=target/release/img2ico
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then binary="$binary.exe"; fi
+          "$binary" --version
+          "$binary" --version | head -n 1 | grep -F "img2ico $EXPECTED_VERSION"
+          "$binary" .github/testdata/logo.png --output-format ico -o smoke.ico --sizes 16,32
+          test -s smoke.ico
+
+      # Bundles the binary together with examples/, README.md and LICENSE
+      # into one downloadable archive. Two steps because Windows and
+      # macOS/Linux have no common built-in archive tool: Windows uses
+      # PowerShell's Compress-Archive, the others the "zip" command.
+      - name: Package release bundle (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path img2ico-windows | Out-Null
+          Copy-Item target/release/img2ico.exe img2ico-windows/
+          Copy-Item -Recurse examples img2ico-windows/examples
+          Copy-Item README.md img2ico-windows/
+          Copy-Item LICENSE img2ico-windows/
+          Compress-Archive -Path img2ico-windows -DestinationPath img2ico-windows.zip
+
+      - name: Package release bundle (macOS/Linux)
+        if: matrix.os != 'windows-latest'
+        shell: bash
+        run: |
+          if [ "${{ matrix.os }}" = "macos-latest" ]; then
+            os_name=macos
+          else
+            os_name=linux
+          fi
+          folder="img2ico-$os_name"
+          mkdir "$folder"
+          cp target/release/img2ico "$folder/"
+          cp -r examples "$folder/examples"
+          cp README.md "$folder/"
+          cp LICENSE "$folder/"
+          zip -r "img2ico-$os_name.zip" "$folder"
+
+      - name: Upload release bundle
+        uses: actions/upload-artifact@v6
+        with:
+          name: img2ico-${{ matrix.os }}
+          path: img2ico-*.zip
+
+  # Only for a version tag - a manual rehearsal stops after the bundles.
+  # Publishes a permanent, publicly linkable GitHub Release with the three
+  # bundles attached.
+  publish:
+    name: Publish GitHub Release
+    needs: [check, ci, build]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    # Creating a release needs write access to the repository's contents;
+    # it is spelled out here and only here.
+    permissions:
+      contents: write
+    steps:
+      - name: Download the three platform bundles
+        uses: actions/download-artifact@v7
+        with:
+          pattern: img2ico-*
+          path: artifacts
+
+      - name: Download the release notes
+        uses: actions/download-artifact@v7
+        with:
+          name: release-notes
+          path: notes
+
+      # Each platform's zip is already named distinctly by the packaging
+      # step (img2ico-windows.zip / img2ico-macos.zip / img2ico-linux.zip),
+      # so they only need collecting into one flat folder.
+      - name: Collect the bundles
+        run: |
+          mkdir -p release
+          find artifacts -name "*.zip" -exec cp {} release/ \;
+          ls -la release/
+
+      - name: Create the GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          name: ${{ github.ref_name }}
+          # The description is the CHANGELOG.md section of this version.
+          body_path: notes/release-notes.md
+          files: release/*

@@ -876,9 +876,9 @@ cargo clippy --all-targets -- -D warnings
 
 The test suite includes property-based tests that compare the optimized chroma-key and `--find` code against a deliberately naive reference implementation on random images, so speed-ups can't silently change results.
 
-**Continuous integration.** The [GitHub Actions workflow](.github/workflows/main.yml) runs the formatting check, clippy and the full test suite on Windows, macOS and Linux. It runs only when a version tag is pushed or when started manually ("Run workflow"), not on every push.
+**Continuous integration.** The [CI workflow](.github/workflows/ci.yml) runs on every push to `main` and on pull requests (not for pushes that only change documentation such as the README or the changelog), and can be started by hand. It checks the formatting, runs clippy and the full test suite on Windows, macOS and Linux, runs the tests with the minimum supported Rust version (1.88, from `Cargo.toml`), and unpacks a generated `.icns` with Apple's own `iconutil` on a real macOS runner.
 
-**Releasing.** Pushing a tag like `v1.6.0` runs the workflow, builds the bundles for all three platforms, verifies the `.icns` output with Apple's `iconutil`, and publishes a GitHub Release. A failing check blocks the release.
+**Releasing.** Set the new version in `Cargo.toml`, give `CHANGELOG.md` a section `## [x.y.z]`, and push a tag `vx.y.z`. The [release workflow](.github/workflows/release.yml) first checks that tag, `Cargo.toml` and changelog agree, runs the whole CI workflow as a gate, builds and smoke-tests the bundles for all three platforms, and publishes a GitHub Release whose description is that section of the changelog. A failing check blocks the release. Started by hand it does everything except publishing — a rehearsal that produces the bundles as downloadable build artifacts.
 
 > Developed in an extended pair-programming session with [Claude Sonnet 5](https://www.anthropic.com/claude) (Anthropic) — every feature, fix, and piece of documentation in this repo went through iterative review and testing during that process.
 

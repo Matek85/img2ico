@@ -1,0 +1,162 @@
+name: CI
+
+# The checks every change has to pass. Runs on every push to main and on
+# pull requests that touch code, builds and tests on real Windows, macOS and
+# Linux machines, and can also be started by hand ("Run workflow" button) or
+# called by the release workflow, which uses it as its gate.
+#
+# Pushes that only change documentation or other non-code files do not start
+# it - there is nothing to test in a README. (Examples, the Cargo files, the
+# tests and this folder DO count: the tests read the example files, and a
+# change to a workflow should be tried out by running it.)
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
+      - '.markdownlint.json'
+      - '.gitignore'
+  pull_request:
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
+      - '.markdownlint.json'
+      - '.gitignore'
+  workflow_dispatch:
+  workflow_call:
+
+# Nothing here writes to the repository.
+permissions:
+  contents: read
+
+# A newer run for the same branch or tag makes an older, still running one
+# pointless, so it is cancelled instead of burning minutes.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Formatting only needs checking once - it does not depend on the platform.
+  format:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      # "cargo fmt --check" only verifies, it never rewrites anything.
+      - name: Check formatting
+        run: cargo fmt --check
+
+  # Lints and tests on three genuinely separate machines - not a
+  # cross-compile from one OS. Clippy runs on each of them too, because some
+  # code only exists on one platform (Windows paths, the macOS default
+  # output format) and would otherwise never be linted.
+  test:
+    name: Test (${{ matrix.os }})
+    strategy:
+      # If one platform fails, the others still run to completion, so all
+      # three results are visible at once.
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      # Caches ~/.cargo and target/ between runs, keyed by Cargo.lock.
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+
+      # "-D warnings" turns every clippy warning into an error so they can't
+      # pile up unnoticed.
+      - name: Lint with clippy
+        run: cargo clippy --all-targets --locked -- -D warnings
+
+      # The unit tests plus the end-to-end tests in tests/, which start the
+      # real binary.
+      - name: Run tests
+        run: cargo test --locked
+
+  # The oldest Rust version the project says it supports (rust-version in
+  # Cargo.toml). Everything else here uses the newest stable; without this
+  # job the promise in Cargo.toml would never be checked.
+  minimum-rust-version:
+    name: Rust 1.88 (minimum supported)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      # Keep this in step with rust-version in Cargo.toml.
+      - name: Install Rust 1.88
+        uses: dtolnay/rust-toolchain@1.88
+
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run tests
+        run: cargo test --locked
+
+  # Generates a real .icns file on an actual macOS runner, then decomposes
+  # it again with Apple's OWN "iconutil" tool. If Apple's tooling can unpack
+  # the file we produced, that is about as strong a real-world confirmation
+  # of the .icns format as we can get without a person checking it in
+  # Finder (the format was originally verified without any access to a Mac).
+  verify-icns-on-macos:
+    name: Verify .icns with native macOS tools
+    runs-on: macos-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release binary
+        run: cargo build --release --locked
+
+      - name: Generate a test .icns file
+        run: ./target/release/img2ico .github/testdata/logo.png --output-format icns -o test.icns --force
+
+      - name: Decompose the .icns with Apple's own iconutil
+        run: |
+          iconutil -c iconset test.icns -o verified.iconset
+          echo "iconutil successfully unpacked the .icns file - contents:"
+          ls -la verified.iconset
+
+      - name: Inspect with sips (macOS's built-in image tool)
+        run: sips -g all test.icns
+
+      # And the other direction: read the file we just made as a source
+      # image again (the largest icon of the .icns becomes an .ico).
+      - name: Read the .icns back as a source image
+        run: |
+          ./target/release/img2ico test.icns --output-format ico -o roundtrip.ico --sizes 32 --force
+          ls -la roundtrip.ico
+
+      - name: Upload the generated .icns and its decomposed iconset
+        uses: actions/upload-artifact@v6
+        with:
+          name: icns-verification
+          path: |
+            test.icns
+            verified.iconset
