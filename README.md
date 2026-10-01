@@ -52,7 +52,7 @@ img2ico --version
 ```
 
 ```
-img2ico 1.5.0
+img2ico 1.6.0
 target:   x86_64-pc-windows-msvc
 compiler: rustc 1.97.1 (8bab26f4f 2026-07-14)
 ```
@@ -852,7 +852,7 @@ The test suite includes property-based tests that compare the optimized chroma-k
 
 **Continuous integration.** The [GitHub Actions workflow](.github/workflows/main.yml) runs the formatting check, clippy and the full test suite on Windows, macOS and Linux. It runs only when a version tag is pushed or when started manually ("Run workflow"), not on every push.
 
-**Releasing.** Pushing a tag like `v1.5.0` runs the workflow, builds the bundles for all three platforms, verifies the `.icns` output with Apple's `iconutil`, and publishes a GitHub Release. A failing check blocks the release.
+**Releasing.** Pushing a tag like `v1.6.0` runs the workflow, builds the bundles for all three platforms, verifies the `.icns` output with Apple's `iconutil`, and publishes a GitHub Release. A failing check blocks the release.
 
 > Developed in an extended pair-programming session with [Claude Sonnet 5](https://www.anthropic.com/claude) (Anthropic) — every feature, fix, and piece of documentation in this repo went through iterative review and testing during that process.
 

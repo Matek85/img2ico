@@ -10,6 +10,12 @@ when cutting a release.
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-10-01
+
+Pipeline support (standard input and output, `--quiet`), automatic
+background detection with `--feather` and removal warnings, folder
+selection in settings files, and `--what-if` in place of `--dry-run`.
+
 ### Added
 
 - Pipelines: `-` as the input reads the image from standard input
@@ -49,6 +55,9 @@ when cutting a release.
 
 ### Changed
 
+- The release binary grows by about 150 KB (2.66 MB to 2.81 MB on
+  Windows) because of the pipeline support, the background detection and
+  the additional help text.
 - `-o -` is no longer an error: it writes the icon to standard output (see
   Pipelines above). `-` as an input file name now means standard input; a file
   really called `-` is written `./-`.
