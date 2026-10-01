@@ -1,0 +1,36 @@
+# auto-background.toml
+#
+# For logos and screenshots on a plain, single-color background - where the
+# color is not known in advance or differs from file to file. img2ico looks
+# at the border of each image, takes the most common color there as the
+# background, and removes it.
+#
+# Works best when the border really has ONE color (a flat fill, or a
+# slightly noisy one such as a JPEG). For a gradient or a photo img2ico
+# stops with a message instead of guessing; give the color yourself with
+# `--chroma-key #RRGGBB` for those.
+#
+# The color it found is printed on every run, so you can pin it down later:
+#   Detected background color #FDFDFD (100% of the image border). ...
+#   img2ico logo.png -c FDFDFD
+#
+# Usage:
+#   img2ico logo.png --config auto-background.toml
+#   img2ico logos/ -o icons/ --config auto-background.toml   # every file detects its own
+
+chroma-key = "auto"
+
+# How different from the detected color a shade may be and still count as
+# background (0-100). It is also how varied the border may be for "auto" to
+# accept it: at least half of the border must lie within this distance of the
+# most common color.
+tolerance = 20
+
+# How soft the edge of the removed background is (0-100): the share of the
+# tolerance range used for the gradual transition. 0 = hard edge,
+# 100 = softest. 50 is the default.
+feather = 40
+
+# Typical companions for an icon:
+preset = "windows"
+padding = 8

@@ -6,7 +6,7 @@
 
 use crate::util::{file_prefix, warn};
 use image::{Rgba, RgbaImage};
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 
 /// Converts a hex color code like "#00FF00" or "00ff00" into its
 /// red/green/blue components (0-255 each).
@@ -327,14 +327,21 @@ fn flood_fill_from_candidates(
 /// avoids an ugly, jagged edge - whether that edge is a transparency
 /// cutoff (`replacement: None`) or a color-replacement cutoff
 /// (`replacement: Some(...)`).
-pub fn apply_chroma_key(
+///
+/// `feather_percent` (0-100) says how much of the tolerance range is used
+/// for that soft transition (see `DEFAULT_FEATHER`); the rest is the hard
+/// "core" around the target color. Returns how many pixels were affected -
+/// background pixels that were not already fully transparent - so the caller
+/// can tell when the key removed nothing, or nearly everything.
+pub fn apply_chroma_key_feathered(
     img: &mut RgbaImage,
     target: [u8; 3],
     tolerance_percent: u8,
+    feather_percent: u8,
     extra_seeds: &[(u32, u32)],
     replacement: Option<[u8; 3]>,
     silent: bool,
-) {
+) -> usize {
     let tol_distance = tol_distance_from_percent(tolerance_percent);
 
     let visited = flood_fill_reachable(img, target, tolerance_percent, extra_seeds, silent);
@@ -359,16 +366,18 @@ pub fn apply_chroma_key(
     //     soft, linear transition from before is kept here. This zone
     //     then only affects real edges of the subject, not the whole
     //     background area anymore.
-    let core_distance = tol_distance * 0.5;
+    let core_distance = tol_distance * (1.0 - feather_percent.min(100) as f32 / 100.0);
     // The core zone covers the bulk of a typical background, so it gets
     // the cheap whole-number test; only pixels outside it need the real
     // distance (for the feather's gradual blend).
     let core_limit = squared_distance_limit(core_distance);
 
+    let mut affected = 0usize;
     for (pixel, &reached) in img.pixels_mut().zip(&visited) {
         if !reached || pixel[3] == 0 {
             continue; // not background, or already fully transparent
         }
+        affected += 1;
         // scale = 0.0 in the core zone (full effect), ramping up to
         // 1.0 at the tolerance boundary (no effect) - shared by both
         // modes below, just applied to a different channel.
@@ -405,6 +414,183 @@ pub fn apply_chroma_key(
             }
         }
     }
+    affected
+}
+
+/// `apply_chroma_key_feathered` with the default feather, for the tests that
+/// are not about the feather.
+#[cfg(test)]
+fn apply_chroma_key(
+    img: &mut RgbaImage,
+    target: [u8; 3],
+    tolerance_percent: u8,
+    extra_seeds: &[(u32, u32)],
+    replacement: Option<[u8; 3]>,
+    silent: bool,
+) -> usize {
+    apply_chroma_key_feathered(
+        img,
+        target,
+        tolerance_percent,
+        DEFAULT_FEATHER,
+        extra_seeds,
+        replacement,
+        silent,
+    )
+}
+
+/// Default for --feather: half of the tolerance range is the hard core
+/// around the background color, the other half the soft transition. (The
+/// behavior img2ico has always had.)
+pub const DEFAULT_FEATHER: u8 = 50;
+
+/// Warns when a chroma key did next to nothing, or nearly everything -
+/// both usually mean the color or the tolerance is not what was intended.
+/// `affected` is what `apply_chroma_key_feathered` returned, `total` the
+/// number of pixels in the image, `color` the background color as shown to
+/// the user. Counted as a warning either way; `silent` only hides the text.
+pub fn warn_about_removal_extent(affected: usize, total: usize, color: &str, silent: bool) {
+    if total == 0 {
+        return;
+    }
+    let share = affected as f64 / total as f64;
+    let prefix = file_prefix();
+    if affected == 0 {
+        warn(
+            silent,
+            format_args!(
+                "Warning: {prefix}nothing was removed - no pixel connected to the image border is close to {color}. Check the color and --tolerance (or let img2ico detect it with --chroma-key auto)."
+            ),
+        );
+    } else if share < MIN_EXPECTED_SHARE {
+        warn(
+            silent,
+            format_args!(
+                "Warning: {prefix}only {:.1}% of the image matched the background color {color} - almost nothing was removed. Check the color and --tolerance.",
+                share * 100.0
+            ),
+        );
+    } else if share > MAX_EXPECTED_SHARE {
+        warn(
+            silent,
+            format_args!(
+                "Warning: {prefix}{:.1}% of the image matched the background color {color} - almost everything was removed. The color may be too close to the artwork's, or --tolerance too high.",
+                share * 100.0
+            ),
+        );
+    }
+}
+
+/// Below this share of the image, a removal counts as "almost nothing".
+const MIN_EXPECTED_SHARE: f64 = 0.005;
+
+/// Above this share of the image, a removal counts as "almost everything".
+const MAX_EXPECTED_SHARE: f64 = 0.98;
+
+/// The background color found by `detect_background_color`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DetectedBackground {
+    pub color: [u8; 3],
+    /// The share (0-1) of the opaque border pixels within the tolerance of
+    /// `color` - how clearly the border has just one color.
+    pub coverage: f32,
+}
+
+/// The color channel values are grouped in steps of this size to find the
+/// most common color, so that JPEG noise and faint gradients do not split
+/// one background into many "different" colors.
+const DETECTION_BUCKET: u8 = 16;
+
+/// A border must be at least this uniform (share of its pixels within the
+/// tolerance of the most common color) to count as one background color.
+const MIN_BORDER_COVERAGE: f32 = 0.5;
+
+/// Formats a color as "#RRGGBB".
+pub fn format_hex(color: [u8; 3]) -> String {
+    format!("#{:02X}{:02X}{:02X}", color[0], color[1], color[2])
+}
+
+/// Finds the background color of an image by looking at its border: the most
+/// common color along all four edges (colors that differ by less than a
+/// small step count as the same, then their average is taken). Fully
+/// transparent border pixels carry no color and are not counted.
+///
+/// Fails - with a message that names the best guess, so it can be taken over
+/// with `-c` - if the border has no clearly dominant color (a gradient, a
+/// photo) or is entirely transparent already.
+pub fn detect_background_color(
+    img: &RgbaImage,
+    tolerance_percent: u8,
+) -> Result<DetectedBackground, String> {
+    let (width, height) = img.dimensions();
+    if width == 0 || height == 0 {
+        return Err("The image is empty - there is no background to detect.".to_string());
+    }
+
+    // Every border pixel once: the top and bottom rows, and the left and
+    // right columns without their corners (already in the rows).
+    let mut border: Vec<&Rgba<u8>> = Vec::new();
+    for x in 0..width {
+        border.push(img.get_pixel(x, 0));
+        if height > 1 {
+            border.push(img.get_pixel(x, height - 1));
+        }
+    }
+    for y in 1..height.saturating_sub(1) {
+        border.push(img.get_pixel(0, y));
+        if width > 1 {
+            border.push(img.get_pixel(width - 1, y));
+        }
+    }
+    let opaque: Vec<&Rgba<u8>> = border.into_iter().filter(|p| p[3] != 0).collect();
+    if opaque.is_empty() {
+        return Err(
+            "The border of the image is already fully transparent - there is no background color to detect."
+                .to_string(),
+        );
+    }
+
+    // bucket -> (pixel count, sum of the red, green and blue values).
+    // A BTreeMap, so that ties between buckets always resolve the same way.
+    let mut buckets: BTreeMap<[u8; 3], (usize, [u64; 3])> = BTreeMap::new();
+    for pixel in &opaque {
+        let key = [
+            pixel[0] / DETECTION_BUCKET,
+            pixel[1] / DETECTION_BUCKET,
+            pixel[2] / DETECTION_BUCKET,
+        ];
+        let entry = buckets.entry(key).or_insert((0, [0; 3]));
+        entry.0 += 1;
+        for channel in 0..3 {
+            entry.1[channel] += u64::from(pixel[channel]);
+        }
+    }
+    let (count, sums) = buckets
+        .values()
+        .copied()
+        .max_by_key(|&(count, _)| count)
+        .expect("there is at least one opaque border pixel");
+    let color = [
+        ((sums[0] as f64 / count as f64).round()) as u8,
+        ((sums[1] as f64 / count as f64).round()) as u8,
+        ((sums[2] as f64 / count as f64).round()) as u8,
+    ];
+
+    let limit = squared_distance_limit(tol_distance_from_percent(tolerance_percent));
+    let within = opaque
+        .iter()
+        .filter(|pixel| squared_color_distance(&pixel.0, color) <= limit)
+        .count();
+    let coverage = within as f32 / opaque.len() as f32;
+
+    if coverage < MIN_BORDER_COVERAGE {
+        return Err(format!(
+            "Could not detect a single background color: the most common color along the border, {}, covers only {:.0}% of it (within a tolerance of {tolerance_percent}%). The background may be a gradient or a photo. Give the color yourself with --chroma-key #RRGGBB, or raise --tolerance.",
+            format_hex(color),
+            coverage * 100.0
+        ));
+    }
+    Ok(DetectedBackground { color, coverage })
 }
 
 /// One region --find discovered: how many pixels it covers, and a single
@@ -778,6 +964,231 @@ mod tests {
         );
         assert!(lenient[2 * 5 + 1], "20% (~88) crosses the ring");
         assert!(!lenient[2 * 5 + 2], "but never the red centre");
+    }
+
+    // --- detect_background_color -------------------------------------------------
+
+    #[test]
+    fn detection_finds_a_solid_border_color() {
+        let mut img = solid(8, 8, GREEN);
+        fill_rect(&mut img, (2, 2), (5, 5), RED);
+        let found = detect_background_color(&img, 20).unwrap();
+        assert_eq!(found.color, GREEN);
+        assert_eq!(found.coverage, 1.0);
+    }
+
+    #[test]
+    fn detection_ignores_what_is_inside_the_border() {
+        // A subject that is MORE common than the background, but not on the border.
+        let mut img = solid(20, 20, GREEN);
+        fill_rect(&mut img, (1, 1), (18, 18), RED);
+        assert_eq!(detect_background_color(&img, 20).unwrap().color, GREEN);
+    }
+
+    #[test]
+    fn detection_sees_through_noise_and_averages_it() {
+        // A "JPEG-like" background: green with small deviations.
+        let mut img = solid(16, 16, GREEN);
+        for (x, y, pixel) in img.enumerate_pixels_mut() {
+            let jitter = ((x * 7 + y * 13) % 5) as u8; // 0..=4
+            *pixel = Rgba([jitter, 255 - jitter, jitter, 255]);
+        }
+        let found = detect_background_color(&img, 20).unwrap();
+        let [r, g, b] = found.color;
+        assert!(r <= 4 && g >= 251 && b <= 4, "{:?}", found.color);
+        assert_eq!(found.coverage, 1.0);
+    }
+
+    #[test]
+    fn detection_takes_the_most_common_color_when_two_share_the_border() {
+        // Three quarters of the border white, one quarter black.
+        let mut img = solid(16, 16, [255, 255, 255]);
+        for x in 0..16 {
+            img.put_pixel(x, 0, rgba([0, 0, 0]));
+        }
+        let found = detect_background_color(&img, 20).unwrap();
+        assert_eq!(found.color, [255, 255, 255]);
+        assert!(
+            found.coverage > 0.5 && found.coverage < 1.0,
+            "{}",
+            found.coverage
+        );
+    }
+
+    #[test]
+    fn a_gradient_border_is_reported_with_the_best_guess() {
+        let mut img = RgbaImage::new(64, 64);
+        for (x, _, pixel) in img.enumerate_pixels_mut() {
+            *pixel = Rgba([(x * 4) as u8, (x * 4) as u8, 255 - (x * 4) as u8, 255]);
+        }
+        let err = detect_background_color(&img, 5).unwrap_err();
+        assert!(
+            err.contains("Could not detect a single background color"),
+            "{err}"
+        );
+        assert!(err.contains("#"), "the guess is named: {err}");
+        assert!(
+            err.contains("--chroma-key #RRGGBB") && err.contains("--tolerance"),
+            "{err}"
+        );
+        // A generous tolerance accepts the same border as one background.
+        assert!(detect_background_color(&img, 100).is_ok());
+    }
+
+    #[test]
+    fn a_transparent_border_has_no_color_to_detect() {
+        let mut img = RgbaImage::new(6, 6); // all fully transparent
+        img.put_pixel(3, 3, rgba(RED));
+        let err = detect_background_color(&img, 20).unwrap_err();
+        assert!(err.contains("already fully transparent"), "{err}");
+    }
+
+    #[test]
+    fn transparent_border_pixels_are_not_counted_as_a_color() {
+        let mut img = solid(10, 10, GREEN);
+        for x in 0..10 {
+            img.put_pixel(x, 0, Rgba([0, 0, 0, 0])); // the top row is already see-through
+        }
+        let found = detect_background_color(&img, 20).unwrap();
+        assert_eq!(found.color, GREEN);
+        assert_eq!(
+            found.coverage, 1.0,
+            "judged among the opaque border pixels only"
+        );
+    }
+
+    #[test]
+    fn detection_works_on_tiny_images() {
+        assert_eq!(
+            detect_background_color(&solid(1, 1, RED), 20)
+                .unwrap()
+                .color,
+            RED
+        );
+        assert_eq!(
+            detect_background_color(&solid(1, 5, RED), 20)
+                .unwrap()
+                .color,
+            RED
+        );
+        assert_eq!(
+            detect_background_color(&solid(5, 1, RED), 20)
+                .unwrap()
+                .color,
+            RED
+        );
+        assert!(detect_background_color(&RgbaImage::new(0, 0), 20).is_err());
+    }
+
+    #[test]
+    fn hex_formatting_is_uppercase_with_a_hash() {
+        assert_eq!(format_hex([0, 255, 0]), "#00FF00");
+        assert_eq!(format_hex([1, 2, 171]), "#0102AB");
+    }
+
+    // --- feather -----------------------------------------------------------------
+
+    /// A green image whose pixel (1, 4) is an "edge" shade at distance 130
+    /// from the green, reachable from the border.
+    fn image_with_an_edge_pixel() -> RgbaImage {
+        let mut img = solid(9, 9, GREEN);
+        img.put_pixel(1, 4, rgba([0, 255, 130]));
+        img
+    }
+
+    fn edge_alpha(feather: u8) -> u8 {
+        let mut img = image_with_an_edge_pixel();
+        apply_chroma_key_feathered(&mut img, GREEN, 40, feather, &[], None, true);
+        img.get_pixel(1, 4)[3]
+    }
+
+    #[test]
+    fn a_feather_of_zero_makes_a_hard_edge() {
+        assert_eq!(
+            edge_alpha(0),
+            0,
+            "everything within the tolerance is removed fully"
+        );
+    }
+
+    #[test]
+    fn a_wider_feather_keeps_more_of_the_edge() {
+        let (hard, default, wide) = (edge_alpha(0), edge_alpha(DEFAULT_FEATHER), edge_alpha(100));
+        assert!(
+            hard < default && default < wide,
+            "{hard} < {default} < {wide}"
+        );
+        assert!(wide < 255, "still partly transparent");
+    }
+
+    #[test]
+    fn the_default_feather_is_the_behavior_from_before() {
+        let mut with_default = image_with_an_edge_pixel();
+        let mut old_style = image_with_an_edge_pixel();
+        apply_chroma_key_feathered(
+            &mut with_default,
+            GREEN,
+            40,
+            DEFAULT_FEATHER,
+            &[],
+            None,
+            true,
+        );
+        apply_chroma_key(&mut old_style, GREEN, 40, &[], None, true);
+        assert_eq!(with_default, old_style);
+        assert_eq!(DEFAULT_FEATHER, 50);
+    }
+
+    #[test]
+    fn the_feather_never_changes_which_pixels_are_background() {
+        // Only the edge softness differs; a pixel outside the tolerance stays.
+        for feather in [0, 50, 100] {
+            let mut img = solid(7, 7, GREEN);
+            fill_rect(&mut img, (2, 2), (4, 4), RED);
+            apply_chroma_key_feathered(&mut img, GREEN, 20, feather, &[], None, true);
+            assert_eq!(img.get_pixel(0, 0)[3], 0, "feather {feather}");
+            assert_eq!(*img.get_pixel(3, 3), rgba(RED), "feather {feather}");
+        }
+    }
+
+    #[test]
+    fn a_feather_above_100_counts_as_100() {
+        assert_eq!(edge_alpha(200), edge_alpha(100));
+    }
+
+    // --- how much a chroma key affected --------------------------------------------
+
+    #[test]
+    fn the_key_reports_how_many_pixels_it_affected() {
+        let mut img = solid(7, 7, GREEN);
+        fill_rect(&mut img, (2, 2), (4, 4), RED);
+        let affected = apply_chroma_key_feathered(&mut img, GREEN, 20, 50, &[], None, true);
+        assert_eq!(affected, 49 - 9);
+        // Already transparent pixels are not counted again.
+        let again = apply_chroma_key_feathered(&mut img, GREEN, 20, 50, &[], None, true);
+        assert_eq!(again, 0);
+    }
+
+    fn warnings_raised(affected: usize, total: usize) -> usize {
+        let before = crate::util::warnings_so_far();
+        warn_about_removal_extent(affected, total, "#00FF00", true);
+        crate::util::warnings_so_far() - before
+    }
+
+    #[test]
+    fn removing_nothing_or_almost_nothing_or_almost_everything_is_a_warning() {
+        assert_eq!(warnings_raised(0, 1000), 1, "nothing");
+        assert_eq!(warnings_raised(3, 1000), 1, "almost nothing (0.3%)");
+        assert_eq!(warnings_raised(995, 1000), 1, "almost everything (99.5%)");
+        assert_eq!(warnings_raised(1000, 1000), 1, "everything");
+    }
+
+    #[test]
+    fn an_ordinary_removal_is_not_a_warning() {
+        assert_eq!(warnings_raised(500, 1000), 0);
+        assert_eq!(warnings_raised(10, 1000), 0, "1% is above the limit");
+        assert_eq!(warnings_raised(970, 1000), 0, "97% is below the limit");
+        assert_eq!(warnings_raised(0, 0), 0, "no pixels, nothing to say");
     }
 
     // --- apply_chroma_key ------------------------------------------------------

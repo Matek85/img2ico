@@ -10,7 +10,7 @@ Built in Rust: a single, dependency-free binary — no runtime to install, nothi
 
 - **Convert** PNG, JPG, BMP and GIF to `.ico` with full 32-bit color and a clean alpha channel — never a reduced-color legacy format. Size presets, padding, grayscale, and frame selection for animated GIFs.
 - **Batch conversion:** several files, or a whole folder tree, in one run with the same settings — with file filters, name patterns, a progress line per file, a rehearsal mode (`--what-if`), a CSV or JSON report, and a choice of stopping at the first failure or carrying on.
-- **Remove or replace a background color** ("chroma key") with a soft, anti-aliased edge instead of a hard cutout, including background areas enclosed by the artwork — found automatically with `--find`.
+- **Remove or replace a background color** ("chroma key") with a soft, anti-aliased edge instead of a hard cutout (adjustable with `--feather`), including background areas enclosed by the artwork — found automatically with `--find`. The background color itself can be detected from the image border with `--chroma-key auto`, and img2ico warns when a removal took nothing, or nearly everything.
 - **macOS `.icns`** from the same source image (chosen automatically as the default when running on macOS).
 - **Work with existing `.ico` files:** inspect them, merge several into one, extract every size as PNG, or pull out specific sizes as standalone `.ico` files.
 - **Safe and scriptable:** overwrite protection and source-file cleanup (both opt-in), reusable settings files, quiet mode, and clear exit codes.
@@ -100,10 +100,11 @@ Usage: img2ico [OPTIONS] <INPUT>...
 | `--padding` | | 0–100 (default 0) | Transparent margin around the artwork, in percent |
 | `--grayscale` | | | Remove all color, keep only brightness |
 | `--gif-frame` | | number (default 1) | Which frame of an animated GIF to use |
-| `--chroma-key` | `-c` | hex color | Remove this background color |
+| `--chroma-key` | `-c` | hex color, or `auto` | Remove this background color; `auto` detects it from the image border |
 | `--tolerance` | `-t` | 0–100 (default 20) | How strictly `--chroma-key`/`--find` match colors |
+| `--feather` | | 0–100 (default 50) | How soft the edge of the removed background is; `0` is a hard edge |
 | `--seed` | | `x,y` (repeatable) | Extra starting point(s) for background removal |
-| `--find` | | hex color | Discover seed points for that color automatically |
+| `--find` | | hex color, or `auto` | Discover seed points for that color automatically |
 | `--find-min-size` | | pixels (default 9) | Smallest region `--find` reports; `1` catches every matching pixel |
 | `--auto-apply` | | | With `--find`: use the discovered points and convert right away |
 | `--replace-color` | | hex color | Replace the background with this color instead of making it transparent |
@@ -364,6 +365,46 @@ Starting from the image border, img2ico finds the connected region of the given 
 
 Only pixels *connected to the border* are affected, so the same color appearing inside the artwork stays untouched.
 
+### Detecting the background color automatically
+
+```
+img2ico logo.png -c auto
+```
+
+```
+Detected background color #FDFDFD (100% of the image border). To use it explicitly: --chroma-key FDFDFD
+Done: 'logo.ico' created with sizes [16, 32, 48, 64, 128, 256].
+```
+
+With `auto` instead of a color, img2ico looks at the **border** of the image and takes its most common color as the background. Colors that differ only slightly (JPEG noise, a faint gradient) count as one, and their average is used. The message names the color it found and the share of the border it covers, so you can pass it explicitly next time (`-c FDFDFD`) when you want a reproducible result. `auto` works with `--find` too, and `chroma-key = "auto"` can be set in a [settings file](#settings-files). In a batch, every file detects **its own** background, which is the point for a folder of images with different backgrounds.
+
+Detection only works when the border really has one dominant color. If it doesn't — a gradient, a photo, a drop shadow reaching the edge — img2ico stops with a clear message instead of guessing, and names its best guess:
+
+```
+Could not detect a single background color: the most common color along the border, #FB5004, covers only 37% of it (within a tolerance of 20%). The background may be a gradient or a photo. Give the color yourself with --chroma-key #RRGGBB, or raise --tolerance.
+```
+
+"Dominant" means at least half of the border lies within `--tolerance` of the most common color — so a higher tolerance accepts a more varied border, and `--tolerance 0` demands exactly one color (rarely what a JPEG gives you). A border that is already fully transparent has no color to detect and is reported as such. Detection looks at the border only: a large uniform area in the middle of the artwork never gets mistaken for the background.
+
+### Softer or harder edges: `--feather`
+
+```
+img2ico logo.png -c 00C800 --feather 10     # crisp edge
+img2ico logo.png -c 00C800 --feather 80     # smooth edge
+```
+
+The edge of the removed background is not cut off abruptly: shades only just within the tolerance are made *partly* transparent. `--feather` (0–100, default 50) is the share of the `--tolerance` range used for that soft transition; the rest is a hard core around the background color that is removed completely. With `0` everything within the tolerance disappears fully (a hard edge, good for clean flat artwork), with `100` the transition starts right at the exact background color (the softest edge, good for noisy or anti-aliased sources, but it leaves more of a halo). The default of 50 is what img2ico has always done. `--feather` changes only how soft the edge is, never *which* pixels count as background — that is up to `--tolerance`. It can be set in a settings file (`feather = 30`) and also applies to `--replace-color`.
+
+### Warnings when a removal looks wrong
+
+If a removal took **nothing** (no pixel connected to the border was close to the color), **almost nothing** (under 0.5% of the image) or **almost everything** (over 98%), img2ico says so — in all of these the color or the tolerance is usually not what you meant:
+
+```
+Warning: nothing was removed - no pixel connected to the image border is close to 00FF00. Check the color and --tolerance (or let img2ico detect it with --chroma-key auto).
+```
+
+The icon is still written; these are warnings, hidden by `--silent` like the others, and counted in a batch summary and in a `--report`.
+
 ### Areas enclosed by the artwork
 
 ```
@@ -544,7 +585,7 @@ img2ico --merge small.ico large.ico -o combined.ico --delete-source
 
 ## Settings files
 
-With more than twenty flags, typing the same combination each time gets old. A TOML settings file sets defaults for the "tuning" options: sizes or preset, the chroma-key/`--find` options, padding, grayscale, GIF frame, `--output-format`, `--force`, `--skip-existing`, `--keep-going`, `--recursive`, `--include`, `--exclude`, `--delete-source`, `--silent`, and `--select`'s `--combine`/`--index`. **Not** covered: the input file(s), `-o`, the mode (`--merge`/`--inspect`/`--extract`/`--select`), and the options that decide where the icons go and what is reported (`--keep-structure`, `--name`, `--what-if`, `--report`, `--json`) — those change with every run. An explicit command-line flag always wins over a file; a file only fills in what you didn't type. Where the files sit, and how they layer, is described under [Which settings files apply](#which-settings-files-apply).
+With more than twenty flags, typing the same combination each time gets old. A TOML settings file sets defaults for the "tuning" options: sizes or preset, the chroma-key/`--find` options (including `--tolerance` and `--feather`), padding, grayscale, GIF frame, `--output-format`, `--force`, `--skip-existing`, `--keep-going`, `--recursive`, `--include`, `--exclude`, `--delete-source`, `--silent`, and `--select`'s `--combine`/`--index`. **Not** covered: the input file(s), `-o`, the mode (`--merge`/`--inspect`/`--extract`/`--select`), and the options that decide where the icons go and what is reported (`--keep-structure`, `--name`, `--what-if`, `--report`, `--json`) — those change with every run. An explicit command-line flag always wins over a file; a file only fills in what you didn't type. Where the files sit, and how they layer, is described under [Which settings files apply](#which-settings-files-apply).
 
 ### TOML in brief
 
@@ -655,7 +696,7 @@ An unrecognized key is almost always a typo, so it is flagged. The conversion st
 
 ### Ready-made examples
 
-The [`examples/`](examples/) folder has ready-to-use settings files for a Windows app icon, a favicon, a macOS `.icns`, a grayscale variant, a hands-off setup for scripted/CI use, and `folder-batch.toml` for converting a whole folder tree (it needs a folder as the input). `reference-all-settings.toml` documents every possible setting in one place; it isn't meant to be used as-is, because several of its settings deliberately contradict each other — copy individual lines from it instead.
+The [`examples/`](examples/) folder has ready-to-use settings files for a Windows app icon, a favicon, a macOS `.icns`, a grayscale variant, a hands-off setup for scripted/CI use, `folder-batch.toml` for converting a whole folder tree (it needs a folder as the input), and `auto-background.toml` for logos whose background color is detected automatically. `reference-all-settings.toml` documents every possible setting in one place; it isn't meant to be used as-is, because several of its settings deliberately contradict each other — copy individual lines from it instead.
 
 ## Scripting and CI
 
@@ -720,6 +761,11 @@ img2ico assets/ -r -o icons/ --keep-structure --exclude "backup/**" --keep-going
 **Look before you leap — what would a run do?**
 ```
 img2ico assets/ -r -o icons/ --keep-structure --what-if
+```
+
+**A folder of logos on different plain backgrounds — each background found automatically:**
+```
+img2ico logos/ -c auto --preset windows -o icons/ --keep-going
 ```
 
 **Combine two teams' icons into one shared file:**

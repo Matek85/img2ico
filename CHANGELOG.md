@@ -12,6 +12,21 @@ when cutting a release.
 
 ### Added
 
+- `--chroma-key auto` (and `--find auto`): img2ico takes the most common
+  color along the image border as the background color. It prints the color
+  it found, so it can be passed explicitly next time, and stops with a clear
+  message naming its best guess when the border has no dominant color (a
+  gradient, a photo) or is already fully transparent. In a batch every file
+  detects its own background. `chroma-key = "auto"` also works in a settings
+  file.
+- `--feather` (0-100, default 50): how much of the tolerance range is the
+  soft transition at the edge of a removed or replaced background. `0` is a
+  hard edge. The default is the behavior img2ico has always had. Also
+  available as `feather` in a settings file.
+- Warnings when a chroma key removed nothing, almost nothing (under 0.5% of
+  the image) or almost everything (over 98%). They are counted in the batch
+  summary and in `--report`.
+- `examples/auto-background.toml`.
 - `recursive`, `include` and `exclude` can now be set in a settings file, so
   a folder batch does not need its filters typed every time. They only
   matter when an input is a folder and are otherwise ignored. A list on the

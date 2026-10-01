@@ -3,7 +3,7 @@
 // values a run actually uses, and back into a `Settings` snapshot for
 // --out-toml.
 
-use crate::chroma_key::DEFAULT_FIND_MIN_SIZE;
+use crate::chroma_key::{DEFAULT_FEATHER, DEFAULT_FIND_MIN_SIZE};
 use crate::cli::{Args, OutputFormat, SizePreset};
 use crate::config::{Settings, settings_to_toml, write_config};
 use crate::util::delete_source_files;
@@ -31,6 +31,7 @@ pub struct ResolvedSettings<'a> {
     pub preset: Option<SizePreset>,
     pub chroma_key: Option<&'a str>,
     pub tolerance: u8,
+    pub feather: u8,
     pub seeds: &'a [String],
     pub find: Option<&'a str>,
     pub find_min_size: usize,
@@ -70,6 +71,11 @@ impl<'a> ResolvedSettings<'a> {
                 .as_deref()
                 .or(settings.chroma_key.as_deref()),
             tolerance: args.tolerance.or(settings.tolerance).unwrap_or(20),
+            feather: args
+                .feather
+                .or(settings.feather)
+                .unwrap_or(DEFAULT_FEATHER)
+                .min(100),
             // Seeds from the command line replace the config file's seeds
             // entirely rather than adding to them.
             seeds: if args.seeds.is_empty() {
@@ -148,6 +154,7 @@ impl<'a> ResolvedSettings<'a> {
             preset: self.preset,
             chroma_key: self.chroma_key.map(str::to_owned),
             tolerance: Some(self.tolerance),
+            feather: Some(self.feather),
             seeds: self.seeds.to_vec(),
             find: self.find.map(str::to_owned),
             find_min_size: Some(self.find_min_size),
@@ -235,6 +242,7 @@ mod tests {
         let (cli, file) = (args(&[]), Settings::default());
         let resolved = ResolvedSettings::resolve(&cli, &file);
         assert_eq!(resolved.tolerance, 20);
+        assert_eq!(resolved.feather, DEFAULT_FEATHER);
         assert_eq!(resolved.padding, 0);
         assert_eq!(resolved.gif_frame, 1);
         assert_eq!(resolved.find_min_size, DEFAULT_FIND_MIN_SIZE);
@@ -414,6 +422,25 @@ mod tests {
         assert!(snapshot.recursive);
         assert_eq!(snapshot.include, ["*.png"]);
         assert_eq!(snapshot.exclude, ["old/**"]);
+    }
+
+    #[test]
+    fn feather_follows_the_usual_priority_and_is_capped_at_100() {
+        let file = Settings {
+            feather: Some(30),
+            ..Settings::default()
+        };
+        assert_eq!(ResolvedSettings::resolve(&args(&[]), &file).feather, 30);
+        let cli = args(&["--feather", "10"]);
+        assert_eq!(ResolvedSettings::resolve(&cli, &file).feather, 10);
+        let cli = args(&["--feather", "0"]);
+        assert_eq!(
+            ResolvedSettings::resolve(&cli, &file).feather,
+            0,
+            "an explicit 0 must not fall back to the file"
+        );
+        let cli = args(&["--feather", "200"]);
+        assert_eq!(ResolvedSettings::resolve(&cli, &file).feather, 100);
     }
 
     // --- Snapshot for --out-toml -------------------------------------------------

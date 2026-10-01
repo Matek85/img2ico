@@ -1780,8 +1780,9 @@ fn verbose_reports_background_removal() {
     );
     assert_success(&out);
     assert!(
-        stderr(&out)
-            .contains("verbose: background removal (--chroma-key 00FF00, 0 seed point(s)) took"),
+        stderr(&out).contains(
+            "verbose: background removal (--chroma-key 00FF00, 0 seed point(s), feather 50%) took"
+        ),
         "{}",
         describe(&out)
     );
@@ -2404,6 +2405,249 @@ fn the_other_modes_still_insist_on_their_input_rules() {
         dir.path(),
         &["--merge", "a.ico", "b.ico", "-o", "m.ico"],
     ));
+}
+
+// =============================================================================
+// Automatic background detection, --feather and removal warnings
+// =============================================================================
+
+#[test]
+fn chroma_key_auto_detects_removes_and_names_the_background_color() {
+    let dir = tempfile::tempdir().unwrap();
+    write_green_background_red_square(dir.path(), "shot.png");
+    let out = convert(
+        dir.path(),
+        &["shot.png", "-c", "auto", "--sizes", "32", "-o", "o.ico"],
+    );
+    assert_success(&out);
+    assert!(
+        stdout(&out).contains("Detected background color #00FF00"),
+        "{}",
+        describe(&out)
+    );
+    assert!(
+        stdout(&out).contains("--chroma-key 00FF00"),
+        "the message shows how to take the color over: {}",
+        describe(&out)
+    );
+    let icon = icon_image(&dir.path().join("o.ico"), 32);
+    assert_eq!(icon.get_pixel(0, 0)[3], 0, "the background is gone");
+    assert_eq!(icon.get_pixel(16, 16)[3], 255, "the square stays");
+}
+
+#[test]
+fn chroma_key_auto_is_case_insensitive_and_silent_hides_the_message() {
+    let dir = tempfile::tempdir().unwrap();
+    write_green_background_red_square(dir.path(), "shot.png");
+    let out = convert(
+        dir.path(),
+        &["shot.png", "-c", "AUTO", "--sizes", "32", "--silent"],
+    );
+    assert_success(&out);
+    assert!(!stdout(&out).contains("Detected"), "{}", describe(&out));
+    assert_eq!(
+        icon_image(&dir.path().join("shot.ico"), 32).get_pixel(0, 0)[3],
+        0
+    );
+}
+
+#[test]
+fn chroma_key_auto_on_a_gradient_fails_clearly_and_writes_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut img = RgbaImage::new(64, 64);
+    for (x, _, pixel) in img.enumerate_pixels_mut() {
+        *pixel = Rgba([(x * 4) as u8, 0, 255 - (x * 4) as u8, 255]);
+    }
+    img.save(dir.path().join("sky.png")).unwrap();
+    let out = convert(dir.path(), &["sky.png", "-c", "auto", "-t", "5"]);
+    assert_failure_containing(&out, "Could not detect a single background color");
+    assert!(
+        stderr(&out).contains("--chroma-key #RRGGBB"),
+        "{}",
+        describe(&out)
+    );
+    assert!(!dir.path().join("sky.ico").exists());
+}
+
+#[test]
+fn every_file_of_a_batch_detects_its_own_background() {
+    let dir = tempfile::tempdir().unwrap();
+    for (name, bg) in [("a.png", [0, 255, 0, 255]), ("b.png", [0, 0, 255, 255])] {
+        let mut img = RgbaImage::from_pixel(32, 32, Rgba(bg));
+        for y in 12..20 {
+            for x in 12..20 {
+                img.put_pixel(x, y, Rgba(RED));
+            }
+        }
+        img.save(dir.path().join(name)).unwrap();
+    }
+    let out = convert(
+        dir.path(),
+        &["a.png", "b.png", "-c", "auto", "--sizes", "32"],
+    );
+    assert_success(&out);
+    let text = stdout(&out);
+    assert!(
+        text.contains("a.png: Detected background color #00FF00"),
+        "{}",
+        describe(&out)
+    );
+    assert!(
+        text.contains("b.png: Detected background color #0000FF"),
+        "{}",
+        describe(&out)
+    );
+    for name in ["a.ico", "b.ico"] {
+        assert_eq!(
+            icon_image(&dir.path().join(name), 32).get_pixel(0, 0)[3],
+            0,
+            "{name}"
+        );
+    }
+}
+
+#[test]
+fn find_auto_uses_the_detected_color_and_auto_can_come_from_a_settings_file() {
+    let dir = tempfile::tempdir().unwrap();
+    // Green background, a red ring, and green again inside the ring.
+    write_image(dir.path(), "patch.png", 30, 30, |x, y| {
+        let in_ring_box = (8..22).contains(&x) && (8..22).contains(&y);
+        let inside = (10..20).contains(&x) && (10..20).contains(&y);
+        if in_ring_box && !inside { RED } else { GREEN }
+    });
+    let out = convert(dir.path(), &["patch.png", "--find", "auto"]);
+    assert_success(&out);
+    assert!(
+        stdout(&out).contains("Detected background color"),
+        "{}",
+        describe(&out)
+    );
+    assert!(stdout(&out).contains("--seed"), "{}", describe(&out));
+
+    write_green_background_red_square(dir.path(), "shot.png");
+    std::fs::write(dir.path().join("auto.toml"), "chroma-key = \"auto\"\n").unwrap();
+    let out = convert(
+        dir.path(),
+        &["shot.png", "--sizes", "32", "--config", "auto.toml"],
+    );
+    assert_success(&out);
+    assert_eq!(
+        icon_image(&dir.path().join("shot.ico"), 32).get_pixel(0, 0)[3],
+        0
+    );
+}
+
+#[test]
+fn out_toml_records_auto_as_the_setting_and_the_feather() {
+    let dir = tempfile::tempdir().unwrap();
+    write_green_background_red_square(dir.path(), "shot.png");
+    assert_success(&convert(
+        dir.path(),
+        &[
+            "shot.png",
+            "-c",
+            "auto",
+            "--feather",
+            "20",
+            "--sizes",
+            "32",
+            "--out-toml",
+            "s.toml",
+        ],
+    ));
+    let text = std::fs::read_to_string(dir.path().join("s.toml")).unwrap();
+    assert!(text.contains("chroma-key = \"auto\""), "{text}");
+    assert!(text.contains("feather = 20"), "{text}");
+}
+
+#[test]
+fn a_chroma_key_that_removes_nothing_warns_but_still_converts() {
+    let dir = tempfile::tempdir().unwrap();
+    write_green_background_red_square(dir.path(), "shot.png");
+    let out = convert(dir.path(), &["shot.png", "-c", "FF00FF", "--sizes", "32"]);
+    assert_success(&out);
+    assert!(
+        stderr(&out).contains("nothing was removed"),
+        "{}",
+        describe(&out)
+    );
+    assert!(
+        stderr(&out).contains("--chroma-key auto"),
+        "{}",
+        describe(&out)
+    );
+    assert!(dir.path().join("shot.ico").is_file());
+
+    let quiet = convert(
+        dir.path(),
+        &[
+            "shot.png", "-c", "FF00FF", "--sizes", "32", "--force", "--silent",
+        ],
+    );
+    assert_success(&quiet);
+    assert_eq!(stderr(&quiet), "", "{}", describe(&quiet));
+}
+
+#[test]
+fn a_chroma_key_that_removes_almost_everything_warns() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "all.png", 64, GREEN);
+    let out = convert(dir.path(), &["all.png", "-c", "00FF00", "--sizes", "16"]);
+    assert_success(&out);
+    assert!(
+        stderr(&out).contains("almost everything was removed"),
+        "{}",
+        describe(&out)
+    );
+}
+
+#[test]
+fn an_ordinary_removal_does_not_warn() {
+    let dir = tempfile::tempdir().unwrap();
+    write_green_background_red_square(dir.path(), "shot.png");
+    let out = convert(dir.path(), &["shot.png", "-c", "00FF00", "--sizes", "32"]);
+    assert_success(&out);
+    assert_eq!(stderr(&out), "", "{}", describe(&out));
+}
+
+#[test]
+fn the_removal_warnings_are_counted_in_a_batch_summary() {
+    let dir = tempfile::tempdir().unwrap();
+    write_green_background_red_square(dir.path(), "a.png");
+    write_green_background_red_square(dir.path(), "b.png");
+    let out = convert(
+        dir.path(),
+        &["a.png", "b.png", "-c", "FF00FF", "--sizes", "32"],
+    );
+    assert_success(&out);
+    assert!(stdout(&out).contains("2 warning(s)"), "{}", describe(&out));
+    assert!(
+        stderr(&out).contains("a.png: nothing was removed"),
+        "{}",
+        describe(&out)
+    );
+}
+
+#[test]
+fn feather_is_accepted_and_shown_in_the_effective_settings() {
+    let dir = tempfile::tempdir().unwrap();
+    write_green_background_red_square(dir.path(), "shot.png");
+    let out = convert(
+        dir.path(),
+        &[
+            "shot.png",
+            "-c",
+            "00FF00",
+            "--feather",
+            "10",
+            "--sizes",
+            "32",
+            "-v",
+        ],
+    );
+    assert_success(&out);
+    assert!(stderr(&out).contains("feather = 10"), "{}", describe(&out));
+    assert!(stderr(&out).contains("feather 10%"), "{}", describe(&out));
 }
 
 // =============================================================================

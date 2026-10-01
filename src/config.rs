@@ -36,6 +36,7 @@ pub struct Settings {
     pub preset: Option<SizePreset>,
     pub chroma_key: Option<String>,
     pub tolerance: Option<u8>,
+    pub feather: Option<u8>,
     #[serde(default)]
     pub seeds: Vec<String>,
     pub find: Option<String>,
@@ -91,6 +92,7 @@ impl Settings {
             preset: self.preset.or(fallback.preset),
             chroma_key: self.chroma_key.or(fallback.chroma_key),
             tolerance: self.tolerance.or(fallback.tolerance),
+            feather: self.feather.or(fallback.feather),
             seeds: if self.seeds.is_empty() {
                 fallback.seeds
             } else {
@@ -140,6 +142,7 @@ const KNOWN_SETTINGS_KEYS: &[&str] = &[
     "preset",
     "chroma-key",
     "tolerance",
+    "feather",
     "seeds",
     "find",
     "find-min-size",
@@ -378,6 +381,7 @@ mod tests {
             preset: Some(SizePreset::Favicon),
             chroma_key: Some("#00FF00".to_string()),
             tolerance: Some(35),
+            feather: Some(25),
             seeds: vec!["1,2".to_string(), "3,4".to_string()],
             find: Some("#FF00FF".to_string()),
             find_min_size: Some(5),

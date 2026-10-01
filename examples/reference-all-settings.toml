@@ -17,13 +17,19 @@ sizes = "16,32,48,64,128,256"
 # or "minimal". Overrides "sizes" above when both are present.
 preset = "windows"
 
-# Hex color (with or without a leading "#") to remove as the background.
+# Hex color (with or without a leading "#") to remove as the background,
+# or "auto" to detect it from the image border (see auto-background.toml).
 # Mutually exclusive with "find" below - use one or the other.
 chroma-key = "FFFFFF"
 
 # How strictly "chroma-key"/"find" match colors, 0-100. Higher catches
 # more shades of the same color but risks eating into real artwork.
 tolerance = 20
+
+# How soft the edge of the removed background is, 0-100: the share of the
+# tolerance range used for the gradual transition. 0 = hard edge, 100 =
+# softest, 50 = the default.
+feather = 50
 
 # Extra starting points (pixel coordinates in the ORIGINAL image) for
 # background regions enclosed by the artwork that the border-based

@@ -9,7 +9,10 @@
 // and the bookkeeping after it (the progress lines, the summary, the
 // --report file).
 
-use crate::chroma_key::{FoundRegion, apply_chroma_key, find_isolated_regions, parse_hex_color};
+use crate::chroma_key::{
+    FoundRegion, apply_chroma_key_feathered, detect_background_color, find_isolated_regions,
+    format_hex, parse_hex_color, warn_about_removal_extent,
+};
 use crate::cli::{Args, OutputFormat};
 use crate::gif::{extract_gif_frame, is_gif};
 use crate::icns::{icns_sizes, write_icns};
@@ -478,6 +481,10 @@ fn convert_one(
         load_started.elapsed()
     ));
 
+    // The background color, if the options name one: given as a hex code, or
+    // detected from the image border with "auto".
+    let background = resolve_background(&source, resolved)?;
+
     // --find: look for regions matching this color that the border-based
     // flood fill in apply_chroma_key can't reach on its own (the same
     // situation --seed manually solves, just discovered automatically).
@@ -486,9 +493,9 @@ fn convert_one(
     // --out-toml writing anything either - nothing was actually decided
     // about the FINAL settings yet in that case).
     let mut discovered_seeds: Vec<(u32, u32)> = Vec::new();
-    if let Some(find_hex) = resolved.find {
-        let regions = find_regions(&source, find_hex, resolved)?;
-        print_found_regions(find_hex, &regions);
+    if let Some(target) = background.as_ref().filter(|target| target.flag == "--find") {
+        let regions = find_regions(&source, target, resolved);
+        print_found_regions(&target.label, &regions);
 
         if !resolved.auto_apply {
             if !regions.is_empty() {
@@ -534,7 +541,13 @@ fn convert_one(
         ));
     }
 
-    remove_background(&mut source, resolved, replacement, discovered_seeds)?;
+    remove_background(
+        &mut source,
+        resolved,
+        replacement,
+        discovered_seeds,
+        background.as_ref(),
+    )?;
 
     // --grayscale runs LAST, after any --chroma-key/--replace-color
     // processing above - so it uniformly affects the final colors,
@@ -654,20 +667,78 @@ fn load_source_image(input_path: &Path, resolved: &ResolvedSettings) -> Result<R
         .to_rgba8())
 }
 
+/// The background color of a run and how to refer to it.
+#[derive(Debug)]
+struct BackgroundTarget {
+    /// The option that named it: `--chroma-key` or `--find`.
+    flag: &'static str,
+    color: [u8; 3],
+    /// What to call the color in messages: the hex code as the user wrote
+    /// it, or `#RRGGBB` for a detected one.
+    label: String,
+}
+
+/// Works out the background color of this run, if --chroma-key or --find
+/// names one: a hex code is parsed, and "auto" is detected from the border
+/// of `source` (and announced, so it can be passed explicitly next time).
+/// In a batch every file detects its own.
+fn resolve_background(
+    source: &RgbaImage,
+    resolved: &ResolvedSettings,
+) -> Result<Option<BackgroundTarget>, String> {
+    // The two are mutually exclusive (see check_color_options), so at most
+    // one of them names the background color.
+    let (flag, spec) = match (resolved.chroma_key, resolved.find) {
+        (Some(spec), _) => ("--chroma-key", spec.trim()),
+        (None, Some(spec)) => ("--find", spec.trim()),
+        (None, None) => return Ok(None),
+    };
+
+    if !spec.eq_ignore_ascii_case("auto") {
+        let color = parse_hex_color(spec).map_err(|e| format!("Invalid {flag} value: {e}"))?;
+        return Ok(Some(BackgroundTarget {
+            flag,
+            color,
+            label: spec.to_string(),
+        }));
+    }
+
+    let started = Instant::now();
+    let found = detect_background_color(source, resolved.tolerance)?;
+    let label = format_hex(found.color);
+    if !resolved.silent {
+        println!(
+            "{}Detected background color {label} ({:.0}% of the image border). To use it explicitly: {flag} {}",
+            file_prefix(),
+            found.coverage * 100.0,
+            label.trim_start_matches('#')
+        );
+    }
+    resolved.note(format_args!(
+        "{}background detection took {:.1?}",
+        file_prefix(),
+        started.elapsed()
+    ));
+    Ok(Some(BackgroundTarget {
+        flag,
+        color: found.color,
+        label,
+    }))
+}
+
 /// Runs --find's region discovery on the source image.
 fn find_regions(
     source: &RgbaImage,
-    find_hex: &str,
+    target: &BackgroundTarget,
     resolved: &ResolvedSettings,
-) -> Result<Vec<FoundRegion>, String> {
-    let target = parse_hex_color(find_hex).map_err(|e| format!("Invalid --find value: {e}"))?;
-    Ok(find_isolated_regions(
+) -> Vec<FoundRegion> {
+    find_isolated_regions(
         source,
-        target,
+        target.color,
         resolved.tolerance,
         resolved.find_min_size,
         resolved.silent,
-    ))
+    )
 }
 
 /// Prints --find's report: how many regions were found and, for each, a
@@ -752,42 +823,49 @@ fn parse_seeds(seeds: &[String]) -> Result<Vec<(u32, u32)>, String> {
         .collect()
 }
 
-/// Applies the actual chroma-key removal/replacement, if requested either
-/// way: --chroma-key (with whatever manual --seed values were given), or
-/// --find --auto-apply (the manual --seed values PLUS the automatically
-/// `discovered` regions from the --find preview, combined). Does nothing
-/// if neither was given. `replacement` (from --replace-color) is passed
-/// through to both.
+/// Applies the actual chroma-key removal/replacement, if a `background`
+/// color was named: --chroma-key (with whatever manual --seed values were
+/// given), or --find --auto-apply (the manual --seed values PLUS the
+/// automatically `discovered` regions from the --find preview, combined).
+/// Does nothing without one. `replacement` (from --replace-color) is passed
+/// through to both. Warns if almost nothing, or almost everything, matched.
 fn remove_background(
     img: &mut RgbaImage,
     resolved: &ResolvedSettings,
     replacement: Option<[u8; 3]>,
     discovered: Vec<(u32, u32)>,
+    background: Option<&BackgroundTarget>,
 ) -> Result<(), String> {
-    // The two are mutually exclusive (see check_color_options), so at most
-    // one of them names the background color. The --find case only gets
-    // here with --auto-apply - the plain preview already returned.
-    let (flag, hex) = match (resolved.chroma_key, resolved.find) {
-        (Some(hex), _) => ("--chroma-key", hex),
-        (None, Some(hex)) => ("--find", hex),
-        (None, None) => return Ok(()),
+    // The --find case only gets here with --auto-apply - the plain preview
+    // already returned.
+    let Some(target) = background else {
+        return Ok(());
     };
 
-    let target = parse_hex_color(hex).map_err(|e| format!("Invalid {flag} value: {e}"))?;
     let started = Instant::now();
     let mut seeds = parse_seeds(resolved.seeds)?;
     seeds.extend(discovered);
-    apply_chroma_key(
+    let affected = apply_chroma_key_feathered(
         img,
-        target,
+        target.color,
         resolved.tolerance,
+        resolved.feather,
         &seeds,
         replacement,
         resolved.silent,
     );
+    warn_about_removal_extent(
+        affected,
+        img.width() as usize * img.height() as usize,
+        &target.label,
+        resolved.silent,
+    );
     resolved.note(format_args!(
-        "background removal ({flag} {hex}, {} seed point(s)) took {:.1?}",
+        "background removal ({} {}, {} seed point(s), feather {}%) took {:.1?}",
+        target.flag,
+        target.label,
         seeds.len(),
+        resolved.feather,
         started.elapsed()
     ));
     Ok(())
@@ -920,6 +998,95 @@ mod tests {
         assert!(with_resolved(&["--force"], check_options).is_ok());
     }
 
+    // --- background color ------------------------------------------------------------
+
+    /// What a conversion does for the background: name the color, then remove it.
+    fn remove(
+        img: &mut RgbaImage,
+        resolved: &ResolvedSettings,
+        replacement: Option<[u8; 3]>,
+        discovered: Vec<(u32, u32)>,
+    ) -> Result<(), String> {
+        let background = resolve_background(img, resolved)?;
+        remove_background(img, resolved, replacement, discovered, background.as_ref())
+    }
+
+    #[test]
+    fn auto_detects_the_border_color_and_labels_it_in_hex() {
+        let mut img = RgbaImage::from_pixel(8, 8, image::Rgba([0, 255, 0, 255]));
+        img.put_pixel(4, 4, image::Rgba([255, 0, 0, 255]));
+        let target = with_resolved(&["--chroma-key", "auto"], |resolved| {
+            resolve_background(&img, resolved).unwrap().unwrap()
+        });
+        assert_eq!(target.color, [0, 255, 0]);
+        assert_eq!(target.label, "#00FF00");
+        assert_eq!(target.flag, "--chroma-key");
+    }
+
+    #[test]
+    fn auto_is_case_insensitive_and_works_for_find_too() {
+        let img = RgbaImage::from_pixel(4, 4, image::Rgba([10, 20, 30, 255]));
+        for flags in [&["-c", "AUTO"][..], &["--find", "Auto"]] {
+            let target = with_resolved(flags, |resolved| {
+                resolve_background(&img, resolved).unwrap().unwrap()
+            });
+            assert_eq!(target.color, [10, 20, 30], "{flags:?}");
+        }
+        let find = with_resolved(&["--find", "auto"], |resolved| {
+            resolve_background(&img, resolved).unwrap().unwrap()
+        });
+        assert_eq!(find.flag, "--find");
+    }
+
+    #[test]
+    fn a_fixed_color_is_taken_as_written() {
+        let img = RgbaImage::from_pixel(4, 4, image::Rgba([10, 20, 30, 255]));
+        let target = with_resolved(&["-c", " #00ff00 "], |resolved| {
+            resolve_background(&img, resolved).unwrap().unwrap()
+        });
+        assert_eq!(target.color, [0, 255, 0]);
+        assert_eq!(target.label, "#00ff00");
+        assert!(
+            with_resolved(&[], |resolved| resolve_background(&img, resolved))
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn auto_on_a_gradient_gives_a_clear_message_naming_the_best_guess() {
+        let mut img = RgbaImage::new(64, 64);
+        for (x, _, pixel) in img.enumerate_pixels_mut() {
+            *pixel = image::Rgba([(x * 4) as u8, 0, 255 - (x * 4) as u8, 255]);
+        }
+        let err = with_resolved(&["-c", "auto", "-t", "5"], |resolved| {
+            resolve_background(&img, resolved).unwrap_err()
+        });
+        assert!(
+            err.contains("Could not detect a single background color"),
+            "{err}"
+        );
+        assert!(
+            err.contains('#') && err.contains("--chroma-key #RRGGBB"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn auto_then_removal_clears_the_detected_background() {
+        let mut img = RgbaImage::from_pixel(9, 9, image::Rgba([0, 255, 0, 255]));
+        for y in 3..6 {
+            for x in 3..6 {
+                img.put_pixel(x, y, image::Rgba([255, 0, 0, 255]));
+            }
+        }
+        with_resolved(&["-c", "auto", "--silent"], |resolved| {
+            remove(&mut img, resolved, None, vec![]).unwrap();
+        });
+        assert_eq!(img.get_pixel(0, 0)[3], 0);
+        assert_eq!(img.get_pixel(4, 4)[3], 255, "the artwork stays");
+    }
+
     // --- parse_size_list / resolve_sizes -------------------------------------------
 
     #[test]
@@ -1027,7 +1194,7 @@ mod tests {
         let mut img = RgbaImage::from_pixel(4, 4, image::Rgba([0, 255, 0, 255]));
         let before = img.clone();
         with_resolved(&[], |resolved| {
-            remove_background(&mut img, resolved, None, vec![]).unwrap();
+            remove(&mut img, resolved, None, vec![]).unwrap();
         });
         assert_eq!(img, before);
     }
@@ -1036,17 +1203,17 @@ mod tests {
     fn remove_background_uses_chroma_key_and_reports_a_bad_color_by_flag() {
         let mut img = RgbaImage::from_pixel(4, 4, image::Rgba([0, 255, 0, 255]));
         with_resolved(&["--chroma-key", "00FF00"], |resolved| {
-            remove_background(&mut img, resolved, None, vec![]).unwrap();
+            remove(&mut img, resolved, None, vec![]).unwrap();
         });
         assert!(img.pixels().all(|p| p[3] == 0));
 
         let err = with_resolved(&["--chroma-key", "nope"], |resolved| {
-            remove_background(&mut img, resolved, None, vec![]).unwrap_err()
+            remove(&mut img, resolved, None, vec![]).unwrap_err()
         });
         assert!(err.contains("Invalid --chroma-key value"), "{err}");
 
         let err = with_resolved(&["--find", "nope", "--auto-apply"], |resolved| {
-            remove_background(&mut img, resolved, None, vec![]).unwrap_err()
+            remove(&mut img, resolved, None, vec![]).unwrap_err()
         });
         assert!(err.contains("Invalid --find value"), "{err}");
     }
@@ -1062,7 +1229,7 @@ mod tests {
         }
         img.put_pixel(4, 4, image::Rgba([0, 255, 0, 255]));
         with_resolved(&["--find", "00FF00", "--auto-apply"], |resolved| {
-            remove_background(&mut img, resolved, None, vec![(4, 4)]).unwrap();
+            remove(&mut img, resolved, None, vec![(4, 4)]).unwrap();
         });
         assert_eq!(img.get_pixel(4, 4)[3], 0, "the discovered seed was used");
         assert_eq!(img.get_pixel(0, 0)[3], 0, "the border was cleared too");

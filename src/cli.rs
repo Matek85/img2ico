@@ -142,8 +142,13 @@ pub struct Args {
     /// Optional hex color code (e.g. "#00FF00" or "00ff00") for "chroma
     /// key" mode: starting from the image border, a connected region of
     /// this color is found and made transparent - the classic use case is
-    /// removing a solid-colored background. If this option is omitted,
-    /// nothing changes compared to the previous behavior.
+    /// removing a solid-colored background. Instead of a color you can write
+    /// "auto": img2ico then takes the most common color along the image
+    /// border as the background, prints the color it found (so you can pass
+    /// it as the color next time) and stops with a clear message if the
+    /// border has no clearly dominant color, as with a gradient or a photo.
+    /// If this option is omitted, nothing changes compared to the previous
+    /// behavior.
     #[arg(short = 'c', long = "chroma-key")]
     pub chroma_key: Option<String>,
 
@@ -156,6 +161,20 @@ pub struct Args {
     /// if neither this nor a config file sets it.
     #[arg(short = 't', long = "tolerance")]
     pub tolerance: Option<u8>,
+
+    /// How soft the edge of a removed or replaced background is (0-100),
+    /// only relevant together with --chroma-key or --find. It is the share of
+    /// the --tolerance range used for a gradual transition at the edge of
+    /// the artwork; the rest is a hard core around the background color.
+    /// 0 = hard edge (everything within the tolerance is removed fully),
+    /// 100 = the transition starts right at the exact background color.
+    /// Defaults to 50 if neither this nor a config file sets it - the
+    /// behavior img2ico has always had.
+    ///
+    /// Example: -c 00FF00 --feather 10 for a crisp edge on a clean
+    /// background, --feather 80 for a smoother one on a noisy source.
+    #[arg(long = "feather", verbatim_doc_comment)]
+    pub feather: Option<u8>,
 
     /// Extra starting point for the chroma-key flood fill, as "x,y"
     /// (pixel coordinates IN THE ORIGINAL IMAGE, not in the resulting
@@ -508,7 +527,7 @@ pub struct Args {
     /// Loads default values for the "tuning" settings above (--sizes,
     /// --preset, --chroma-key, --tolerance, --seed, --find,
     /// --find-min-size, --auto-apply, --replace-color, --grayscale,
-    /// --padding, --gif-frame, --output-format, --delete-source, --force,
+    /// --feather, --padding, --gif-frame, --output-format, --delete-source, --force,
     /// --skip-existing, --keep-going, --recursive, --include, --exclude,
     /// --combine, --index, --silent) from a TOML file. An explicit
     /// command-line flag for the same setting still wins over whatever
