@@ -6,6 +6,7 @@
 use crate::chroma_key::{DEFAULT_FEATHER, DEFAULT_FIND_MIN_SIZE};
 use crate::cli::{Args, OutputFormat, SizePreset};
 use crate::config::{Settings, settings_to_toml, write_config};
+use crate::layout::{FitMode, MAX_CORNER_RADIUS};
 use crate::util::delete_source_files;
 use std::path::{Path, PathBuf};
 
@@ -39,6 +40,10 @@ pub struct ResolvedSettings<'a> {
     pub replace_color: Option<&'a str>,
     pub grayscale: bool,
     pub padding: u8,
+    pub fit: FitMode,
+    pub crop: Option<&'a str>,
+    pub trim: bool,
+    pub corner_radius: u8,
     pub gif_frame: usize,
     pub silent: bool,
     pub output_format: Option<OutputFormat>,
@@ -95,6 +100,14 @@ impl<'a> ResolvedSettings<'a> {
                 .or(settings.replace_color.as_deref()),
             grayscale: args.grayscale || settings.grayscale,
             padding: args.padding.or(settings.padding).unwrap_or(0),
+            fit: args.fit.or(settings.fit).unwrap_or_default(),
+            crop: args.crop.as_deref().or(settings.crop.as_deref()),
+            trim: args.trim || settings.trim,
+            corner_radius: args
+                .corner_radius
+                .or(settings.corner_radius)
+                .unwrap_or(0)
+                .min(MAX_CORNER_RADIUS),
             gif_frame: args.gif_frame.or(settings.gif_frame).unwrap_or(1),
             silent: args.silent || settings.silent,
             output_format: args.output_format.or(settings.output_format),
@@ -162,6 +175,10 @@ impl<'a> ResolvedSettings<'a> {
             replace_color: self.replace_color.map(str::to_owned),
             grayscale: self.grayscale,
             padding: Some(self.padding),
+            fit: Some(self.fit),
+            crop: self.crop.map(str::to_owned),
+            trim: self.trim,
+            corner_radius: Some(self.corner_radius),
             gif_frame: Some(self.gif_frame),
             output_format: self.output_format,
             delete_source: self.delete_source,
@@ -233,6 +250,71 @@ mod tests {
         let mut full = vec!["img2ico", "in.png"];
         full.extend_from_slice(extra);
         Args::parse_from(full)
+    }
+
+    // --- Layout options ----------------------------------------------------------
+
+    #[test]
+    fn the_layout_defaults_change_nothing() {
+        let (cli, file) = (args(&[]), Settings::default());
+        let resolved = ResolvedSettings::resolve(&cli, &file);
+        assert_eq!(resolved.fit, FitMode::Contain);
+        assert_eq!(resolved.crop, None);
+        assert!(!resolved.trim);
+        assert_eq!(resolved.corner_radius, 0);
+    }
+
+    #[test]
+    fn the_layout_options_come_from_the_file_and_the_command_line_wins() {
+        let file = Settings {
+            fit: Some(FitMode::Cover),
+            crop: Some("1,2,3,4".to_string()),
+            trim: true,
+            corner_radius: Some(20),
+            ..Settings::default()
+        };
+        let cli = args(&[]);
+        let resolved = ResolvedSettings::resolve(&cli, &file);
+        assert_eq!(resolved.fit, FitMode::Cover);
+        assert_eq!(resolved.crop, Some("1,2,3,4"));
+        assert!(resolved.trim);
+        assert_eq!(resolved.corner_radius, 20);
+
+        let cli = args(&[
+            "--fit",
+            "contain",
+            "--crop",
+            "5,6,7,8",
+            "--corner-radius",
+            "0",
+        ]);
+        let resolved = ResolvedSettings::resolve(&cli, &file);
+        assert_eq!(resolved.fit, FitMode::Contain);
+        assert_eq!(resolved.crop, Some("5,6,7,8"));
+        assert_eq!(resolved.corner_radius, 0);
+        assert!(
+            resolved.trim,
+            "an on/off flag stays on if either layer sets it"
+        );
+    }
+
+    #[test]
+    fn the_layout_options_survive_the_out_toml_snapshot() {
+        let cli = args(&[
+            "--fit",
+            "cover",
+            "--trim",
+            "--corner-radius",
+            "12",
+            "--crop",
+            "0,0,9,9",
+        ]);
+        let file = Settings::default();
+        let snapshot = ResolvedSettings::resolve(&cli, &file).to_settings();
+        assert_eq!(snapshot.fit, Some(FitMode::Cover));
+        assert!(snapshot.trim);
+        assert_eq!(snapshot.corner_radius, Some(12));
+        assert_eq!(snapshot.crop.as_deref(), Some("0,0,9,9"));
     }
 
     // --- Built-in defaults -------------------------------------------------------

@@ -1,0 +1,18 @@
+# app-icon-layout.toml
+#
+# A logo with a plain white background, turned into a rounded app icon:
+#   - the white background is removed (chroma-key),
+#   - the empty margin that leaves is trimmed, so the artwork fills the icon,
+#   - a little padding and rounded corners give the app-icon look,
+#   - and only the sizes the source image can really supply are made (no
+#     blurry upscaled copies of a small source).
+#
+# Usage:
+#   img2ico logo.png --config app-icon-layout.toml -o app.ico
+
+chroma-key = "FFFFFF"
+trim = true
+padding = 6
+corner-radius = 22
+fit = "contain"
+sizes = "auto"

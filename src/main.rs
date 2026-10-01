@@ -45,6 +45,7 @@ mod convert;
 mod gif;
 mod icns;
 mod ico_ops;
+mod layout;
 mod plan;
 mod report;
 mod resize;

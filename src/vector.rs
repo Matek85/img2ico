@@ -12,6 +12,7 @@
 //     contains <text> can look different on another machine. Paths, shapes
 //     and gradients are drawn identically everywhere.
 
+use crate::layout::{FitMode, Layout, content_edge, round_corners};
 use image::RgbaImage;
 use resvg::{tiny_skia, usvg};
 
@@ -78,32 +79,83 @@ impl VectorImage {
         (size.width(), size.height())
     }
 
-    /// Draws the SVG into a `size` x `size` square: as large as fits inside
-    /// the area left by `padding_percent` (the same rule as for raster
-    /// sources), centered, on a transparent background.
-    pub fn render_square(&self, size: u32, padding_percent: u8) -> RgbaImage {
-        let (width, height) = self.size();
-        let padding = f32::from(padding_percent.min(100));
-        let content = (size as f32 * (1.0 - padding / 100.0)).max(1.0);
-        let scale = (content / width).min(content / height);
-        let offset_x = (size as f32 - width * scale) / 2.0;
-        let offset_y = (size as f32 - height * scale) / 2.0;
+    /// The area of the drawing that actually has something in it, in SVG
+    /// units: (x, y, width, height). What --trim fits to.
+    fn content_area(&self) -> Option<(f32, f32, f32, f32)> {
+        let bounds = self.tree.root().abs_layer_bounding_box();
+        Some((bounds.x(), bounds.y(), bounds.width(), bounds.height()))
+    }
 
-        let mut pixmap = tiny_skia::Pixmap::new(size, size)
-            .expect("an icon size of at least 1 pixel is a valid pixmap");
-        let transform =
-            tiny_skia::Transform::from_scale(scale, scale).post_translate(offset_x, offset_y);
+    /// Draws the SVG into a `size` x `size` square the way `layout` says:
+    /// fitted inside the area left by the padding or (with `FitMode::Cover`)
+    /// filling it, centered, on a transparent background, with the corners
+    /// rounded if asked. With `trim` the drawing's empty margin is left out,
+    /// so its content, not its page, is what gets fitted. This is the same
+    /// layout a raster image gets (see layout.rs), but drawn sharp at this
+    /// size instead of scaled.
+    pub fn render(&self, size: u32, layout: &Layout, trim: bool) -> RgbaImage {
+        let (page_w, page_h) = self.size();
+        let (source_x, source_y, source_w, source_h) = if trim {
+            self.content_area().unwrap_or((0.0, 0.0, page_w, page_h))
+        } else {
+            (0.0, 0.0, page_w, page_h)
+        };
+
+        let content = content_edge(size, layout.padding);
+        let (scale, placed_w, placed_h) = match layout.fit {
+            FitMode::Contain => {
+                let scale = (content / source_w).min(content / source_h);
+                (scale, source_w * scale, source_h * scale)
+            }
+            FitMode::Cover => {
+                let edge = content.round().max(1.0);
+                let scale = (edge / source_w).max(edge / source_h);
+                (scale, edge, edge)
+            }
+        };
+
+        // The picture is drawn into its own pixmap - the placed rectangle,
+        // rounded up to whole pixels - and then laid on the canvas.
+        let (pixmap_w, pixmap_h) = (
+            (placed_w.round() as u32).max(1),
+            (placed_h.round() as u32).max(1),
+        );
+        let mut pixmap = tiny_skia::Pixmap::new(pixmap_w, pixmap_h)
+            .expect("a pixmap of at least 1x1 pixel is valid");
+        // Centered in the pixmap: for cover the overhang is cut off by its edges.
+        let offset_x = (pixmap_w as f32 - source_w * scale) / 2.0;
+        let offset_y = (pixmap_h as f32 - source_h * scale) / 2.0;
+        let transform = tiny_skia::Transform::from_translate(-source_x, -source_y)
+            .post_scale(scale, scale)
+            .post_translate(offset_x, offset_y);
         resvg::render(&self.tree, transform, &mut pixmap.as_mut());
 
         // tiny-skia keeps premultiplied alpha; icons are straight alpha.
-        RgbaImage::from_raw(size, size, pixmap.take_demultiplied())
-            .expect("a size x size pixmap has size x size x 4 bytes")
+        let mut placed = RgbaImage::from_raw(pixmap_w, pixmap_h, pixmap.take_demultiplied())
+            .expect("a pixmap has width x height x 4 bytes");
+        round_corners(&mut placed, 0, 0, pixmap_w, pixmap_h, layout.corner_radius);
+
+        let mut canvas = RgbaImage::new(size, size);
+        image::imageops::overlay(
+            &mut canvas,
+            &placed,
+            i64::from(size.saturating_sub(pixmap_w) / 2),
+            i64::from(size.saturating_sub(pixmap_h) / 2),
+        );
+        canvas
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn plain(padding: u8) -> Layout {
+        Layout {
+            padding,
+            ..Layout::default()
+        }
+    }
 
     const TWO_SQUARES: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="50"><rect width="50" height="50" fill="#ff0000"/><rect x="50" width="50" height="50" fill="#00ff00"/></svg>"##;
 
@@ -129,7 +181,7 @@ mod tests {
     #[test]
     fn a_square_render_fits_the_drawing_and_leaves_transparent_bars() {
         let drawing = VectorImage::parse(TWO_SQUARES.as_bytes(), "t.svg").unwrap();
-        let image = drawing.render_square(32, 0);
+        let image = drawing.render(32, &plain(0), false);
         assert_eq!(image.dimensions(), (32, 32));
         // 100x50 fitted into 32x32: 32 wide, 16 high, centered vertically.
         assert_eq!(image.get_pixel(4, 16).0, [255, 0, 0, 255]);
@@ -141,7 +193,7 @@ mod tests {
     #[test]
     fn padding_leaves_a_margin_on_all_sides() {
         let drawing = VectorImage::parse(TWO_SQUARES.as_bytes(), "t.svg").unwrap();
-        let image = drawing.render_square(100, 20);
+        let image = drawing.render(100, &plain(20), false);
         // 80 wide, 40 high, centered: x 10..90, y 30..70.
         assert_eq!(image.get_pixel(5, 50).0[3], 0);
         assert_eq!(image.get_pixel(15, 50).0, [255, 0, 0, 255]);
@@ -154,7 +206,7 @@ mod tests {
         // fall exactly on pixel borders, so there is no blur at all.
         let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><rect x="7" width="2" height="16" fill="#000"/></svg>"##;
         let drawing = VectorImage::parse(svg.as_bytes(), "t.svg").unwrap();
-        let image = drawing.render_square(16, 0);
+        let image = drawing.render(16, &plain(0), false);
         assert_eq!(image.get_pixel(7, 8).0, [0, 0, 0, 255]);
         assert_eq!(image.get_pixel(8, 8).0, [0, 0, 0, 255]);
         assert_eq!(image.get_pixel(6, 8).0[3], 0, "crisp edge, no blur");
@@ -180,7 +232,7 @@ mod tests {
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="8" height="8"><image width="8" height="8" xlink:href="secret.png"/></svg>"#;
         let drawing = VectorImage::parse(svg.as_bytes(), "a.svg").unwrap();
         assert_eq!(
-            drawing.render_square(8, 0).get_pixel(4, 4).0[3],
+            drawing.render(8, &plain(0), false).get_pixel(4, 4).0[3],
             0,
             "nothing is drawn"
         );
