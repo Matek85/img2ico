@@ -8,10 +8,12 @@ You need Rust **1.88 or newer** (the project uses the 2024 edition); [rustup](ht
 
 ```
 cargo build --release             # the binary: target/release/img2ico
-cargo test                        # unit tests and end-to-end tests that run the real binary
-cargo fmt --check                 # formatting
-cargo clippy --all-targets -- -D warnings
+cargo test --workspace            # unit tests and end-to-end tests that run the real binary
+cargo fmt --all --check           # formatting
+cargo clippy --workspace --all-targets -- -D warnings
 ```
+
+The repository is a Cargo workspace. The command line is the package at the root; `crates/core` holds the code it shares with the web version, and `crates/wasm` the WebAssembly bindings for the page in `web/`. The plan for the web version is in [docs/web-plan.md](docs/web-plan.md).
 
 Use a current stable toolchain for `clippy`: its rules grow with every release, and the automated checks use the newest stable. `Cargo.toml` names the oldest supported Rust version (`rust-version`); the checks run the tests with exactly that version too, so keep both in step.
 
@@ -35,6 +37,9 @@ The tests come in three kinds:
 | `layout.rs`, `resize.rs`, `chroma_key.rs` | Fitting, cropping, trimming and scaling; background detection and removal |
 | `ico_ops.rs`, `ico_validate.rs` | `--inspect`, `--merge`, `--extract`, `--select`, and the `--validate` parser |
 | `util.rs` | Shared helpers: atomic file writing, thread helpers, the file context for messages |
+| `crates/core` | Code that needs neither files nor threads, shared with the web version (so far the `.ico` validator's parser) |
+| `crates/wasm` | The WebAssembly bindings the web page calls |
+| `web/` | The web page |
 
 ## How changes are made
 
@@ -44,7 +49,7 @@ A change is finished when it has tests, the README and `--help` describe it, and
 
 ## The automated checks
 
-The [CI workflow](.github/workflows/ci.yml) runs on every pull request and on every push to `main` that touches code (not for pushes that only change documentation), and it can be started by hand. It
+The [CI workflow](.github/workflows/ci.yml) runs on every pull request and on every push to `main` that touches code (not for pushes that only change documentation or the web page), and it can be started by hand. A pull request that only changes files under `web/` or `docs/`, or Markdown files, skips the Rust checks below: they report as passed without doing any work (the protected `main` needs them to report). Any other file in a pull request makes them run. The workflow
 
 - checks the formatting,
 - runs `clippy` and the full test suite on Windows, macOS and Linux,
