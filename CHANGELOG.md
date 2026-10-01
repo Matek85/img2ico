@@ -69,6 +69,15 @@ when cutting a release.
   image peaks at 166 MB instead of 280 MB (212 MB instead of 304 MB with a
   background removal); the icons are unchanged byte for byte.
 
+### Fixed
+
+- `--inspect` of a source image now reads only its size from the header, so
+  any picture - also one over the pixel limit - can be inspected.
+- The description of `--padding` (in `--help`, the README and the example
+  settings) said the margin is the given percentage on every side. It is the
+  total reduction: `--padding 10` makes the artwork 90% of the icon, a 5%
+  margin on each side. The behavior itself is unchanged.
+
 ## [1.7.0] - 2026-10-01
 
 SVG as a source, rendered anew at every icon size, and WebP, TIFF, TGA and

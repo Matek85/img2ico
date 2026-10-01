@@ -137,10 +137,12 @@ pub fn inspect_icons(paths: &[PathBuf]) -> Result<(), String> {
                 // matched on directly) so it is dropped at the same point
                 // in every Rust edition - see the "tail-expr-drop-order"
                 // change in the 2024 edition guide.
-                let opened = crate::source::open_source(path, crate::source::DEFAULT_MAX_PIXELS);
+                let opened = crate::source::probe_source(path);
                 match opened {
-                    Ok(crate::source::Artwork::Raster(img)) => inspect_source_image(path, &img),
-                    Ok(crate::source::Artwork::Vector(drawing)) => {
+                    Ok(crate::source::Probe::Raster { width, height }) => {
+                        inspect_source_image(path, width, height)
+                    }
+                    Ok(crate::source::Probe::Vector(drawing)) => {
                         inspect_vector_image(path, &drawing)
                     }
                     Err(image_error) => {
@@ -208,12 +210,12 @@ pub fn inspect_icons_json(paths: &[PathBuf]) -> Result<(), String> {
         let report = match read_icon_dir(path) {
             Ok(dir) => ico_report_json(path, &dir),
             Err(ico_error) => {
-                let opened = crate::source::open_source(path, crate::source::DEFAULT_MAX_PIXELS);
+                let opened = crate::source::probe_source(path);
                 match opened {
-                    Ok(crate::source::Artwork::Raster(img)) => image_report_json(path, &img),
-                    Ok(crate::source::Artwork::Vector(drawing)) => {
-                        vector_report_json(path, &drawing)
+                    Ok(crate::source::Probe::Raster { width, height }) => {
+                        image_report_json(path, width, height)
                     }
+                    Ok(crate::source::Probe::Vector(drawing)) => vector_report_json(path, &drawing),
                     Err(image_error) => {
                         return Err(neither_ico_nor_image(path, &ico_error, &image_error));
                     }
@@ -292,8 +294,8 @@ fn alpha_summary(entry: &ico::IconDirEntry) -> String {
 }
 
 /// The JSON form of `inspect_source_image`'s report.
-fn image_report_json(path: &Path, img: &image::DynamicImage) -> serde_json::Value {
-    let native_max = img.width().max(img.height());
+fn image_report_json(path: &Path, width: u32, height: u32) -> serde_json::Value {
+    let native_max = width.max(height);
     let frames = match is_gif(path) {
         Ok(true) => count_gif_frames(path).ok(),
         _ => None,
@@ -305,8 +307,8 @@ fn image_report_json(path: &Path, img: &image::DynamicImage) -> serde_json::Valu
     serde_json::json!({
         "path": path.display().to_string(),
         "kind": "image",
-        "width": img.width(),
-        "height": img.height(),
+        "width": width,
+        "height": height,
         "frames": frames,
         "windows": coverage(&RECOMMENDED_WINDOWS_SIZES),
         "macos": coverage(&icns_sizes()),
@@ -363,8 +365,7 @@ fn inspect_ico_file(path: &Path, dir: &ico::IconDir) {
 /// project's history (Lanczos3 vs. nearest-neighbor on a tiny source
 /// image) - here as a quick heads-up before you even run the conversion,
 /// not an error, since upscaling still produces a valid (if softer) icon.
-fn inspect_source_image(path: &Path, img: &image::DynamicImage) {
-    let (w, h) = (img.width(), img.height());
+fn inspect_source_image(path: &Path, w: u32, h: u32) {
     let native_max = w.max(h);
 
     println!("{} (source image, {w}x{h}):", path.display());

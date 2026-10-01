@@ -3347,6 +3347,26 @@ fn the_default_limit_stops_a_file_that_claims_to_be_enormous() {
 }
 
 #[test]
+fn inspect_only_reads_the_size_so_it_works_for_any_picture() {
+    let dir = tempfile::tempdir().unwrap();
+    // Far over the pixel limit, and not even decodable - but its header
+    // states a size, and that is all --inspect needs.
+    write_png_claiming_size(dir.path(), "huge.png", 30_000, 20_000);
+    let out = img2ico(dir.path(), &["--inspect", "huge.png"]);
+    assert_success(&out);
+    assert!(
+        stdout(&out).contains("(source image, 30000x20000)"),
+        "{}",
+        describe(&out)
+    );
+    let json = img2ico(dir.path(), &["--inspect", "huge.png", "--json"]);
+    assert_success(&json);
+    let report: serde_json::Value = serde_json::from_str(&stdout(&json)).unwrap();
+    assert_eq!(report[0]["width"], 30000);
+    assert_eq!(report[0]["height"], 20000);
+}
+
+#[test]
 fn the_limit_takes_k_and_m_suffixes_and_refuses_nonsense() {
     let dir = tempfile::tempdir().unwrap();
     write_solid(dir.path(), "a.png", 100, RED); // 10000 pixels

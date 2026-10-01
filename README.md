@@ -4,16 +4,18 @@ A command-line tool that converts any image into a Windows `.ico` file (or a mac
 
 Built in Rust: a single, dependency-free binary — no runtime to install, nothing to configure.
 
-**Contents:** [Features](#features) · [Installation](#installation) · [Quick start](#quick-start) · [Command reference](#command-reference) · [Converting an image](#converting-an-image) · [Several files at once](#converting-several-files-at-once) · [Background color](#removing-or-replacing-a-background-color) · [macOS icons](#macos-icons) · [Existing .ico files](#working-with-existing-ico-files) · [Overwrite protection](#overwrite-protection-and-cleanup) · [Settings files](#settings-files) · [Scripting and CI](#scripting-and-ci) · [Recipes](#recipes) · [Quality and safety](#quality-and-safety) · [Development](#development)
+**Contents:** [Features](#features) · [Installation](#installation) · [Quick start](#quick-start) · [Command reference](#command-reference) · [Converting an image](#converting-an-image) · [Several files at once](#converting-several-files-at-once) · [Background color](#removing-or-replacing-a-background-color) · [macOS icons](#macos-icons) · [Existing .ico files](#working-with-existing-ico-files) · [Overwrite protection](#overwrite-protection-and-cleanup) · [Settings files](#settings-files) · [Scripting and CI](#scripting-and-ci) · [Recipes](#recipes) · [Speed and safe writing](#speed-large-images-and-safe-writing) · [Quality and safety](#quality-and-safety) · [Contributing](#contributing)
 
 ## Features
 
 - **Convert** PNG, JPG, BMP, GIF, WebP, TIFF, TGA, macOS `.icns` and SVG files to `.ico` with full 32-bit color and a clean alpha channel — never a reduced-color legacy format. Size presets, padding, grayscale, and frame selection for animated GIFs.
+- **Layout control:** fit the whole image or fill the square (`--fit`), crop a part, trim empty margins, round the corners — and an SVG is drawn anew at every size, so small icons stay sharp.
 - **Batch conversion:** several files, or a whole folder tree, in one run with the same settings — with file filters, name patterns, a progress line per file, a rehearsal mode (`--what-if`), a CSV or JSON report, and a choice of stopping at the first failure or carrying on.
 - **Remove or replace a background color** ("chroma key") with a soft, anti-aliased edge instead of a hard cutout (adjustable with `--feather`), including background areas enclosed by the artwork — found automatically with `--find`. The background color itself can be detected from the image border with `--chroma-key auto`, and img2ico warns when a removal took nothing, or nearly everything.
 - **macOS `.icns`** from the same source image (chosen automatically as the default when running on macOS).
-- **Work with existing `.ico` files:** inspect them, merge several into one, extract every size as PNG, or pull out specific sizes as standalone `.ico` files.
-- **Safe and scriptable:** overwrite protection and source-file cleanup (both opt-in), reusable settings files, quiet modes, clear exit codes — and a place in pipelines: read an image from standard input, write the icon to standard output.
+- **Work with existing `.ico` files:** inspect them, check them for damage (`--validate`, with an exit code for CI), merge several into one, extract every size as PNG, or pull out specific sizes as standalone `.ico` files.
+- **Safe and scriptable:** overwrite protection and source-file cleanup (both opt-in), files written atomically, a size limit against oversized images, reusable settings files, quiet modes, clear exit codes — and a place in pipelines: read an image from standard input, write the icon to standard output.
+- **Fast:** the files of a batch, and the sizes of a large image, are processed on all processors at once; the icons are identical to a single-threaded run.
 - **Helpful warnings** when a source image is too small for the requested sizes or would leave only a sliver of visible artwork.
 
 ## Installation
@@ -25,8 +27,6 @@ Every [GitHub Release](https://github.com/Matek85/img2ico/releases) has a ready-
 1. Open the latest release and download `img2ico-windows.zip`, `img2ico-macos.zip` or `img2ico-linux.zip`.
 2. Extract it. Each bundle contains the binary (`img2ico.exe` / `img2ico`), this README, the license, and the [`examples/`](examples/) settings files.
 3. On macOS/Linux, mark the binary executable once: `chmod +x img2ico`.
-
-The bundles are built automatically by this project's GitHub Actions workflow from the tagged source (see [Development](#development)).
 
 **First-run warnings.** The binaries are not code-signed, so your operating system may object the first time:
 
@@ -52,12 +52,12 @@ img2ico --version
 ```
 
 ```
-img2ico 1.7.0
+img2ico 1.8.0
 target:   x86_64-pc-windows-msvc
-compiler: rustc 1.97.1 (8bab26f4f 2026-07-14)
+compiler: rustc 1.99.0 (b940084d7 2026-09-28)
 ```
 
-`-V` prints just the first line. The platform and compiler lines are what a bug report needs, so please include them.
+`-V` prints just the first line. If you report a problem, please include all three lines.
 
 ### Tab completion (optional)
 
@@ -99,7 +99,7 @@ Usage: img2ico [OPTIONS] <INPUT>...
 | `--output` | `-o` | path, or `-` | Where to write the result: a file, or a folder for a batch, `--extract` and `--select` into several files; `-o -` writes the icon to standard output |
 | `--sizes` | `-s` | comma list, or `auto` | Icon sizes to generate (default `16,32,48,64,128,256`); `auto` leaves out sizes the source is too small for |
 | `--preset` | | `windows` / `favicon` / `minimal` | A predefined size set, instead of `--sizes` |
-| `--padding` | | 0–100 (default 0) | Transparent margin around the artwork, in percent |
+| `--padding` | | 0–100 (default 0) | Shrink the artwork by this percent, leaving a transparent margin around it |
 | `--fit` | | `contain` (default), `cover` | Fit the whole image into the square, or fill the square and cut off the overhang |
 | `--crop` | | `X,Y,WIDTH,HEIGHT` | Cut this part (in pixels) out of the source image first |
 | `--trim` | | | Cut off the transparent margin around the artwork |
@@ -226,7 +226,7 @@ img2ico logo.png --preset windows
 img2ico logo.png --preset favicon --padding 10
 ```
 
-Leaves roughly a 10% transparent margin on every side instead of filling the canvas edge to edge — useful when the artwork already touches its own edges and looks cramped as a small icon. Padding is applied after any background removal.
+Shrinks the artwork by 10% of the icon size and centers it, so it fills 90% of the icon and a transparent margin of 5% is left on each side (`--padding 20`: 80%, 10% per side). Useful when the artwork touches its own edges and looks cramped as a small icon. Values from 0 to 100 are accepted, but anything near 100 leaves next to nothing of the artwork; 5 to 15 is typical. Padding is applied after any background removal.
 
 ### Layout: fit, crop, trim and rounded corners
 
@@ -240,7 +240,7 @@ img2ico logo.png --corner-radius 20      # rounded corners, app-icon style
 img2ico small.png --sizes auto           # only the sizes the source can supply
 ```
 
-**`--fit`.** `contain` (the default, and what img2ico has always done) fits the whole image inside the square; an image that is not square leaves transparent bars. `cover` fills the whole square and cuts off what does not fit, keeping the **middle** of the image — right for a photo or a wide banner that should not leave bars. For a square image both are the same. `--padding` applies to both: with `cover` the image fills the area inside the padding.
+**`--fit`.** `contain` (the default) fits the whole image inside the square; an image that is not square leaves transparent bars. `cover` fills the whole square and cuts off what does not fit, keeping the **middle** of the image — right for a photo or a wide banner that should not leave bars. For a square image both are the same. `--padding` applies to both: with `cover` the image fills the area inside the padding.
 
 **`--crop X,Y,WIDTH,HEIGHT`.** Takes that part of the source image, in pixels, counted from the top left corner: `--crop 10,10,200,200` is the 200×200 pixels starting 10 pixels from the left and from the top. The part has to lie completely inside the image, otherwise img2ico stops with a message that names the image's size (`--inspect` shows it too). `--crop` is for raster images; an SVG has no pixels to count, so it is refused there.
 
@@ -264,7 +264,7 @@ An image whose margin is not transparent (a plain JPG, say) has nothing to cut; 
 img2ico logo.png --grayscale
 ```
 
-Removes all color using the standard weighted luminance formula (green counts most, blue least, matching how the eye perceives brightness). Transparency is untouched. It always runs last, so a `--replace-color` color is grayscaled too rather than being an exception in an otherwise gray icon.
+Removes all color using the standard weighted luminance formula (green counts most, blue least, matching how the eye perceives brightness). Transparency is untouched. It runs after any background removal, so a `--replace-color` color is grayscaled too rather than being an exception in an otherwise gray icon.
 
 ### Animated GIFs
 
@@ -315,7 +315,7 @@ img2ico assets/ -r --exclude "*_old*"                    # everything except fil
 img2ico assets/ -r --include "*.png" --exclude "backup/**"
 ```
 
-A file is taken if it matches **at least one `--include`** (when there are any) **and no `--exclude`** — so `--exclude` always wins. Without any pattern, every supported image (PNG, JPG, BMP, GIF) is taken; a pattern can narrow that down but cannot add other file types. A file you name directly on the command line is never filtered away — you asked for it by name — and if the filters leave a folder with nothing, that is an error.
+A file is taken if it matches **at least one `--include`** (when there are any) **and no `--exclude`** — so `--exclude` always wins. Without any pattern, every [supported image](#supported-source-formats) is taken; a pattern can narrow that down but cannot add other file types. A file you name directly on the command line is never filtered away — you asked for it by name — and if the filters leave a folder with nothing, that is an error.
 
 *What a pattern is matched against.* A pattern **without** a `/` is matched against the file name alone, wherever in the folder tree the file sits. A pattern **with** a `/` is matched against the file's path *below the input folder*, always written with forward slashes (also on Windows). Upper and lower case never matter, so `*.png` also finds `LOGO.PNG`.
 
@@ -381,7 +381,7 @@ The pattern is a file name, not a path (use `-o` and `--keep-structure` for fold
 
 **Name clashes are caught first.** If two inputs would produce the same output file — say `logo.png` and `logo.jpg`, or `one/logo.png` and `two/logo.png` collected into one folder — the whole run is refused before anything is written, naming both and pointing at `--keep-structure` and `--name`, which are the two ways to tell them apart.
 
-**When a file fails.** By default the run stops at the first failure, names the file and exits with code 1. With `--keep-going` the other files are still converted, each failure is reported as it happens, and the run ends with exit code 1 and a count of what failed:
+**When a file fails.** By default the run stops at the first failure, names the file and exits with code 1 (with several threads, files already under way are finished first — see [Speed](#speed-large-images-and-safe-writing); `--jobs 1` stops strictly). With `--keep-going` the other files are still converted, each failure is reported as it happens, and the run ends with exit code 1 and a count of what failed:
 
 ```
 img2ico assets/ -o icons/ --keep-going
@@ -404,7 +404,7 @@ Wrote 2 icon file(s), 6 KB in all, in 41 ms.
 img2ico assets/ -o icons/ --skip-existing
 ```
 
-**Rehearsal.** `--what-if` (called `--dry-run` in 1.5.0, which still works) shows what a run *would* do and writes nothing — no icons, no output folder, no `--report`, no `--out-toml`, and `--delete-source` deletes nothing. Every input gets one line with the icon it would produce, the sizes, and what an already existing output would mean:
+**Rehearsal.** `--what-if` (also accepted as `--dry-run`) shows what a run *would* do and writes nothing — no icons, no output folder, no `--report`, no `--out-toml`, and `--delete-source` deletes nothing. Every input gets one line with the icon it would produce, the sizes, and what an already existing output would mean:
 
 ```
 img2ico assets/ -r -o icons/ --keep-structure --what-if --skip-existing
@@ -426,7 +426,7 @@ img2ico assets/ -r -o icons/ --keep-going --report report.csv
 img2ico assets/ -r -o icons/ --keep-going --report report.json
 ```
 
-Each input has a line with its output, `status` (`converted`, `skipped` or `failed`), `size_bytes` of the icon, the `sizes` inside it, the number of `warnings` it raised, `duration_ms` and, for a failure or a skip, a `message`. The CSV has a header line, with the sizes separated by spaces; the JSON is `{"summary": {…totals…}, "files": [ … ]}`. The report is written even when files failed — that is when it is most useful — and an existing report file is replaced. With the default stop at the first failure the report holds the files up to and including the failed one. Warnings are counted in the report even with `--silent`.
+Each input has a line with its output, `status` (`converted`, `skipped` or `failed`), `size_bytes` of the icon, the `sizes` inside it, the number of `warnings` it raised, `duration_ms` and, for a failure or a skip, a `message`. The CSV has a header line, with the sizes separated by spaces; the JSON is `{"summary": {…totals…}, "files": [ … ]}`. The report is written even when files failed — that is when it is most useful — and an existing report file is replaced. With the default stop at the first failure the report holds the files up to the failed one (and, with several threads, those that were under way at the time). Warnings are counted in the report even with `--silent`.
 
 **Good to know**
 
@@ -434,7 +434,7 @@ Each input has a line with its output, `status` (`converted`, `skipped` or `fail
 - **Warnings say which file they are about** (`Warning: logo.png: the source image is …`). For a single file the messages are unchanged.
 - **`--delete-source` and `--out-toml` act only after a fully successful batch.** If any file failed, no source is deleted — even those that were converted — and no settings snapshot is written. A skipped input is never deleted.
 - **`--find` without `--auto-apply`** prints a report for one image and is refused for a batch; add `--auto-apply` (each file then gets its own discovery), or run it per file.
-- **`--merge`, `--extract`, `--select` and `--inspect`** keep their own rules for their inputs; the batch options of this section (`--recursive`, `--include`, `--exclude`, `--keep-structure`, `--name`, `--what-if`, `--report`) are refused there rather than quietly ignored. The same goes for the folder options given without a folder, and for `--keep-structure` without `-o`.
+- **`--merge`, `--extract`, `--select`, `--inspect` and `--validate`** keep their own rules for their inputs; the batch options of this section (`--recursive`, `--include`, `--exclude`, `--keep-structure`, `--name`, `--what-if`, `--report`) are refused there rather than quietly ignored (`--validate` takes folders itself, so `--recursive` works with it). The same goes for the folder options given without a folder, and for `--keep-structure` without `-o`.
 - **Settings file or command line.** `--recursive`, `--include` and `--exclude` can also be set in a settings file (see above). `--keep-structure`, `--name`, `--what-if`, `--report` and `--json` are command-line only: where the icons go and what gets reported changes with every run.
 
 ## Removing or replacing a background color
@@ -480,7 +480,7 @@ img2ico logo.png -c 00C800 --feather 10     # crisp edge
 img2ico logo.png -c 00C800 --feather 80     # smooth edge
 ```
 
-The edge of the removed background is not cut off abruptly: shades only just within the tolerance are made *partly* transparent. `--feather` (0–100, default 50) is the share of the `--tolerance` range used for that soft transition; the rest is a hard core around the background color that is removed completely. With `0` everything within the tolerance disappears fully (a hard edge, good for clean flat artwork), with `100` the transition starts right at the exact background color (the softest edge, good for noisy or anti-aliased sources, but it leaves more of a halo). The default of 50 is what img2ico has always done. `--feather` changes only how soft the edge is, never *which* pixels count as background — that is up to `--tolerance`. It can be set in a settings file (`feather = 30`) and also applies to `--replace-color`.
+The edge of the removed background is not cut off abruptly: shades only just within the tolerance are made *partly* transparent. `--feather` (0–100, default 50) is the share of the `--tolerance` range used for that soft transition; the rest is a hard core around the background color that is removed completely. With `0` everything within the tolerance disappears fully (a hard edge, good for clean flat artwork), with `100` the transition starts right at the exact background color (the softest edge, good for noisy or anti-aliased sources, but it leaves more of a halo). `--feather` changes only how soft the edge is, never *which* pixels count as background — that is up to `--tolerance`. It can be set in a settings file (`feather = 30`) and also applies to `--replace-color`.
 
 ### Warnings when a removal looks wrong
 
@@ -558,7 +558,7 @@ It contains Apple's full recommended set — 16, 32, 64, 128, 256, 512 and 1024 
 
 **Automatic default.** Without `--output-format`, img2ico picks the format of the platform the binary was *built for*: `icns` on macOS, `ico` everywhere else. The same command therefore does the right thing on every platform. To get a Windows `.ico` from a Mac build, pass `--output-format ico`.
 
-> The `.icns` container was verified byte by byte against the public specification, cross-checked with an independent parser, and — in this project's GitHub Actions workflow — unpacked with Apple's own `iconutil` on a real macOS runner. A test on your own Mac is still worthwhile before relying on it for anything important.
+> The `.icns` container was checked byte by byte against the public specification and, in the automated tests, unpacked with Apple's own `iconutil` on a real Mac. A test on your own Mac is still worthwhile before relying on it for anything important.
 
 ## Working with existing .ico files
 
@@ -591,7 +591,7 @@ logo.png (source image, 64x64):
   tip: for consistently sharp icons at every common size, a source of at least 256x256 (1024x1024 if you also need .icns) is recommended.
 ```
 
-For a GIF it also reports the frame count. Each file is inspected with whichever report fits it, and nothing is written or changed.
+For a GIF it also reports the frame count. A source image is only measured, not decoded, so this is instant even for a huge picture. Each file is inspected with whichever report fits it, and nothing is written or changed.
 
 **For scripts: `--json`.** `img2ico --inspect icon.ico logo.png --json` prints the same information as JSON — always one array with an entry per file, even for a single file. Standard output then holds nothing but the JSON; if a file cannot be read, nothing is printed and the error goes to standard error.
 
@@ -627,7 +627,7 @@ img2ico --validate icon.ico
 img2ico --validate icons/ --recursive      # every .ico in a folder tree
 ```
 
-Checks that an `.ico` file is **structurally sound** and, if it is not, says exactly what is wrong. `--inspect` reads a good file; `--validate` is for finding out why a file does not work, and for failing a build when a damaged icon sneaks in. It does not use the usual icon library, which only refuses a damaged file with one short error: img2ico reads the bytes itself and reports every problem it finds, with the image and the numbers involved.
+Checks that an `.ico` file is **structurally sound** and, if it is not, says exactly what is wrong. `--inspect` describes a good file; `--validate` is for finding out why a file does not work, and for failing a build when a damaged icon sneaks in. Instead of one short "could not read", it reports every problem it finds, with the image and the numbers involved.
 
 What is checked: the header (the reserved field, the type, the number of images), that the directory fits in the file, and for every image its size, offset and length — that the data lies inside the file, does not start in the header, and does not overlap another image. Then the image data itself: a **PNG** chunk by chunk, with the lengths and the checksums (so a flipped byte is found) and an end marker; a **BMP** for its header, its height (which holds the transparency mask too), its compression and whether its data is complete. The width and height the directory states must match what is inside.
 
@@ -705,7 +705,7 @@ img2ico --merge small.ico large.ico -o combined.ico --delete-source
 
 ## Settings files
 
-With more than twenty flags, typing the same combination each time gets old. A TOML settings file sets defaults for the "tuning" options: sizes or preset, the chroma-key/`--find` options (including `--tolerance` and `--feather`), padding, grayscale, GIF frame, `--output-format`, `--force`, `--skip-existing`, `--keep-going`, `--recursive`, `--include`, `--exclude`, `--delete-source`, `--silent`, and `--select`'s `--combine`/`--index`. **Not** covered: the input file(s), `-o`, the mode (`--merge`/`--inspect`/`--extract`/`--select`), and the options that decide where the icons go and what is reported (`--keep-structure`, `--name`, `--what-if`, `--report`, `--json`) — those change with every run. An explicit command-line flag always wins over a file; a file only fills in what you didn't type. Where the files sit, and how they layer, is described under [Which settings files apply](#which-settings-files-apply).
+With more than twenty flags, typing the same combination each time gets old. A TOML settings file sets defaults for the "tuning" options: sizes or preset, the chroma-key/`--find` options (including `--tolerance` and `--feather`), padding, the layout options (`--fit`, `--crop`, `--trim`, `--corner-radius`), grayscale, GIF frame, `--max-pixels`, `--jobs`, `--output-format`, `--force`, `--skip-existing`, `--keep-going`, `--recursive`, `--include`, `--exclude`, `--delete-source`, `--silent`, and `--select`'s `--combine`/`--index`. **Not** covered: the input file(s), `-o`, the mode (`--merge`/`--inspect`/`--validate`/`--extract`/`--select`), and the options that decide where the icons go and what is reported (`--keep-structure`, `--name`, `--what-if`, `--report`, `--json`) — those change with every run. An explicit command-line flag always wins over a file; a file only fills in what you didn't type. Where the files sit, and how they layer, is described under [Which settings files apply](#which-settings-files-apply).
 
 ### TOML in brief
 
@@ -734,11 +734,16 @@ Converts as usual and also writes the settings that were actually used — what 
 preset = "windows"
 chroma-key = "FFFFFF"
 tolerance = 20
+feather = 50
 seeds = []
 find-min-size = 9
 auto-apply = false
 grayscale = false
 padding = 10
+fit = "contain"
+trim = false
+corner-radius = 0
+max-pixels = 100000000
 gif-frame = 1
 delete-source = false
 force = false
@@ -746,7 +751,7 @@ combine = false
 silent = false
 ```
 
-Settings with no value (`find`, `replace-color`, `output-format`, `index`, `sizes` here) are left out. On/off settings are always written, since "off" can't otherwise be told apart from "not set".
+Settings with no value (`find`, `replace-color`, `crop`, `jobs`, `output-format`, `index`, `sizes` here) are left out. On/off settings are always written, since "off" can't otherwise be told apart from "not set".
 
 ```
 img2ico other-logo.png --config my-settings.toml -o other-icon.ico
@@ -816,7 +821,7 @@ An unrecognized key is almost always a typo, so it is flagged. The conversion st
 
 ### Ready-made examples
 
-The [`examples/`](examples/) folder has ready-to-use settings files for a Windows app icon, a favicon, a macOS `.icns`, a grayscale variant, a hands-off setup for scripted/CI use, `folder-batch.toml` for converting a whole folder tree (it needs a folder as the input), and `auto-background.toml` for logos whose background color is detected automatically, and `app-icon-layout.toml` for a rounded, trimmed icon with sizes chosen by the source. `reference-all-settings.toml` documents every possible setting in one place; it isn't meant to be used as-is, because several of its settings deliberately contradict each other — copy individual lines from it instead.
+The [`examples/`](examples/) folder has ready-to-use settings files for a Windows app icon, a favicon, a macOS `.icns`, a grayscale variant, a hands-off setup for scripted/CI use, `folder-batch.toml` for converting a whole folder tree (it needs a folder as the input), `auto-background.toml` for logos whose background color is detected automatically, and `app-icon-layout.toml` for a rounded, trimmed icon with sizes chosen by the source. `reference-all-settings.toml` documents every possible setting in one place; it isn't meant to be used as-is, because several of its settings deliberately contradict each other — copy individual lines from it instead.
 
 ## Scripting and CI
 
@@ -868,7 +873,7 @@ curl -s https://example.com/logo.png | img2ico - -o - --output-format ico | next
 
 What the dash stands for, and what it doesn't:
 
-- It converts **one image into one icon**. `-` can't be combined with other inputs, and `-o -` doesn't work for several inputs or a folder (one stream holds one icon), and neither works with `--merge`, `--inspect`, `--extract` or `--select`.
+- It converts **one image into one icon**. `-` can't be combined with other inputs, and `-o -` doesn't work for several inputs or a folder (one stream holds one icon), and neither works with `--merge`, `--inspect`, `--validate`, `--extract` or `--select`.
 - `--delete-source` is refused with `-` (there is no file to delete) and with `-o -` (it can't be known where the icon ended up). `--skip-existing`/`--force` have nothing to check when the output is a stream.
 - A file that really is called `-` is written `./-`, as an input or as `-o ./-`.
 - `--what-if` works with both and neither reads nor writes anything. `--out-toml` and `--report` still write their files.
@@ -962,7 +967,7 @@ img2ico assets/ -o icons/ -j 1           # strictly one thing after the other
 
 - The progress lines of a batch (`[3/40] …`) still come out **in input order**. Warnings and `--verbose` notes of different files can interleave; every line names its file. That is why a `--verbose` run and a `--find` preview — whose report is several lines per file — work one file at a time unless you give `--jobs` yourself.
 - **The first failure** stops a batch from starting new files; files already under way are finished (and listed in the report), so with several threads a file or two after the failing one may have been converted. `--jobs 1` gives the strict one-after-the-other stop. With `--keep-going` nothing changes: everything else is converted.
-- **Memory is rationed:** the workers together hold at most about 150 megapixels of decoded images, so a batch of large photos takes turns instead of using up the machine's memory (eight 6000×6000 pictures peaked at 646 MB, one at a time at 167 MB).
+- **Memory is rationed:** the workers together hold at most about 150 megapixels of decoded images, so a batch of large photos takes turns instead of using up the machine's memory. A single 6000×6000 image needs about 170 MB.
 - A small source (under about 250,000 pixels) is scaled to its sizes on one thread — it is done in milliseconds, and starting threads would cost more than it saves.
 
 **Large and hostile images (`--max-pixels`).** A source image with more than **100 million pixels** (a 10000×10000 picture, about 400 MB once decoded) is refused with a message — *before* it is decoded, from the size its header states. This protects a pipeline against "decompression bombs": a file of a few kilobytes that claims to be a hundred thousand pixels wide and would otherwise eat all memory. Change the limit with `--max-pixels` (digits, or with a `K` / `M` suffix: `--max-pixels 50M`) or `max-pixels` in a settings file; `0` turns it off for files you trust. It applies to raster images from files and from standard input, GIFs included; an SVG is only drawn at the icon sizes and has no such limit.
@@ -974,34 +979,18 @@ img2ico huge-scan.tif --max-pixels 200M      # allowed
 
 **Atomic writing.** Every file img2ico writes — icons, merged and selected `.ico` files, extracted PNGs, reports and settings files — is first written to a temporary file in the same folder and then renamed into place in one step. If the program is killed (Ctrl+C, a crash, a full disk, a power cut) the output is either complete or still what it was before; there is never a half-written `.ico`. The temporary file (named `.<name>.<number>.tmp`) is removed again if a write fails.
 
-**Memory.** A large source is held in memory once (four bytes per pixel) — the decoded copy is converted in place instead of duplicated, and a transparent image is multiplied with its alpha once for all sizes instead of once per size. That took the peak for a 6000×6000 image from 280 MB to 166 MB, and from 304 MB to 212 MB when a background color is removed from it.
-
 ## Quality and safety
 
-- Every icon size is PNG-encoded at full color depth — never the older, lower-quality BMP-with-reduced-palette format. Whenever the image has any transparency, the PNG carries a full alpha channel; a fully opaque icon is stored without one, since there is nothing to preserve.
+- Every icon size is PNG-encoded at full 32-bit color depth with an alpha channel — never the older, lower-quality BMP-with-reduced-palette format.
 - Resizing is alpha-aware (premultiplied), so shrinking a transparent image doesn't leave a colored fringe around soft edges.
 - Destructive operations are opt-in and fail safe: nothing is overwritten without `--force`, and nothing is deleted unless the run succeeded.
 - **Privacy:** img2ico works entirely on your machine. It never opens a network connection, has no telemetry, no update check and uploads nothing; it only reads the files you name and writes the files you ask for.
 - Input parsing is hardened against malformed and adversarial input and covered by property-based tests; oversized images are refused before they are decoded and files are written atomically ([details](#speed-large-images-and-safe-writing)).
-- Every change is checked by the automated test suite, `rustfmt` and `clippy` (warnings are errors) on Windows, macOS and Linux — see [Development](#development).
+- Every change is checked by an automated test suite on Windows, macOS and Linux.
 
-## Development
+## Contributing
 
-```
-cargo test                        # unit tests and end-to-end tests that run the real binary
-cargo fmt --check                 # formatting
-cargo clippy --all-targets -- -D warnings
-```
-
-The test suite includes property-based tests that compare the optimized chroma-key and `--find` code against a deliberately naive reference implementation on random images, so speed-ups can't silently change results.
-
-**Contributing.** Changes reach `main` through pull requests: create a short-lived branch for one topic (for example `p06-svg` or `fix-gif-frame`), push it, and open a pull request. The CI checks run on the pull request, and `main` accepts it only when they have passed (it is squash-merged, so each pull request becomes one commit on `main`). `main` always holds what has been tested; a release is a tag on a commit of `main`.
-
-**Continuous integration.** The [CI workflow](.github/workflows/ci.yml) runs on every pull request and on every push to `main` that touches code (not for pushes that only change documentation such as the README or the changelog), and can be started by hand. It checks the formatting, runs clippy and the full test suite on Windows, macOS and Linux, runs the tests with the minimum supported Rust version (1.88, from `Cargo.toml`), and, on a real macOS runner, checks both directions with Apple's own tools: a generated `.icns` is unpacked with `iconutil`, and files that Apple's encoders wrote (an `.icns` from `iconutil`; TIFF, JPEG, BMP, GIF and TGA from `sips`) are read back as source images.
-
-**Releasing.** Set the new version in `Cargo.toml`, give `CHANGELOG.md` a section `## [x.y.z]`, and merge that to `main` and push a tag `vx.y.z` on the merged commit. The [release workflow](.github/workflows/release.yml) first checks that the tagged commit is on `main` and that tag, `Cargo.toml` and changelog agree, runs the whole CI workflow as a gate, builds and smoke-tests the bundles for all three platforms, and publishes a GitHub Release whose description is that section of the changelog. A failing check blocks the release. Started by hand it does everything except publishing — a rehearsal that produces the bundles as downloadable build artifacts.
-
-> Developed in an extended pair-programming session with [Claude Sonnet 5](https://www.anthropic.com/claude) (Anthropic) — every feature, fix, and piece of documentation in this repo went through iterative review and testing during that process.
+Bug reports and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) explains how to build and test the project and how changes and releases work.
 
 ## Changelog
 

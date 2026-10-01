@@ -56,8 +56,9 @@ replace-color = "000000"
 # Remove all color from the final image, keeping only brightness.
 grayscale = false
 
-# Transparent margin around the artwork, as a percentage (0-100) of the
-# icon size.
+# Shrinks the artwork by this percentage (0-100) of the icon size and
+# centers it; the difference is a transparent margin split evenly around
+# it (10 = artwork at 90%, a 5% margin on each side).
 padding = 10
 
 # How the image meets the square icon: "contain" (the whole image fits

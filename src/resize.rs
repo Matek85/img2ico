@@ -258,8 +258,8 @@ fn resize_premultiplied(src: &RgbaImage, new_width: u32, new_height: u32) -> Rgb
 ///
 /// `padding_percent` (0-100) additionally shrinks the area the artwork is
 /// fitted into, leaving a transparent margin on all sides. 0 fits the
-/// artwork as large as possible (previous behavior); e.g. 10 leaves
-/// roughly a 10% margin around it.
+/// artwork as large as possible; e.g. 10 makes it 90% of the icon size, a
+/// 5% margin on each side.
 ///
 /// `has_alpha` should be the result of has_transparency() on `rgba`,
 /// computed ONCE by the caller and passed in here - see resize_rgba() for
