@@ -97,9 +97,13 @@ Usage: img2ico [OPTIONS] <INPUT>...
 | Flag | Short | Value | Purpose |
 |---|---|---|---|
 | `--output` | `-o` | path, or `-` | Where to write the result: a file, or a folder for a batch, `--extract` and `--select` into several files; `-o -` writes the icon to standard output |
-| `--sizes` | `-s` | comma list | Icon sizes to generate (default `16,32,48,64,128,256`) |
+| `--sizes` | `-s` | comma list, or `auto` | Icon sizes to generate (default `16,32,48,64,128,256`); `auto` leaves out sizes the source is too small for |
 | `--preset` | | `windows` / `favicon` / `minimal` | A predefined size set, instead of `--sizes` |
 | `--padding` | | 0–100 (default 0) | Transparent margin around the artwork, in percent |
+| `--fit` | | `contain` (default), `cover` | Fit the whole image into the square, or fill the square and cut off the overhang |
+| `--crop` | | `X,Y,WIDTH,HEIGHT` | Cut this part (in pixels) out of the source image first |
+| `--trim` | | | Cut off the transparent margin around the artwork |
+| `--corner-radius` | | 0–50 (default 0) | Round the corners, in percent of the image's shorter edge |
 | `--grayscale` | | | Remove all color, keep only brightness |
 | `--gif-frame` | | number (default 1) | Which frame of an animated GIF to use |
 | `--chroma-key` | `-c` | hex color, or `auto` | Remove this background color; `auto` detects it from the image border |
@@ -184,6 +188,7 @@ What to know:
 
 - **Size and shape.** The drawing is fitted into the square icon as large as it goes and centered, on a transparent background — like a non-square raster image. `--padding` and `--grayscale` work as for any source.
 - **Removing a background color** works: `--chroma-key` (also `auto`), `--tolerance`, `--feather` and `--replace-color` are applied to every rendered size, so a logo drawn on a white square can be freed from it. The color is detected and checked once, and the warnings appear once, not per size. At the very smallest sizes the anti-aliased edge of the artwork can leave a thin fringe of the background color. `--seed` and `--find` name pixel positions, which mean something else at every size, so they are refused for an SVG with a message (in a batch with `--keep-going`, only the SVG files fail); run them on a raster image made from the SVG instead.
+- **Layout.** `--fit`, `--trim` and `--corner-radius` work for an SVG too, drawn sharp at every size; `--crop` is refused (no pixels).
 - **Text depends on your fonts.** Text in an SVG is drawn with the fonts installed on the computer img2ico runs on, so the same file can look different on another machine. For logos, convert the text to paths in your drawing program ("outline text" / "convert to curves") — then the result is the same everywhere. Shapes, paths and gradients are always drawn identically.
 - **Nothing is fetched.** Images embedded in the SVG itself (`data:` URIs) are drawn; links to other files or to the web are not followed, so an SVG cannot make img2ico read your files or open a connection.
 - **Compressed `.svgz`** files work, and the format is recognized from the content, also from standard input.
@@ -219,6 +224,36 @@ img2ico logo.png --preset favicon --padding 10
 ```
 
 Leaves roughly a 10% transparent margin on every side instead of filling the canvas edge to edge — useful when the artwork already touches its own edges and looks cramped as a small icon. Padding is applied after any background removal.
+
+### Layout: fit, crop, trim and rounded corners
+
+How the picture gets onto the square canvas can be steered beyond plain scaling. All of it works for `.ico` and `.icns` output, for raster images and (where noted) for SVG, and each option can also live in a [settings file](#settings-files).
+
+```
+img2ico photo.jpg --fit cover            # fill the square, cut off the overhang
+img2ico logo.png --trim                  # cut off the transparent margin
+img2ico shot.png --crop 100,40,300,300   # take this part of the image
+img2ico logo.png --corner-radius 20      # rounded corners, app-icon style
+img2ico small.png --sizes auto           # only the sizes the source can supply
+```
+
+**`--fit`.** `contain` (the default, and what img2ico has always done) fits the whole image inside the square; an image that is not square leaves transparent bars. `cover` fills the whole square and cuts off what does not fit, keeping the **middle** of the image — right for a photo or a wide banner that should not leave bars. For a square image both are the same. `--padding` applies to both: with `cover` the image fills the area inside the padding.
+
+**`--crop X,Y,WIDTH,HEIGHT`.** Takes that part of the source image, in pixels, counted from the top left corner: `--crop 10,10,200,200` is the 200×200 pixels starting 10 pixels from the left and from the top. The part has to lie completely inside the image, otherwise img2ico stops with a message that names the image's size (`--inspect` shows it too). `--crop` is for raster images; an SVG has no pixels to count, so it is refused there.
+
+**`--trim`.** Cuts off the fully transparent margin around the artwork, so it fills the icon instead of floating in a frame, and centers it. This is also the way to trim a logo that sits on a **solid background**: the background removal comes first, and what it makes transparent is then trimmed.
+
+```
+img2ico logo.jpg --chroma-key auto --trim
+```
+
+An image whose margin is not transparent (a plain JPG, say) has nothing to cut; img2ico warns and leaves it as it is. For an SVG, `--trim` fits the drawing's *content* instead of its page.
+
+**`--corner-radius PERCENT`.** Rounds the corners; the value is how much of the image's shorter edge the curve takes up: 0 leaves them square, around 20 gives the look of an app icon, 50 makes a circle (a pill for an image that is not square). The edge is smooth at every size. The rounding follows the **image**, not the canvas, so with `--padding` the rounded image floats inside its margin, and the transparent bars of a non-square image stay as they are.
+
+**`--sizes auto`.** Takes the default sizes but leaves out those larger than the longer edge of the source image — measured after `--crop` and `--trim`, so it is the size of what is actually used. A 100×100 image gives 16, 32, 48 and 64 instead of upscaled copies; an image smaller than all of them gives one icon at its own size. A drawing (SVG) has no resolution of its own and gets all the default sizes. A `--preset` still wins over `--sizes`; for `.icns` output the fixed size set is used as always.
+
+**In which order things happen.** Background removal → `--crop` → `--trim` → `--grayscale`, then the image is fitted, rounded and scaled to each size. That is why `--seed` positions refer to the whole image, and why `--trim` can cut a background that `--chroma-key` just removed.
 
 ### Grayscale
 
@@ -745,7 +780,7 @@ An unrecognized key is almost always a typo, so it is flagged. The conversion st
 
 ### Ready-made examples
 
-The [`examples/`](examples/) folder has ready-to-use settings files for a Windows app icon, a favicon, a macOS `.icns`, a grayscale variant, a hands-off setup for scripted/CI use, `folder-batch.toml` for converting a whole folder tree (it needs a folder as the input), and `auto-background.toml` for logos whose background color is detected automatically. `reference-all-settings.toml` documents every possible setting in one place; it isn't meant to be used as-is, because several of its settings deliberately contradict each other — copy individual lines from it instead.
+The [`examples/`](examples/) folder has ready-to-use settings files for a Windows app icon, a favicon, a macOS `.icns`, a grayscale variant, a hands-off setup for scripted/CI use, `folder-batch.toml` for converting a whole folder tree (it needs a folder as the input), and `auto-background.toml` for logos whose background color is detected automatically, and `app-icon-layout.toml` for a rounded, trimmed icon with sizes chosen by the source. `reference-all-settings.toml` documents every possible setting in one place; it isn't meant to be used as-is, because several of its settings deliberately contradict each other — copy individual lines from it instead.
 
 ## Scripting and CI
 

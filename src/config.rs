@@ -4,6 +4,7 @@
 // the settings back out (--out-toml).
 
 use crate::cli::{OutputFormat, SizePreset};
+use crate::layout::FitMode;
 use serde::{Deserialize, Serialize};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -47,6 +48,11 @@ pub struct Settings {
     #[serde(default)]
     pub grayscale: bool,
     pub padding: Option<u8>,
+    pub fit: Option<FitMode>,
+    pub crop: Option<String>,
+    #[serde(default)]
+    pub trim: bool,
+    pub corner_radius: Option<u8>,
     pub gif_frame: Option<usize>,
     pub output_format: Option<OutputFormat>,
     #[serde(default)]
@@ -104,6 +110,10 @@ impl Settings {
             replace_color: self.replace_color.or(fallback.replace_color),
             grayscale: self.grayscale || fallback.grayscale,
             padding: self.padding.or(fallback.padding),
+            fit: self.fit.or(fallback.fit),
+            crop: self.crop.or(fallback.crop),
+            trim: self.trim || fallback.trim,
+            corner_radius: self.corner_radius.or(fallback.corner_radius),
             gif_frame: self.gif_frame.or(fallback.gif_frame),
             output_format: self.output_format.or(fallback.output_format),
             delete_source: self.delete_source || fallback.delete_source,
@@ -150,6 +160,10 @@ const KNOWN_SETTINGS_KEYS: &[&str] = &[
     "replace-color",
     "grayscale",
     "padding",
+    "fit",
+    "crop",
+    "trim",
+    "corner-radius",
     "gif-frame",
     "output-format",
     "delete-source",
@@ -389,6 +403,10 @@ mod tests {
             replace_color: Some("#000000".to_string()),
             grayscale: true,
             padding: Some(12),
+            fit: Some(FitMode::Cover),
+            crop: Some("1,2,30,40".to_string()),
+            trim: true,
+            corner_radius: Some(22),
             gif_frame: Some(3),
             output_format: Some(OutputFormat::Icns),
             delete_source: true,
@@ -527,6 +545,10 @@ mod tests {
         assert_eq!(loaded.replace_color, expected.replace_color);
         assert_eq!(loaded.grayscale, expected.grayscale);
         assert_eq!(loaded.padding, expected.padding);
+        assert_eq!(loaded.fit, expected.fit);
+        assert_eq!(loaded.crop, expected.crop);
+        assert_eq!(loaded.trim, expected.trim);
+        assert_eq!(loaded.corner_radius, expected.corner_radius);
         assert_eq!(loaded.gif_frame, expected.gif_frame);
         assert_eq!(loaded.output_format, expected.output_format);
         assert_eq!(loaded.delete_source, expected.delete_source);

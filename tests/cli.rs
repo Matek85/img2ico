@@ -2619,6 +2619,421 @@ fn a_broken_svg_is_a_clear_error() {
 }
 
 // =============================================================================
+// Layout: --fit, --crop, --trim, --corner-radius and --sizes auto
+// =============================================================================
+
+/// 40x20: red left half, green right half, fully opaque.
+fn write_wide(dir: &Path, name: &str) -> PathBuf {
+    write_image(dir, name, 40, 20, |x, _| if x < 20 { RED } else { GREEN })
+}
+
+/// 64x64, transparent except for a red 16x16 square at (24, 8).
+fn write_floating_square(dir: &Path, name: &str) -> PathBuf {
+    write_image(dir, name, 64, 64, |x, y| {
+        if (24..40).contains(&x) && (8..24).contains(&y) {
+            RED
+        } else {
+            [0, 0, 0, 0]
+        }
+    })
+}
+
+#[test]
+fn fit_contain_is_the_default_and_leaves_bars() {
+    let dir = tempfile::tempdir().unwrap();
+    write_wide(dir.path(), "wide.png");
+    for extra in [&[][..], &["--fit", "contain"]] {
+        let mut args = vec!["wide.png", "-o", "out.ico", "--sizes", "32", "--force"];
+        args.extend_from_slice(extra);
+        assert_success(&convert(dir.path(), &args));
+        let ico = dir.path().join("out.ico");
+        assert_eq!(icon_pixel(&ico, 32, 16, 1)[3], 0, "bar above");
+        assert_eq!(icon_pixel(&ico, 32, 4, 16), RED);
+    }
+}
+
+#[test]
+fn fit_cover_fills_the_square_and_keeps_the_middle() {
+    let dir = tempfile::tempdir().unwrap();
+    write_wide(dir.path(), "wide.png");
+    assert_success(&convert(
+        dir.path(),
+        &[
+            "wide.png", "--fit", "cover", "-o", "out.ico", "--sizes", "32",
+        ],
+    ));
+    let ico = dir.path().join("out.ico");
+    for (x, y) in [(0, 0), (31, 0), (0, 31), (31, 31)] {
+        assert_eq!(icon_pixel(&ico, 32, x, y)[3], 255, "({x},{y})");
+    }
+    assert_eq!(icon_pixel(&ico, 32, 4, 16), RED);
+    assert_eq!(icon_pixel(&ico, 32, 27, 16), GREEN);
+}
+
+#[test]
+fn an_unknown_fit_is_refused_by_the_command_line() {
+    let dir = tempfile::tempdir().unwrap();
+    write_wide(dir.path(), "wide.png");
+    let out = convert(dir.path(), &["wide.png", "--fit", "stretch"]);
+    assert_failure_containing(&out, "invalid value");
+}
+
+#[test]
+fn crop_takes_the_given_part_of_the_image() {
+    let dir = tempfile::tempdir().unwrap();
+    write_wide(dir.path(), "wide.png");
+    // The right 20x20: all green.
+    assert_success(&convert(
+        dir.path(),
+        &[
+            "wide.png",
+            "--crop",
+            "20,0,20,20",
+            "-o",
+            "out.ico",
+            "--sizes",
+            "16",
+        ],
+    ));
+    let ico = dir.path().join("out.ico");
+    assert_eq!(icon_pixel(&ico, 16, 2, 8), GREEN);
+    assert_eq!(icon_pixel(&ico, 16, 13, 8), GREEN);
+    assert_eq!(icon_pixel(&ico, 16, 8, 0)[3], 255, "now square: no bars");
+}
+
+#[test]
+fn a_bad_crop_is_an_error_before_anything_is_written() {
+    let dir = tempfile::tempdir().unwrap();
+    write_wide(dir.path(), "wide.png");
+    for bad in ["1,2,3", "a,b,c,d", "0,0,0,5"] {
+        let out = convert(dir.path(), &["wide.png", "--crop", bad]);
+        assert_failure_containing(&out, "--crop");
+    }
+    let out = convert(dir.path(), &["wide.png", "--crop", "30,0,20,10"]);
+    assert_failure_containing(&out, "reaches outside the image, which is 40x20 pixels");
+    assert!(!dir.path().join("wide.ico").exists());
+}
+
+#[test]
+fn trim_cuts_the_transparent_margin_so_the_artwork_fills_the_icon() {
+    let dir = tempfile::tempdir().unwrap();
+    write_floating_square(dir.path(), "logo.png");
+    // Without --trim the 16x16 square floats in a 64x64 canvas.
+    assert_success(&convert(
+        dir.path(),
+        &["logo.png", "-o", "plain.ico", "--sizes", "64"],
+    ));
+    assert_eq!(icon_pixel(&dir.path().join("plain.ico"), 64, 2, 2)[3], 0);
+
+    assert_success(&convert(
+        dir.path(),
+        &["logo.png", "--trim", "-o", "trim.ico", "--sizes", "64"],
+    ));
+    let ico = dir.path().join("trim.ico");
+    for (x, y) in [(0, 0), (63, 0), (0, 63), (63, 63), (32, 32)] {
+        assert_eq!(icon_pixel(&ico, 64, x, y), RED, "({x},{y})");
+    }
+}
+
+#[test]
+fn trim_after_a_background_removal_cuts_the_removed_background_too() {
+    let dir = tempfile::tempdir().unwrap();
+    write_green_background_red_square(dir.path(), "logo.png");
+    assert_success(&convert(
+        dir.path(),
+        &[
+            "logo.png", "-c", "00ff00", "--trim", "-o", "out.ico", "--sizes", "16",
+        ],
+    ));
+    let ico = dir.path().join("out.ico");
+    assert_eq!(icon_pixel(&ico, 16, 0, 0), RED);
+    assert_eq!(icon_pixel(&ico, 16, 15, 15), RED);
+}
+
+#[test]
+fn trim_without_a_transparent_margin_warns_and_changes_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    write_wide(dir.path(), "wide.png");
+    let out = convert(
+        dir.path(),
+        &["wide.png", "--trim", "-o", "out.ico", "--sizes", "32"],
+    );
+    assert_success(&out);
+    assert!(
+        stderr(&out).contains("--trim found no transparent margin"),
+        "{}",
+        describe(&out)
+    );
+    assert_eq!(icon_pixel(&dir.path().join("out.ico"), 32, 4, 16), RED);
+}
+
+#[test]
+fn trim_of_a_completely_transparent_image_warns() {
+    let dir = tempfile::tempdir().unwrap();
+    write_image(dir.path(), "empty.png", 8, 8, |_, _| [0, 0, 0, 0]);
+    let out = convert(dir.path(), &["empty.png", "--trim", "--sizes", "16"]);
+    assert_success(&out);
+    assert!(
+        stderr(&out).contains("nothing to keep"),
+        "{}",
+        describe(&out)
+    );
+}
+
+#[test]
+fn corner_radius_rounds_the_corners_of_every_size() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "red.png", 128, RED);
+    assert_success(&convert(
+        dir.path(),
+        &[
+            "red.png",
+            "--corner-radius",
+            "25",
+            "-o",
+            "out.ico",
+            "--sizes",
+            "16,64,256",
+        ],
+    ));
+    let ico = dir.path().join("out.ico");
+    for size in [16, 64, 256] {
+        assert_eq!(icon_pixel(&ico, size, 0, 0)[3], 0, "{size}: corner");
+        assert_eq!(
+            icon_pixel(&ico, size, size - 1, size - 1)[3],
+            0,
+            "{size}: corner"
+        );
+        assert_eq!(
+            icon_pixel(&ico, size, size / 2, 0)[3],
+            255,
+            "{size}: edge middle"
+        );
+        assert_eq!(icon_pixel(&ico, size, size / 2, size / 2), RED, "{size}");
+    }
+}
+
+#[test]
+fn a_corner_radius_beyond_fifty_percent_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "red.png", 16, RED);
+    let out = convert(dir.path(), &["red.png", "--corner-radius", "51"]);
+    assert_failure_containing(&out, "corner-radius");
+}
+
+#[test]
+fn corner_radius_and_padding_round_the_image_inside_its_margin() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "red.png", 100, RED);
+    assert_success(&convert(
+        dir.path(),
+        &[
+            "red.png",
+            "--corner-radius",
+            "50",
+            "--padding",
+            "20",
+            "-o",
+            "out.ico",
+            "--sizes",
+            "100",
+        ],
+    ));
+    let ico = dir.path().join("out.ico");
+    assert_eq!(icon_pixel(&ico, 100, 50, 50), RED);
+    assert_eq!(icon_pixel(&ico, 100, 50, 12)[3], 255, "top of the circle");
+    assert_eq!(icon_pixel(&ico, 100, 14, 14)[3], 0, "outside the circle");
+    assert_eq!(icon_pixel(&ico, 100, 5, 50)[3], 0, "padding");
+}
+
+#[test]
+fn sizes_auto_leaves_out_what_the_source_cannot_supply() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "small.png", 100, RED);
+    let out = convert(
+        dir.path(),
+        &["small.png", "--sizes", "auto", "-o", "out.ico"],
+    );
+    assert_success(&out);
+    assert_eq!(ico_sizes(&dir.path().join("out.ico")), vec![16, 32, 48, 64]);
+    assert!(!stderr(&out).contains("upscaled"), "{}", describe(&out));
+
+    write_solid(dir.path(), "big.png", 512, RED);
+    assert_success(&convert(
+        dir.path(),
+        &["big.png", "--sizes", "AUTO", "-o", "big.ico"],
+    ));
+    assert_eq!(
+        ico_sizes(&dir.path().join("big.ico")),
+        vec![16, 32, 48, 64, 128, 256]
+    );
+}
+
+#[test]
+fn sizes_auto_follows_crop_and_trim_and_handles_a_tiny_source() {
+    let dir = tempfile::tempdir().unwrap();
+    write_floating_square(dir.path(), "logo.png");
+    // After --trim the artwork is 16x16: sizes up to 16 only.
+    assert_success(&convert(
+        dir.path(),
+        &["logo.png", "--trim", "--sizes", "auto", "-o", "a.ico"],
+    ));
+    assert_eq!(ico_sizes(&dir.path().join("a.ico")), vec![16]);
+
+    write_solid(dir.path(), "tiny.png", 10, RED);
+    assert_success(&convert(
+        dir.path(),
+        &["tiny.png", "--sizes", "auto", "-o", "b.ico"],
+    ));
+    assert_eq!(ico_sizes(&dir.path().join("b.ico")), vec![10]);
+}
+
+#[test]
+fn the_layout_options_work_for_icns_output_too() {
+    let dir = tempfile::tempdir().unwrap();
+    write_wide(dir.path(), "wide.png");
+    assert_success(&img2ico(
+        dir.path(),
+        &[
+            "wide.png",
+            "--output-format",
+            "icns",
+            "--fit",
+            "cover",
+            "--corner-radius",
+            "20",
+            "-o",
+            "a.icns",
+        ],
+    ));
+    assert!(dir.path().join("a.icns").is_file());
+}
+
+#[test]
+fn the_layout_options_can_come_from_a_settings_file() {
+    let dir = tempfile::tempdir().unwrap();
+    write_wide(dir.path(), "wide.png");
+    std::fs::write(
+        dir.path().join("img2ico.toml"),
+        "fit = \"cover\"\ncrop = \"0,0,20,20\"\ntrim = true\ncorner-radius = 10\nsizes = \"auto\"\n",
+    )
+    .unwrap();
+    let out = img2ico(
+        dir.path(),
+        &[
+            "wide.png",
+            "--output-format",
+            "ico",
+            "-o",
+            "out.ico",
+            "--out-toml",
+            "saved.toml",
+        ],
+    );
+    assert_success(&out);
+    let saved = std::fs::read_to_string(dir.path().join("saved.toml")).unwrap();
+    for line in [
+        "fit = \"cover\"",
+        "crop = \"0,0,20,20\"",
+        "trim = true",
+        "corner-radius = 10",
+        "sizes = \"auto\"",
+    ] {
+        assert!(saved.contains(line), "{line} missing in:\n{saved}");
+    }
+    // The command line wins over the file.
+    let out = img2ico(
+        dir.path(),
+        &[
+            "wide.png",
+            "--output-format",
+            "ico",
+            "-o",
+            "again.ico",
+            "--fit",
+            "contain",
+            "--sizes",
+            "16",
+            "--force",
+        ],
+    );
+    assert_success(&out);
+}
+
+// --- SVG ----------------------------------------------------------------------
+
+/// A 100x100 page with a red 20x20 square at (40, 40).
+const SMALL_SQUARE_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect x="40" y="40" width="20" height="20" fill="#ff0000"/></svg>"##;
+
+#[test]
+fn trim_fits_the_content_of_an_svg_not_its_page() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("logo.svg"), SMALL_SQUARE_SVG).unwrap();
+    assert_success(&convert(
+        dir.path(),
+        &["logo.svg", "-o", "plain.ico", "--sizes", "32"],
+    ));
+    assert_eq!(icon_pixel(&dir.path().join("plain.ico"), 32, 1, 1)[3], 0);
+
+    assert_success(&convert(
+        dir.path(),
+        &["logo.svg", "--trim", "-o", "trim.ico", "--sizes", "32"],
+    ));
+    let ico = dir.path().join("trim.ico");
+    for (x, y) in [(0, 0), (31, 0), (0, 31), (31, 31)] {
+        assert_eq!(icon_pixel(&ico, 32, x, y), RED, "({x},{y})");
+    }
+}
+
+#[test]
+fn an_svg_takes_fit_cover_and_corner_radius_at_every_size() {
+    let dir = tempfile::tempdir().unwrap();
+    let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="50"><rect width="100" height="50" fill="#ff0000"/></svg>"##;
+    std::fs::write(dir.path().join("wide.svg"), svg).unwrap();
+    assert_success(&convert(
+        dir.path(),
+        &[
+            "wide.svg",
+            "--fit",
+            "cover",
+            "--corner-radius",
+            "30",
+            "-o",
+            "out.ico",
+            "--sizes",
+            "16,64",
+        ],
+    ));
+    let ico = dir.path().join("out.ico");
+    for size in [16, 64] {
+        assert_eq!(icon_pixel(&ico, size, 0, 0)[3], 0, "{size}: rounded corner");
+        assert_eq!(
+            icon_pixel(&ico, size, size / 2, 1)[3],
+            255,
+            "{size}: covers the top"
+        );
+        assert_eq!(icon_pixel(&ico, size, size / 2, size / 2), RED, "{size}");
+    }
+}
+
+#[test]
+fn crop_is_refused_for_an_svg_and_sizes_auto_gives_the_default_sizes() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("logo.svg"), SMALL_SQUARE_SVG).unwrap();
+    let out = convert(dir.path(), &["logo.svg", "--crop", "0,0,10,10"]);
+    assert_failure_containing(&out, "--crop does not apply to an SVG");
+
+    assert_success(&convert(
+        dir.path(),
+        &["logo.svg", "--sizes", "auto", "-o", "out.ico"],
+    ));
+    assert_eq!(
+        ico_sizes(&dir.path().join("out.ico")),
+        vec![16, 32, 48, 64, 128, 256]
+    );
+}
+
+// =============================================================================
 // Shell completions
 // =============================================================================
 

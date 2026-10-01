@@ -4,6 +4,7 @@
 // really one unit - clap reads all of it together to build a single
 // coherent --help output.
 
+use crate::layout::FitMode;
 use clap::{CommandFactory, Parser};
 use clap_complete::Shell;
 use std::path::PathBuf;
@@ -130,6 +131,13 @@ pub struct Args {
     /// small for the taskbar, large for the desktop view). Defaults to
     /// "16,32,48,64,128,256" if neither this, a config file, nor --preset
     /// sets it.
+    ///
+    /// "--sizes auto" takes the default sizes but leaves out those larger
+    /// than the longer edge of the source image (after --crop and --trim),
+    /// so nothing is upscaled: a 100x100 image gives 16, 32, 48 and 64 (an
+    /// image smaller than all of them gives one icon at its own size).
+    /// A drawing (SVG) has no resolution of its own, so it gets all the
+    /// default sizes.
     #[arg(short, long)]
     pub sizes: Option<String>,
 
@@ -323,6 +331,44 @@ pub struct Args {
     /// neither this nor a config file sets it.
     #[arg(long = "padding")]
     pub padding: Option<u8>,
+
+    /// How the image meets the square icon: "contain" (the default) fits
+    /// the whole image inside the square - an image that is not square
+    /// leaves transparent bars - and "cover" fills the whole square,
+    /// cutting off what does not fit at the edges (the middle of the image
+    /// is kept). --padding applies to both: with "cover" the image fills
+    /// the area inside the padding.
+    #[arg(long = "fit", value_enum)]
+    pub fit: Option<FitMode>,
+
+    /// Cuts this part out of the source image before anything else is
+    /// done with it: X,Y,WIDTH,HEIGHT in pixels, counted from the top left
+    /// corner - --crop 10,10,200,200 takes the 200x200 pixels starting at
+    /// 10 pixels from the left and from the top. The part has to lie inside
+    /// the image. Happens after a background removal (so --seed positions
+    /// still refer to the whole image) and before --trim. For raster
+    /// images only: an SVG has no pixels to count.
+    #[arg(long = "crop", value_name = "X,Y,WIDTH,HEIGHT")]
+    pub crop: Option<String>,
+
+    /// Cuts off the transparent margin around the artwork, so it fills the
+    /// icon instead of floating in a frame (and is centered). Runs after
+    /// any background removal, which makes this the way to trim a logo on
+    /// a solid background: --chroma-key ffffff --trim. A margin that is not
+    /// transparent (a plain JPG, say) has nothing to cut - img2ico says so
+    /// and leaves the image as it is. Also works for an SVG, where it fits
+    /// the drawing's content instead of its page.
+    #[arg(long = "trim")]
+    pub trim: bool,
+
+    /// Rounds the corners of the image, as the percentage of its shorter
+    /// edge (0-50) the corner curve takes up: 0 (the default) leaves them
+    /// square, around 20 gives the look of an app icon, 50 makes a circle
+    /// (or a pill for an image that is not square). The edge is smooth at
+    /// every size. The rounding follows the image, not the canvas, so with
+    /// --padding the rounded image floats inside its margin.
+    #[arg(long = "corner-radius", value_name = "PERCENT", value_parser = clap::value_parser!(u8).range(0..=50))]
+    pub corner_radius: Option<u8>,
 
     /// Which frame to use as the source image, if the input is an
     /// animated GIF (has no effect on any other format). Frames are
@@ -546,7 +592,8 @@ pub struct Args {
     /// Loads default values for the "tuning" settings above (--sizes,
     /// --preset, --chroma-key, --tolerance, --seed, --find,
     /// --find-min-size, --auto-apply, --replace-color, --grayscale,
-    /// --feather, --padding, --gif-frame, --output-format, --delete-source, --force,
+    /// --feather, --padding, --fit, --crop, --trim, --corner-radius, --gif-frame,
+    /// --output-format, --delete-source, --force,
     /// --skip-existing, --keep-going, --recursive, --include, --exclude,
     /// --combine, --index, --silent) from a TOML file. An explicit
     /// command-line flag for the same setting still wins over whatever

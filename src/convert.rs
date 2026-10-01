@@ -16,13 +16,13 @@ use crate::chroma_key::{
 use crate::cli::{Args, OutputFormat};
 use crate::gif::{extract_gif_frame, extract_gif_frame_from_bytes, is_gif, is_gif_bytes};
 use crate::icns::{encode_icns, icns_sizes};
+use crate::layout::{Layout, Trimmed, auto_sizes, crop, make_icon, parse_crop, trim_transparent};
 use crate::plan::{Job, Naming, check_batch_options, check_folder_options, plan_jobs, single_job};
 use crate::report::{
     FileRecord, ReportFormat, Status, Summary, human_duration, human_size, write_report,
 };
 use crate::resize::{
-    apply_grayscale, has_transparency, make_square_icon, warn_about_thin_content,
-    warn_about_upscaling,
+    apply_grayscale, has_transparency, warn_about_thin_content, warn_about_upscaling,
 };
 use crate::select::{Filter, NamePattern, Source, expand_inputs};
 use crate::settings::{
@@ -661,7 +661,7 @@ fn convert_one(
         discovered_seeds = regions.into_iter().map(|r| r.seed).collect();
     }
 
-    let sizes = prepare_output(job, resolved, use_icns, to_stdout)?;
+    let mut sizes = prepare_output(job, resolved, use_icns, to_stdout)?;
 
     remove_background(
         &mut source,
@@ -670,6 +670,23 @@ fn convert_one(
         discovered_seeds,
         background.as_ref(),
     )?;
+
+    // The part of the image that is wanted: --crop first, then --trim, which
+    // works on what is left. Both come after the background removal, so
+    // --seed positions still refer to the whole image and --trim finds the
+    // transparent margin a removed background leaves.
+    if let Some(text) = resolved.crop {
+        source = crop(&source, parse_crop(text)?)?;
+        resolved.note(format_args!(
+            "{}cropped to {}x{} pixels",
+            file_prefix(),
+            source.width(),
+            source.height()
+        ));
+    }
+    if resolved.trim {
+        trim_source(&mut source, resolved);
+    }
 
     // --grayscale runs LAST, after any --chroma-key/--replace-color
     // processing above - so it uniformly affects the final colors,
@@ -685,13 +702,26 @@ fn convert_one(
     // has_transparency()'s doc comment for why this matters.
     let has_alpha = has_transparency(&source);
 
+    // --sizes auto can only be settled now: it depends on how big the image
+    // is after --crop and --trim.
+    if wants_auto_sizes(resolved) {
+        sizes = auto_sizes(&sizes, source.width().max(source.height()));
+        resolved.note(format_args!(
+            "{}sizes auto: {sizes:?} (source {}x{} pixels)",
+            file_prefix(),
+            source.width(),
+            source.height()
+        ));
+    }
+
     warn_about_small_source(&source, use_icns, &sizes, resolved);
 
     // .icns branches off here (whether from an explicit --output-format
     // icns or from the platform-based default): it has its own container
     // format (see write_icns) and doesn't use the ICO-specific --sizes
     // list at all.
-    let render = |size: u32| make_square_icon(&source, size, resolved.padding, has_alpha);
+    let layout = layout_of(resolved);
+    let render = |size: u32| make_icon(&source, size, &layout, has_alpha);
     let (icon_bytes, written_sizes) = if use_icns {
         (encode_icns(&render)?, icns_sizes())
     } else {
@@ -709,6 +739,56 @@ fn convert_one(
         bytes,
         sizes: written_sizes,
     })
+}
+
+/// How the picture is laid onto the icon canvas, from the settings.
+fn layout_of(resolved: &ResolvedSettings) -> Layout {
+    Layout {
+        fit: resolved.fit,
+        padding: resolved.padding,
+        corner_radius: resolved.corner_radius,
+    }
+}
+
+/// Whether `--sizes auto` is in effect (a preset, which names its sizes
+/// outright, takes precedence over --sizes as always).
+fn wants_auto_sizes(resolved: &ResolvedSettings) -> bool {
+    resolved.preset.is_none()
+        && resolved
+            .sizes
+            .is_some_and(|sizes| sizes.trim().eq_ignore_ascii_case("auto"))
+}
+
+/// --trim for a raster image: cut off the transparent margin, or say why
+/// nothing was cut.
+fn trim_source(source: &mut RgbaImage, resolved: &ResolvedSettings) {
+    match trim_transparent(source) {
+        Trimmed::Cut(cut) => {
+            resolved.note(format_args!(
+                "{}trimmed from {}x{} to {}x{} pixels",
+                file_prefix(),
+                source.width(),
+                source.height(),
+                cut.width(),
+                cut.height()
+            ));
+            *source = cut;
+        }
+        Trimmed::NothingToCut => warn(
+            resolved.silent,
+            format_args!(
+                "Warning: {}--trim found no transparent margin to cut - the image has content up to its edges. For a solid-color background, remove it first (--chroma-key).",
+                file_prefix()
+            ),
+        ),
+        Trimmed::Empty => warn(
+            resolved.silent,
+            format_args!(
+                "Warning: {}--trim found nothing to keep - the image is completely transparent.",
+                file_prefix()
+            ),
+        ),
+    }
 }
 
 /// The output side of a conversion, shared by raster and vector sources:
@@ -790,23 +870,28 @@ fn convert_vector(
         Some("--find")
     } else if !resolved.seeds.is_empty() {
         Some("--seed")
+    } else if resolved.crop.is_some() {
+        Some("--crop")
     } else {
         None
     };
     if let Some(option) = unsupported {
         return Err(format!(
-            "{option} does not apply to an SVG: it names pixel positions, and an SVG is drawn anew at every size. Use --chroma-key to remove a background color, or convert to a raster image first."
+            "{option} does not apply to an SVG: it names pixel positions, and an SVG is drawn anew at every size. Use --chroma-key to remove a background color, --trim to cut the empty margin, or convert to a raster image first."
         ));
     }
 
     let sizes = prepare_output(job, resolved, use_icns, to_stdout)?;
+    // --sizes auto: a drawing has no resolution to stay below, so it gets
+    // all the default sizes (what prepare_output returned for "auto").
+    let layout = layout_of(resolved);
 
     // A background color (--chroma-key, also "auto") is removed from every
     // rendered size. The color is settled - and the removal checked and
     // reported - once, on a reference rendering; the sizes then each get
     // the same color without repeating the messages.
     let background = if resolved.chroma_key.is_some() {
-        let mut reference = drawing.render_square(VECTOR_REFERENCE_SIZE, resolved.padding);
+        let mut reference = drawing.render(VECTOR_REFERENCE_SIZE, &layout, resolved.trim);
         let target = resolve_background(&reference, resolved)?;
         remove_background(
             &mut reference,
@@ -821,7 +906,7 @@ fn convert_vector(
     };
 
     let render = |size: u32| {
-        let mut square = drawing.render_square(size, resolved.padding);
+        let mut square = drawing.render(size, &layout, resolved.trim);
         if let Some(target) = &background {
             apply_chroma_key_feathered(
                 &mut square,
@@ -860,6 +945,11 @@ fn convert_vector(
 /// sense on their own.
 fn check_options(resolved: &ResolvedSettings) -> Result<(), String> {
     check_color_options(resolved)?;
+    // The syntax of --crop is checked before any file is touched; that the
+    // part lies inside the image can only be told per image.
+    if let Some(text) = resolved.crop {
+        parse_crop(text)?;
+    }
     // --force overwrites an existing output; --skip-existing leaves it
     // alone. They can't both decide what happens to the same file. (On the
     // command line clap already refuses the pair; this also catches one of
@@ -1111,6 +1201,9 @@ fn wants_icns(output_format: Option<OutputFormat>) -> bool {
 fn resolve_sizes(resolved: &ResolvedSettings) -> Result<Vec<u32>, String> {
     match resolved.preset {
         Some(preset) => Ok(preset.sizes().to_vec()),
+        // "auto" starts from the default sizes; what the source can supply
+        // is decided once its size is known (see wants_auto_sizes).
+        None if wants_auto_sizes(resolved) => parse_size_list(DEFAULT_SIZES),
         None => parse_size_list(resolved.sizes.unwrap_or(DEFAULT_SIZES)),
     }
 }

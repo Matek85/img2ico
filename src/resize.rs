@@ -150,7 +150,7 @@ pub fn has_transparency(img: &RgbaImage) -> bool {
 /// Resizes an RGBA image with Lanczos3 filtering, taking the alpha-fringe
 /// fix in resize_rgba_premultiplied only when the image actually has any
 /// transparency to worry about - see has_transparency() above for why.
-fn resize_rgba(src: &RgbaImage, new_width: u32, new_height: u32, has_alpha: bool) -> RgbaImage {
+pub fn resize_rgba(src: &RgbaImage, new_width: u32, new_height: u32, has_alpha: bool) -> RgbaImage {
     if has_alpha {
         resize_rgba_premultiplied(src, new_width, new_height)
     } else {

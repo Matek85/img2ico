@@ -10,6 +10,24 @@ when cutting a release.
 
 ## [Unreleased]
 
+### Added
+
+- Layout options for how an image gets onto the square icon: `--fit cover`
+  fills the square and cuts off the overhang (keeping the middle) instead of
+  leaving transparent bars (`--fit contain`, the default, is unchanged);
+  `--crop X,Y,WIDTH,HEIGHT` takes a part of the source image; `--trim` cuts
+  off the transparent margin around the artwork (after any background removal,
+  so a logo on a solid background can be trimmed too); `--corner-radius
+  PERCENT` (0-50) rounds the corners with a smooth edge at every size. They
+  work for `.ico` and `.icns`, in batches and in settings files (`fit`,
+  `crop`, `trim`, `corner-radius`), and for SVG too (`--crop` excepted: an SVG
+  has no pixels).
+- `--sizes auto` makes only the sizes the source image can supply without
+  upscaling (measured after `--crop` and `--trim`); a source smaller than all
+  of them gets one icon at its own size. An SVG gets all the default sizes.
+- `examples/app-icon-layout.toml`: a rounded, trimmed app icon from a logo on
+  a white background.
+
 ## [1.7.0] - 2026-10-01
 
 SVG as a source, rendered anew at every icon size, and WebP, TIFF, TGA and

@@ -60,6 +60,23 @@ grayscale = false
 # icon size.
 padding = 10
 
+# How the image meets the square icon: "contain" (the whole image fits
+# inside, a non-square image leaves transparent bars) or "cover" (the
+# image fills the square, the overhang is cut off).
+fit = "contain"
+
+# Cut this part out of the source image first: "x,y,width,height" in
+# pixels from the top left corner. Raster images only (not for SVG).
+# crop = "10,10,200,200"
+
+# Cut off the transparent margin around the artwork (after any
+# background removal). Also works for SVG.
+trim = false
+
+# Round the corners, in percent (0-50) of the image's shorter edge:
+# 0 = square, about 20 = app-icon look, 50 = circle.
+corner-radius = 0
+
 # Which icon container format to write: "ico" (Windows) or "icns"
 # (macOS). If omitted, img2ico picks automatically based on the platform
 # it was built for.
