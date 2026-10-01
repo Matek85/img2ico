@@ -38,6 +38,17 @@ ico = "0.5"
 serde = { version = "1", features = ["derive"] }
 toml = "1"
 
+# For folder input: "walkdir" walks a directory tree (--recursive) in a
+# stable order, and "globset" matches file names against --include/--exclude
+# patterns like "*.png" or "*_old*" - the same glob syntax people already know
+# from .gitignore files and shells.
+walkdir = "2"
+globset = "0.4"
+
+# Machine-readable output: the --report file in JSON form and `--inspect
+# --json`. (The CSV report is plain text and needs no crate.)
+serde_json = "1"
+
 [dev-dependencies]
 # Property-based testing: instead of writing individual test cases by
 # hand, we describe a PROPERTY that should hold for every possible input

@@ -10,7 +10,12 @@
 //   - config.rs       the optional --config/--out-toml TOML settings file
 //   - settings.rs     merging command line + config file + defaults into
 //                     the values a run actually uses
-//   - convert.rs      the normal mode: one source image into an icon file
+//   - convert.rs      the normal mode: source images into icon files, one
+//                     or a whole batch
+//   - select.rs       which files a batch takes (folders, --recursive,
+//                     --include/--exclude) and the --name pattern
+//   - plan.rs         where each icon goes, name collisions, option checks
+//   - report.rs       per-file records, totals and the --report file
 //   - chroma_key.rs   --chroma-key/--find hex parsing and the flood-fill
 //                     and region-discovery algorithms
 //   - resize.rs       alpha-aware resizing and square-icon construction
@@ -29,14 +34,19 @@ mod convert;
 mod gif;
 mod icns;
 mod ico_ops;
+mod plan;
+mod report;
 mod resize;
+mod select;
 mod settings;
 mod util;
 
 use clap::Parser;
 use cli::Args;
 use config::{Settings, load_layered, user_config_path};
-use ico_ops::{extract_icons, inspect_icons, merge_icons, parse_indices, select_icons};
+use ico_ops::{
+    extract_icons, inspect_icons, inspect_icons_json, merge_icons, parse_indices, select_icons,
+};
 use settings::{ResolvedSettings, finish_run};
 use std::path::{Path, PathBuf};
 
@@ -127,6 +137,7 @@ fn run() -> Result<(), String> {
     }
 
     check_single_mode(&args)?;
+    reject_conversion_options_in_other_modes(&args)?;
     reject_stdout_output(&args)?;
 
     if args.inspect {
@@ -135,7 +146,11 @@ fn run() -> Result<(), String> {
         // --config/--out-toml at all - loading tuning settings that
         // inspect wouldn't use anyway, or letting --out-toml add a
         // surprise file-write side effect, would both work against that.
-        return inspect_icons(&args.input);
+        return if args.json {
+            inspect_icons_json(&args.input)
+        } else {
+            inspect_icons(&args.input)
+        };
     }
 
     // Resolve the config file (--config, or an auto-discovered
@@ -181,6 +196,34 @@ fn check_single_mode(args: &Args) -> Result<(), String> {
         );
     }
     Ok(())
+}
+
+/// The options that shape a conversion - which files, what they are called,
+/// a rehearsal, a report - mean nothing to the modes that work on existing
+/// .ico files. Saying so beats quietly ignoring them.
+fn reject_conversion_options_in_other_modes(args: &Args) -> Result<(), String> {
+    if !(args.merge || args.inspect || args.extract || args.select) {
+        return Ok(());
+    }
+    let used: Vec<&str> = [
+        (args.recursive, "--recursive"),
+        (!args.include.is_empty(), "--include"),
+        (!args.exclude.is_empty(), "--exclude"),
+        (args.keep_structure, "--keep-structure"),
+        (args.name.is_some(), "--name"),
+        (args.dry_run, "--dry-run"),
+        (args.report.is_some(), "--report"),
+    ]
+    .into_iter()
+    .filter_map(|(on, name)| on.then_some(name))
+    .collect();
+    if used.is_empty() {
+        return Ok(());
+    }
+    Err(format!(
+        "{} only apply when converting images, not with --merge, --inspect, --extract or --select.",
+        used.join(", ")
+    ))
 }
 
 /// `-o -` is the usual Unix spelling for "write to standard output", which

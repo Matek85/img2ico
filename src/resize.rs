@@ -2,7 +2,7 @@
 // correctly-padded square icon: the alpha-aware resize logic, and the
 // upscaling warning that goes along with it.
 
-use crate::util::file_prefix;
+use crate::util::{file_prefix, warn};
 use image::imageops::FilterType;
 use image::{Rgba, RgbaImage};
 
@@ -16,15 +16,15 @@ use image::{Rgba, RgbaImage};
 /// estimate, not real detail). `silent` suppresses this - see --silent's
 /// own doc comment in cli.rs for exactly what that flag covers.
 pub fn warn_about_upscaling(source_width: u32, source_height: u32, sizes: &[u32], silent: bool) {
-    if silent {
-        return;
-    }
     let native_max = source_width.max(source_height);
     let upscaled: Vec<u32> = sizes.iter().copied().filter(|&s| s > native_max).collect();
     if !upscaled.is_empty() {
         let prefix = file_prefix();
-        eprintln!(
-            "Warning: {prefix}the source image is {source_width}x{source_height} pixels, smaller than {upscaled:?} - those sizes will be upscaled and may look soft or blurry rather than sharp. For crisp results at every size, use a higher-resolution source image."
+        warn(
+            silent,
+            format_args!(
+                "Warning: {prefix}the source image is {source_width}x{source_height} pixels, smaller than {upscaled:?} - those sizes will be upscaled and may look soft or blurry rather than sharp. For crisp results at every size, use a higher-resolution source image."
+            ),
         );
     }
 }
@@ -64,7 +64,7 @@ pub fn warn_about_thin_content(
     sizes: &[u32],
     silent: bool,
 ) {
-    if silent || source_width == 0 || source_height == 0 {
+    if source_width == 0 || source_height == 0 {
         return; // guards the division below; shouldn't happen for a real image
     }
     let padding_percent = padding_percent.min(100);
@@ -89,9 +89,12 @@ pub fn warn_about_thin_content(
 
     if !affected.is_empty() {
         let prefix = file_prefix();
-        eprintln!(
-            "Warning: {prefix}at these sizes, only a thin sliver of the actual artwork will be visible: {} - this can be caused by an elongated source image, a high --padding value, or both. Consider a less elongated source image and/or less padding if that looks too thin.",
-            affected.join(", ")
+        warn(
+            silent,
+            format_args!(
+                "Warning: {prefix}at these sizes, only a thin sliver of the actual artwork will be visible: {} - this can be caused by an elongated source image, a high --padding value, or both. Consider a less elongated source image and/or less padding if that looks too thin.",
+                affected.join(", ")
+            ),
         );
     }
 }

@@ -4,7 +4,7 @@
 // discovery of additional same-colored regions the border-based flood
 // fill can't reach on its own.
 
-use crate::util::file_prefix;
+use crate::util::{file_prefix, warn};
 use image::{Rgba, RgbaImage};
 use std::collections::VecDeque;
 
@@ -247,12 +247,13 @@ fn flood_fill_from_candidates(
     // then works exactly as normal, via the candidate mask.
     for &(x, y) in extra_seeds {
         if x >= width || y >= height {
-            if !silent {
-                let prefix = file_prefix();
-                eprintln!(
+            let prefix = file_prefix();
+            warn(
+                silent,
+                format_args!(
                     "Warning: {prefix}seed point ({x},{y}) is outside the image ({width}x{height}) and will be ignored."
-                );
-            }
+                ),
+            );
             continue;
         }
         let (x, y) = (x as usize, y as usize);

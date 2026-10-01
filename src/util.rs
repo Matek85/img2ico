@@ -3,7 +3,7 @@
 // source-file deletion for --delete-source, and the "which file is this
 // message about" context used while converting several files in a row.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
 
 thread_local! {
@@ -31,6 +31,28 @@ impl Drop for FileContext {
     fn drop(&mut self) {
         CURRENT_FILE.with(|current| *current.borrow_mut() = None);
     }
+}
+
+thread_local! {
+    /// How many warnings this thread has raised so far (see `warn`).
+    static WARNINGS: Cell<usize> = const { Cell::new(0) };
+}
+
+/// Raises a warning: counts it - always, so a batch summary can say how many
+/// there were even when --silent hid them - and prints `message` to standard
+/// error unless `silent` is set. `message` is printed as given, so it
+/// carries its own "Warning: " lead-in where it wants one.
+pub fn warn(silent: bool, message: impl std::fmt::Display) {
+    WARNINGS.with(|count| count.set(count.get() + 1));
+    if !silent {
+        eprintln!("{message}");
+    }
+}
+
+/// The number of warnings raised on this thread so far. A caller that wants
+/// the warnings of one piece of work reads it before and after.
+pub fn warnings_so_far() -> usize {
+    WARNINGS.with(Cell::get)
 }
 
 /// The text to put in front of a per-file message: `"logo.png: "` while a

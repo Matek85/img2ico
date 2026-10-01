@@ -1841,8 +1841,16 @@ fn several_files_are_converted_next_to_their_inputs() {
     assert_eq!(ico_sizes(&dir.path().join("a.ico")), vec![16]);
     assert_eq!(ico_sizes(&dir.path().join("b.ico")), vec![16]);
     let text = stdout(&out);
-    assert!(text.contains("Done: 'a.ico'"), "{}", describe(&out));
-    assert!(text.contains("Done: 'b.ico'"), "{}", describe(&out));
+    assert!(
+        text.contains("[1/2] a.png -> a.ico ("),
+        "{}",
+        describe(&out)
+    );
+    assert!(
+        text.contains("[2/2] b.png -> b.ico ("),
+        "{}",
+        describe(&out)
+    );
     assert!(
         text.contains("Batch finished: 2 converted, 0 skipped, 0 failed (2 file(s) in total)."),
         "{}",
@@ -1915,9 +1923,9 @@ fn files_are_converted_in_the_order_given_and_folders_in_name_order() {
     let out = convert(dir.path(), &["z.png", "assets", "--sizes", "16"]);
     assert_success(&out);
     let text = stdout(&out);
-    let z = text.find("'z.ico'").unwrap();
-    let k = text.find("k.ico").unwrap();
-    let m = text.find("m.ico").unwrap();
+    let z = text.find("z.png -> z.ico").unwrap();
+    let k = text.find("k.png -> ").unwrap();
+    let m = text.find("m.png -> ").unwrap();
     assert!(z < k && k < m, "{}", describe(&out));
 }
 
@@ -2396,6 +2404,861 @@ fn the_other_modes_still_insist_on_their_input_rules() {
         dir.path(),
         &["--merge", "a.ico", "b.ico", "-o", "m.ico"],
     ));
+}
+
+// =============================================================================
+// Batch mode: folders, filters and names
+// =============================================================================
+
+/// assets/{a.png, b.png}, assets/sub/{c.png, c_old.png}, assets/sub/deep/d.png
+fn write_asset_tree(dir: &Path) -> PathBuf {
+    let assets = dir.join("assets");
+    std::fs::create_dir_all(assets.join("sub").join("deep")).unwrap();
+    write_solid(&assets, "a.png", 64, RED);
+    write_solid(&assets, "b.png", 64, GREEN);
+    write_solid(&assets.join("sub"), "c.png", 64, RED);
+    write_solid(&assets.join("sub"), "c_old.png", 64, RED);
+    write_solid(&assets.join("sub").join("deep"), "d.png", 64, GREEN);
+    assets
+}
+
+#[test]
+fn recursive_converts_the_images_of_all_subfolders() {
+    let dir = tempfile::tempdir().unwrap();
+    write_asset_tree(dir.path());
+
+    let out = convert(dir.path(), &["assets", "-r", "-o", "out", "--sizes", "16"]);
+    assert_success(&out);
+    assert_eq!(
+        names_in(&dir.path().join("out")),
+        vec!["a.ico", "b.ico", "c.ico", "c_old.ico", "d.ico"]
+    );
+    assert!(stdout(&out).contains("5 converted"), "{}", describe(&out));
+}
+
+#[test]
+fn without_recursive_the_subfolders_stay_untouched() {
+    let dir = tempfile::tempdir().unwrap();
+    write_asset_tree(dir.path());
+    assert_success(&convert(
+        dir.path(),
+        &["assets", "-o", "out", "--sizes", "16"],
+    ));
+    assert_eq!(names_in(&dir.path().join("out")), vec!["a.ico", "b.ico"]);
+}
+
+#[test]
+fn recursive_without_a_folder_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "a.png", 64, RED);
+    for flags in [&["-r"][..], &["--include", "*.png"], &["--exclude", "x"]] {
+        let mut args = vec!["a.png"];
+        args.extend_from_slice(flags);
+        assert_failure_containing(
+            &convert(dir.path(), &args),
+            "only make sense when an input is a folder",
+        );
+    }
+    assert!(!dir.path().join("a.ico").exists());
+}
+
+#[test]
+fn a_folder_with_only_subfolders_suggests_recursive() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("assets").join("sub")).unwrap();
+    write_solid(&dir.path().join("assets").join("sub"), "x.png", 64, RED);
+    let out = convert(dir.path(), &["assets"]);
+    assert_failure_containing(&out, "add --recursive");
+    assert_success(&convert(dir.path(), &["assets", "-r", "--sizes", "16"]));
+    assert!(
+        dir.path()
+            .join("assets")
+            .join("sub")
+            .join("x.ico")
+            .is_file()
+    );
+}
+
+#[test]
+fn include_and_exclude_narrow_down_what_a_folder_contributes() {
+    let dir = tempfile::tempdir().unwrap();
+    write_asset_tree(dir.path());
+
+    let out = convert(
+        dir.path(),
+        &[
+            "assets",
+            "-r",
+            "--include",
+            "*.png",
+            "--exclude",
+            "*_old*",
+            "--exclude",
+            "b.*",
+            "-o",
+            "out",
+            "--sizes",
+            "16",
+        ],
+    );
+    assert_success(&out);
+    assert_eq!(
+        names_in(&dir.path().join("out")),
+        vec!["a.ico", "c.ico", "d.ico"]
+    );
+}
+
+#[test]
+fn a_pattern_with_a_slash_matches_the_path_below_the_folder() {
+    let dir = tempfile::tempdir().unwrap();
+    write_asset_tree(dir.path());
+    let out = convert(
+        dir.path(),
+        &[
+            "assets",
+            "-r",
+            "--exclude",
+            "sub/**",
+            "-o",
+            "out",
+            "--sizes",
+            "16",
+        ],
+    );
+    assert_success(&out);
+    assert_eq!(names_in(&dir.path().join("out")), vec!["a.ico", "b.ico"]);
+}
+
+#[test]
+fn filters_do_not_touch_files_named_directly() {
+    let dir = tempfile::tempdir().unwrap();
+    write_asset_tree(dir.path());
+    write_solid(dir.path(), "own.png", 64, RED);
+    let out = convert(
+        dir.path(),
+        &[
+            "own.png",
+            "assets",
+            "--exclude",
+            "*",
+            "-o",
+            "out",
+            "--sizes",
+            "16",
+        ],
+    );
+    // The folder is filtered down to nothing - which is reported - ...
+    assert_failure_containing(&out, "match the --include/--exclude");
+    // ... but with an include that keeps something, the named file is still there.
+    let out = convert(
+        dir.path(),
+        &[
+            "own.png",
+            "assets",
+            "--include",
+            "b.*",
+            "-o",
+            "out",
+            "--sizes",
+            "16",
+        ],
+    );
+    assert_success(&out);
+    assert_eq!(names_in(&dir.path().join("out")), vec!["b.ico", "own.ico"]);
+}
+
+#[test]
+fn a_broken_filter_pattern_is_an_error_before_any_work() {
+    let dir = tempfile::tempdir().unwrap();
+    write_asset_tree(dir.path());
+    let out = convert(dir.path(), &["assets", "--include", "[abc", "-o", "out"]);
+    assert_failure_containing(&out, "Invalid --include pattern");
+    assert!(!dir.path().join("out").exists());
+}
+
+#[test]
+fn keep_structure_rebuilds_the_subfolders_below_the_output_folder() {
+    let dir = tempfile::tempdir().unwrap();
+    write_asset_tree(dir.path());
+    let out = convert(
+        dir.path(),
+        &[
+            "assets",
+            "-r",
+            "-o",
+            "out",
+            "--keep-structure",
+            "--sizes",
+            "16",
+        ],
+    );
+    assert_success(&out);
+    let out_dir = dir.path().join("out");
+    assert_eq!(names_in(&out_dir), vec!["a.ico", "b.ico", "sub"]);
+    assert_eq!(
+        names_in(&out_dir.join("sub")),
+        vec!["c.ico", "c_old.ico", "deep"]
+    );
+    assert_eq!(names_in(&out_dir.join("sub").join("deep")), vec!["d.ico"]);
+}
+
+#[test]
+fn files_of_the_same_name_in_different_folders_clash_without_keep_structure() {
+    let dir = tempfile::tempdir().unwrap();
+    let assets = dir.path().join("assets");
+    for sub in ["one", "two"] {
+        std::fs::create_dir_all(assets.join(sub)).unwrap();
+        write_solid(&assets.join(sub), "logo.png", 64, RED);
+    }
+
+    let out = convert(dir.path(), &["assets", "-r", "-o", "out", "--sizes", "16"]);
+    assert_failure_containing(&out, "would both be written to");
+    assert!(
+        stderr(&out).contains("--keep-structure"),
+        "{}",
+        describe(&out)
+    );
+    assert!(!dir.path().join("out").exists(), "nothing was written");
+
+    let out = convert(
+        dir.path(),
+        &[
+            "assets",
+            "-r",
+            "-o",
+            "out",
+            "--keep-structure",
+            "--sizes",
+            "16",
+        ],
+    );
+    assert_success(&out);
+    assert!(
+        dir.path()
+            .join("out")
+            .join("one")
+            .join("logo.ico")
+            .is_file()
+    );
+    assert!(
+        dir.path()
+            .join("out")
+            .join("two")
+            .join("logo.ico")
+            .is_file()
+    );
+}
+
+#[test]
+fn without_an_output_folder_the_icons_land_next_to_their_inputs_in_every_folder() {
+    let dir = tempfile::tempdir().unwrap();
+    write_asset_tree(dir.path());
+    assert_success(&convert(dir.path(), &["assets", "-r", "--sizes", "16"]));
+    let assets = dir.path().join("assets");
+    assert!(assets.join("a.ico").is_file());
+    assert!(assets.join("sub").join("c.ico").is_file());
+    assert!(assets.join("sub").join("deep").join("d.ico").is_file());
+}
+
+#[test]
+fn keep_structure_needs_an_output_folder() {
+    let dir = tempfile::tempdir().unwrap();
+    write_asset_tree(dir.path());
+    let out = convert(dir.path(), &["assets", "--keep-structure"]);
+    assert_failure_containing(&out, "--keep-structure needs -o");
+}
+
+#[test]
+fn a_name_pattern_names_every_icon() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "a.png", 64, RED);
+    write_solid(dir.path(), "b.png", 64, GREEN);
+    let out = convert(
+        dir.path(),
+        &[
+            "a.png",
+            "b.png",
+            "--name",
+            "{stem}-app",
+            "-o",
+            "out",
+            "--sizes",
+            "16",
+        ],
+    );
+    assert_success(&out);
+    assert_eq!(
+        names_in(&dir.path().join("out")),
+        vec!["a-app.ico", "b-app.ico"]
+    );
+}
+
+#[test]
+fn a_name_pattern_with_the_extension_keeps_same_named_files_apart() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "logo.png", 64, RED);
+    write_jpeg(dir.path(), "logo.jpg");
+
+    let clash = convert(dir.path(), &["logo.png", "logo.jpg", "--sizes", "16"]);
+    assert_failure_containing(&clash, "would both be written to");
+
+    let out = convert(
+        dir.path(),
+        &[
+            "logo.png",
+            "logo.jpg",
+            "--name",
+            "{stem}-{ext}",
+            "--sizes",
+            "16",
+        ],
+    );
+    assert_success(&out);
+    assert!(dir.path().join("logo-png.ico").is_file());
+    assert!(dir.path().join("logo-jpg.ico").is_file());
+}
+
+#[test]
+fn a_name_pattern_also_works_for_a_single_file_and_for_icns() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "logo.png", 64, RED);
+    assert_success(&convert(
+        dir.path(),
+        &["logo.png", "--name", "{stem}_{format}", "--sizes", "16"],
+    ));
+    assert!(dir.path().join("logo_ico.ico").is_file());
+}
+
+#[test]
+fn a_bad_name_pattern_is_refused_before_any_work() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "logo.png", 64, RED);
+    assert_failure_containing(
+        &convert(dir.path(), &["logo.png", "--name", "{nope}"]),
+        "Unknown variable '{nope}'",
+    );
+    assert_failure_containing(
+        &convert(dir.path(), &["logo.png", "--name", "a/{stem}"]),
+        "not a path",
+    );
+    assert_failure_containing(
+        &convert(dir.path(), &["logo.png", "--name", "{stem}", "-o", "x.ico"]),
+        "--name chooses the icon's file name",
+    );
+    assert_eq!(
+        names_in(dir.path()),
+        vec!["logo.png"],
+        "nothing was written"
+    );
+}
+
+#[test]
+fn the_new_batch_options_are_refused_in_the_modes_that_do_not_convert() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "logo.png", 64, RED);
+    assert_success(&convert(dir.path(), &["logo.png", "--sizes", "16"]));
+    for flags in [
+        &["--inspect", "--recursive"][..],
+        &["--extract", "--name", "x"],
+        &["--select", "--dry-run"],
+        &["--merge", "--report", "r.csv"],
+    ] {
+        let mut args = vec!["logo.ico"];
+        args.extend_from_slice(flags);
+        let out = img2ico(dir.path(), &args);
+        assert_failure_containing(&out, "only apply when converting images");
+    }
+}
+
+// =============================================================================
+// Batch mode: progress, summary, dry run, report
+// =============================================================================
+
+#[test]
+fn every_file_of_a_batch_gets_a_numbered_progress_line() {
+    let dir = tempfile::tempdir().unwrap();
+    for name in ["a.png", "b.png", "c.png"] {
+        write_solid(dir.path(), name, 64, RED);
+    }
+    let out = convert(
+        dir.path(),
+        &["a.png", "b.png", "c.png", "-o", "out", "--sizes", "16"],
+    );
+    assert_success(&out);
+    let text = stdout(&out);
+    for (n, name) in ["a", "b", "c"].iter().enumerate() {
+        let expected = format!("[{}/3] {name}.png -> ", n + 1);
+        assert!(text.contains(&expected), "{expected}\n{}", describe(&out));
+    }
+    // The file size is shown, in a human unit.
+    assert!(
+        text.contains(" B)") || text.contains(" KB)"),
+        "{}",
+        describe(&out)
+    );
+    assert!(text.contains("Wrote 3 icon file(s)"), "{}", describe(&out));
+}
+
+#[test]
+fn a_single_file_has_no_progress_counter() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "a.png", 64, RED);
+    let out = convert(dir.path(), &["a.png", "--sizes", "16"]);
+    assert_success(&out);
+    assert!(
+        stdout(&out).contains("Done: 'a.ico' created"),
+        "{}",
+        describe(&out)
+    );
+    assert!(!stdout(&out).contains("[1/1]"), "{}", describe(&out));
+}
+
+#[test]
+fn skipped_and_failed_files_are_numbered_too() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "a.png", 64, RED);
+    write_junk(dir.path(), "b.png");
+    write_solid(dir.path(), "c.png", 64, RED);
+    assert_success(&convert(dir.path(), &["a.png", "--sizes", "16"]));
+
+    let out = convert(
+        dir.path(),
+        &[
+            "a.png",
+            "b.png",
+            "c.png",
+            "--skip-existing",
+            "--keep-going",
+            "--sizes",
+            "16",
+        ],
+    );
+    assert_eq!(out.status.code(), Some(1), "{}", describe(&out));
+    let errors = stderr(&out);
+    assert!(
+        errors.contains("[1/3] Skipping 'a.png'"),
+        "{}",
+        describe(&out)
+    );
+    assert!(errors.contains("[2/3] Error: b.png:"), "{}", describe(&out));
+    assert!(
+        stdout(&out).contains("[3/3] c.png -> c.ico"),
+        "{}",
+        describe(&out)
+    );
+}
+
+#[test]
+fn the_summary_counts_warnings() {
+    let dir = tempfile::tempdir().unwrap();
+    // 8x8 sources are too small for a 16 px icon: one upscaling warning each.
+    write_solid(dir.path(), "a.png", 8, RED);
+    write_solid(dir.path(), "b.png", 8, RED);
+    let out = convert(dir.path(), &["a.png", "b.png", "--sizes", "16"]);
+    assert_success(&out);
+    assert!(
+        stdout(&out).contains(
+            "Batch finished: 2 converted, 0 skipped, 0 failed, 2 warning(s) (2 file(s) in total)."
+        ),
+        "{}",
+        describe(&out)
+    );
+}
+
+#[test]
+fn silent_hides_progress_and_a_clean_summary_but_not_a_failure_summary() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "a.png", 64, RED);
+    write_solid(dir.path(), "b.png", 64, RED);
+    let clean = convert(dir.path(), &["a.png", "b.png", "--silent", "--sizes", "16"]);
+    assert_success(&clean);
+    assert_eq!(stdout(&clean), "", "{}", describe(&clean));
+    assert!(dir.path().join("a.ico").is_file());
+
+    write_junk(dir.path(), "bad.png");
+    let failing = convert(
+        dir.path(),
+        &[
+            "a.png",
+            "bad.png",
+            "--silent",
+            "--keep-going",
+            "--force",
+            "--sizes",
+            "16",
+        ],
+    );
+    assert_eq!(failing.status.code(), Some(1), "{}", describe(&failing));
+    assert!(
+        stdout(&failing).contains("Batch finished: 1 converted, 0 skipped, 1 failed"),
+        "{}",
+        describe(&failing)
+    );
+    assert!(
+        stderr(&failing).contains("Error: bad.png"),
+        "{}",
+        describe(&failing)
+    );
+}
+
+#[test]
+fn dry_run_shows_what_would_happen_and_writes_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "a.png", 64, RED);
+    write_solid(dir.path(), "b.png", 64, RED);
+    let out = convert(
+        dir.path(),
+        &[
+            "a.png",
+            "b.png",
+            "-o",
+            "out",
+            "--sizes",
+            "16,32",
+            "--dry-run",
+        ],
+    );
+    assert_success(&out);
+    let text = stdout(&out);
+    assert!(text.contains("[1/2] a.png -> "), "{}", describe(&out));
+    assert!(
+        text.contains("would convert, sizes [16, 32]"),
+        "{}",
+        describe(&out)
+    );
+    assert!(
+        text.contains(
+            "Dry run: 2 would be converted, 0 skipped, 0 would fail. Nothing was written."
+        ),
+        "{}",
+        describe(&out)
+    );
+    assert!(!dir.path().join("out").exists(), "no output folder");
+    assert_eq!(names_in(dir.path()), vec!["a.png", "b.png"]);
+}
+
+#[test]
+fn dry_run_predicts_what_existing_outputs_mean() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "a.png", 64, RED);
+    write_solid(dir.path(), "b.png", 64, RED);
+    assert_success(&convert(dir.path(), &["a.png", "--sizes", "16"]));
+
+    let refused = convert(dir.path(), &["a.png", "b.png", "--dry-run"]);
+    assert_eq!(refused.status.code(), Some(1), "{}", describe(&refused));
+    assert!(
+        stdout(&refused).contains("would fail: the output already exists"),
+        "{}",
+        describe(&refused)
+    );
+    assert!(
+        stdout(&refused).contains("1 would fail"),
+        "{}",
+        describe(&refused)
+    );
+
+    let skip = convert(
+        dir.path(),
+        &["a.png", "b.png", "--dry-run", "--skip-existing"],
+    );
+    assert_success(&skip);
+    assert!(stdout(&skip).contains("would skip"), "{}", describe(&skip));
+
+    let force = convert(dir.path(), &["a.png", "b.png", "--dry-run", "--force"]);
+    assert_success(&force);
+    assert!(
+        stdout(&force).contains("replacing the existing output"),
+        "{}",
+        describe(&force)
+    );
+    assert!(!dir.path().join("b.ico").exists());
+}
+
+#[test]
+fn dry_run_catches_name_collisions_and_missing_inputs() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "logo.png", 64, RED);
+    write_jpeg(dir.path(), "logo.jpg");
+    assert_failure_containing(
+        &convert(dir.path(), &["logo.png", "logo.jpg", "--dry-run"]),
+        "would both be written to",
+    );
+
+    let missing = convert(dir.path(), &["logo.png", "nope.png", "--dry-run"]);
+    assert_eq!(missing.status.code(), Some(1), "{}", describe(&missing));
+    assert!(
+        stdout(&missing).contains("input file not found"),
+        "{}",
+        describe(&missing)
+    );
+}
+
+#[test]
+fn dry_run_works_for_a_single_file_and_ignores_find_previews() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "a.png", 64, RED);
+    let out = convert(dir.path(), &["a.png", "--preset", "favicon", "--dry-run"]);
+    assert_success(&out);
+    assert!(
+        stdout(&out).contains("a.png -> a.ico (would convert, sizes [16, 32, 48])"),
+        "{}",
+        describe(&out)
+    );
+    assert!(!dir.path().join("a.ico").exists());
+}
+
+#[test]
+fn dry_run_does_not_write_the_settings_snapshot_or_delete_sources() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "a.png", 64, RED);
+    let out = convert(
+        dir.path(),
+        &[
+            "a.png",
+            "--dry-run",
+            "--delete-source",
+            "--out-toml",
+            "snap.toml",
+        ],
+    );
+    assert_success(&out);
+    assert!(dir.path().join("a.png").is_file());
+    assert!(!dir.path().join("snap.toml").exists());
+}
+
+#[test]
+fn dry_run_and_report_cannot_be_combined() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "a.png", 64, RED);
+    let out = convert(dir.path(), &["a.png", "--dry-run", "--report", "r.csv"]);
+    assert_eq!(out.status.code(), Some(2), "{}", describe(&out));
+}
+
+#[test]
+fn a_csv_report_lists_every_file_even_after_failures() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "a.png", 64, RED);
+    write_junk(dir.path(), "bad.png");
+    write_solid(dir.path(), "c.png", 64, RED);
+    assert_success(&convert(dir.path(), &["c.png", "--sizes", "16"]));
+
+    let out = convert(
+        dir.path(),
+        &[
+            "a.png",
+            "bad.png",
+            "c.png",
+            "--keep-going",
+            "--skip-existing",
+            "--sizes",
+            "16,32",
+            "--report",
+            "report.csv",
+        ],
+    );
+    assert_eq!(out.status.code(), Some(1), "{}", describe(&out));
+    assert!(
+        stdout(&out).contains("Report written to 'report.csv'."),
+        "{}",
+        describe(&out)
+    );
+
+    let csv = std::fs::read_to_string(dir.path().join("report.csv")).unwrap();
+    let lines: Vec<&str> = csv.lines().collect();
+    assert_eq!(
+        lines[0],
+        "input,output,status,size_bytes,sizes,warnings,duration_ms,message"
+    );
+    assert_eq!(lines.len(), 4, "{csv}");
+    assert!(lines[1].starts_with("a.png,a.ico,converted,"), "{csv}");
+    assert!(lines[1].contains(",16 32,"), "{csv}");
+    assert!(lines[2].starts_with("bad.png,bad.ico,failed,"), "{csv}");
+    assert!(
+        lines[2].contains("bad.png: Could not read input file"),
+        "{csv}"
+    );
+    assert!(lines[3].starts_with("c.png,c.ico,skipped,"), "{csv}");
+    assert!(lines[3].contains("--skip-existing"), "{csv}");
+}
+
+#[test]
+fn a_json_report_has_a_summary_and_per_file_details() {
+    let dir = tempfile::tempdir().unwrap();
+    // Too small for 16 px: one warning per file - counted even with --silent.
+    write_solid(dir.path(), "a.png", 8, RED);
+    write_solid(dir.path(), "b.png", 8, RED);
+    let out = convert(
+        dir.path(),
+        &[
+            "a.png",
+            "b.png",
+            "--sizes",
+            "16",
+            "--silent",
+            "--report",
+            "report.json",
+        ],
+    );
+    assert_success(&out);
+    assert_eq!(stdout(&out), "", "--silent: {}", describe(&out));
+
+    let text = std::fs::read_to_string(dir.path().join("report.json")).unwrap();
+    let report: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(report["summary"]["total"], 2);
+    assert_eq!(report["summary"]["converted"], 2);
+    assert_eq!(report["summary"]["failed"], 0);
+    assert_eq!(report["summary"]["warnings"], 2);
+    assert!(report["summary"]["output_bytes"].as_u64().unwrap() > 0);
+    assert_eq!(report["files"][0]["input"], "a.png");
+    assert_eq!(report["files"][0]["status"], "converted");
+    assert_eq!(report["files"][0]["sizes"], serde_json::json!([16]));
+    assert_eq!(report["files"][0]["warnings"], 1);
+    assert!(report["files"][0]["size_bytes"].as_u64().unwrap() > 0);
+    assert!(report["files"][0]["message"].is_null());
+}
+
+#[test]
+fn a_report_is_written_when_the_first_failure_stops_the_run() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "a.png", 64, RED);
+    write_junk(dir.path(), "b.png");
+    write_solid(dir.path(), "c.png", 64, RED);
+    let out = convert(
+        dir.path(),
+        &[
+            "a.png",
+            "b.png",
+            "c.png",
+            "--sizes",
+            "16",
+            "--report",
+            "report.json",
+        ],
+    );
+    assert_eq!(out.status.code(), Some(1), "{}", describe(&out));
+    let report: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(dir.path().join("report.json")).unwrap())
+            .unwrap();
+    // The run stopped at b.png: c.png was never attempted and is not listed.
+    assert_eq!(report["summary"]["total"], 2);
+    assert_eq!(report["files"][1]["status"], "failed");
+    assert!(!dir.path().join("c.ico").exists());
+}
+
+#[test]
+fn a_single_file_can_have_a_report_too() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "a.png", 64, RED);
+    assert_success(&convert(
+        dir.path(),
+        &["a.png", "--sizes", "16", "--report", "r.csv"],
+    ));
+    let csv = std::fs::read_to_string(dir.path().join("r.csv")).unwrap();
+    assert_eq!(csv.lines().count(), 2, "{csv}");
+}
+
+#[test]
+fn an_existing_report_is_replaced_and_other_extensions_are_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "a.png", 64, RED);
+    std::fs::write(dir.path().join("r.csv"), "old").unwrap();
+    assert_success(&convert(
+        dir.path(),
+        &["a.png", "--sizes", "16", "--report", "r.csv"],
+    ));
+    assert!(
+        std::fs::read_to_string(dir.path().join("r.csv"))
+            .unwrap()
+            .starts_with("input,")
+    );
+
+    let out = convert(dir.path(), &["a.png", "--force", "--report", "a.png"]);
+    assert_failure_containing(&out, "must end in .csv or .json");
+    assert!(
+        image::open(dir.path().join("a.png")).is_ok(),
+        "the image is untouched"
+    );
+}
+
+// =============================================================================
+// --inspect --json
+// =============================================================================
+
+#[test]
+fn inspect_json_describes_an_ico_file() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "a.png", 64, RED);
+    assert_success(&convert(dir.path(), &["a.png", "--sizes", "16,32"]));
+
+    let out = img2ico(dir.path(), &["--inspect", "a.ico", "--json"]);
+    assert_success(&out);
+    let report: serde_json::Value = serde_json::from_str(&stdout(&out)).unwrap();
+    let file = &report[0];
+    assert_eq!(report.as_array().unwrap().len(), 1);
+    assert_eq!(file["path"], "a.ico");
+    assert_eq!(file["kind"], "ico");
+    assert_eq!(file["entries"][0]["width"], 16);
+    assert_eq!(file["entries"][1]["height"], 32);
+    assert_eq!(file["entries"][0]["format"], "png");
+    assert!(file["entries"][0]["bits_per_pixel"].as_u64().unwrap() >= 24);
+    assert_eq!(file["entries"][0]["index"], 0);
+    assert!(file["entries"][0]["bytes"].as_u64().unwrap() > 0);
+    assert!(
+        file["missing_windows_sizes"]
+            .as_array()
+            .unwrap()
+            .contains(&serde_json::json!(256))
+    );
+    assert_eq!(file["warnings"], serde_json::json!([]));
+}
+
+#[test]
+fn inspect_json_describes_source_images_and_several_files_at_once() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "a.png", 64, RED);
+    write_gif(dir.path(), "g.gif", &[[255, 0, 0], [0, 255, 0]]);
+    let out = img2ico(dir.path(), &["--inspect", "a.png", "g.gif", "--json"]);
+    assert_success(&out);
+    let report: serde_json::Value = serde_json::from_str(&stdout(&out)).unwrap();
+    assert_eq!(report.as_array().unwrap().len(), 2);
+
+    assert_eq!(report[0]["kind"], "image");
+    assert_eq!(report[0]["width"], 64);
+    assert!(report[0]["frames"].is_null());
+    assert_eq!(
+        report[0]["windows"]["native"],
+        serde_json::json!([16, 20, 24, 32, 40, 48, 64])
+    );
+    assert_eq!(
+        report[0]["windows"]["upscaled"],
+        serde_json::json!([96, 128, 256])
+    );
+    assert!(
+        !report[0]["macos"]["upscaled"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+
+    assert_eq!(report[1]["frames"], 2);
+}
+
+#[test]
+fn inspect_json_prints_nothing_but_an_error_when_a_file_is_unreadable() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "a.png", 64, RED);
+    write_junk(dir.path(), "bad.png");
+    let out = img2ico(dir.path(), &["--inspect", "a.png", "bad.png", "--json"]);
+    assert_failure_containing(&out, "neither a readable .ico file");
+    assert_eq!(stdout(&out), "", "{}", describe(&out));
+}
+
+#[test]
+fn json_without_inspect_is_a_usage_error() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "a.png", 64, RED);
+    let out = convert(dir.path(), &["a.png", "--json"]);
+    assert_eq!(out.status.code(), Some(2), "{}", describe(&out));
 }
 
 // =============================================================================

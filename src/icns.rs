@@ -91,12 +91,6 @@ pub fn write_icns(
     std::fs::write(output_path, &file_bytes)
         .map_err(|e| format!("Could not write ICNS file: {e}"))?;
 
-    println!(
-        "Done: '{}' created with {} icon size(s) (icns format).",
-        output_path.display(),
-        ICNS_SIZES.len()
-    );
-
     Ok(())
 }
 

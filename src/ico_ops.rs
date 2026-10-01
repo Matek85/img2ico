@@ -135,10 +135,7 @@ pub fn inspect_icons(paths: &[PathBuf]) -> Result<(), String> {
                 match opened {
                     Ok(img) => inspect_source_image(path, &img),
                     Err(image_error) => {
-                        return Err(format!(
-                            "'{}' is neither a readable .ico file ({ico_error}) nor a readable image ({image_error}).",
-                            path.display()
-                        ));
+                        return Err(neither_ico_nor_image(path, &ico_error, &image_error));
                     }
                 }
             }
@@ -146,6 +143,120 @@ pub fn inspect_icons(paths: &[PathBuf]) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+/// The error for a file that --inspect could read neither as an .ico nor as
+/// an image.
+fn neither_ico_nor_image(
+    path: &Path,
+    ico_error: &impl std::fmt::Display,
+    image_error: &impl std::fmt::Display,
+) -> String {
+    format!(
+        "'{}' is neither a readable .ico file ({ico_error}) nor a readable image ({image_error}).",
+        path.display()
+    )
+}
+
+/// The common Windows icon sizes that `present` lacks.
+fn missing_windows_sizes(present: &HashSet<u32>) -> Vec<u32> {
+    RECOMMENDED_WINDOWS_SIZES
+        .iter()
+        .copied()
+        .filter(|size| !present.contains(size))
+        .collect()
+}
+
+/// Splits `sizes` into those a source whose longer edge is `native_max` pixels
+/// covers natively and those that would need upscaling.
+fn split_by_coverage(sizes: &[u32], native_max: u32) -> (Vec<u32>, Vec<u32>) {
+    sizes.iter().copied().partition(|&size| size <= native_max)
+}
+
+/// `--inspect --json`: the same information as the text report, as one JSON
+/// array with an entry per file (always an array, even for one file), so a
+/// script can rely on the shape. Standard output holds the JSON and nothing
+/// else; if any file cannot be read, nothing is printed and the error says why.
+pub fn inspect_icons_json(paths: &[PathBuf]) -> Result<(), String> {
+    let mut reports = Vec::with_capacity(paths.len());
+    for path in paths {
+        let report = match read_icon_dir(path) {
+            Ok(dir) => ico_report_json(path, &dir),
+            Err(ico_error) => {
+                let opened = image::open(path);
+                match opened {
+                    Ok(img) => image_report_json(path, &img),
+                    Err(image_error) => {
+                        return Err(neither_ico_nor_image(path, &ico_error, &image_error));
+                    }
+                }
+            }
+        };
+        reports.push(report);
+    }
+    let text = serde_json::to_string_pretty(&reports)
+        .map_err(|e| format!("Could not build the JSON report: {e}"))?;
+    println!("{text}");
+    Ok(())
+}
+
+/// The JSON form of `inspect_ico_file`'s report.
+fn ico_report_json(path: &Path, dir: &ico::IconDir) -> serde_json::Value {
+    let mut present_sizes: HashSet<u32> = HashSet::new();
+    let mut warnings: Vec<String> = Vec::new();
+    let mut entries = Vec::with_capacity(dir.entries().len());
+    for (index, entry) in dir.entries().iter().enumerate() {
+        let (w, h) = (entry.width(), entry.height());
+        let bpp = entry.bits_per_pixel();
+        present_sizes.insert(w);
+        if !entry.is_png() {
+            warnings.push(format!(
+                "[{index}] legacy BMP format - only a 1-bit transparency mask, no smooth alpha edges"
+            ));
+            if bpp < 32 {
+                warnings.push(format!(
+                    "[{index}] reduced color depth ({bpp}bpp instead of 32bpp) - likely visible color banding"
+                ));
+            }
+        }
+        entries.push(serde_json::json!({
+            "index": index,
+            "width": w,
+            "height": h,
+            "bits_per_pixel": bpp,
+            "format": if entry.is_png() { "png" } else { "bmp" },
+            "bytes": entry.data().len(),
+        }));
+    }
+    serde_json::json!({
+        "path": path.display().to_string(),
+        "kind": "ico",
+        "entries": entries,
+        "missing_windows_sizes": missing_windows_sizes(&present_sizes),
+        "warnings": warnings,
+    })
+}
+
+/// The JSON form of `inspect_source_image`'s report.
+fn image_report_json(path: &Path, img: &image::DynamicImage) -> serde_json::Value {
+    let native_max = img.width().max(img.height());
+    let frames = match is_gif(path) {
+        Ok(true) => count_gif_frames(path).ok(),
+        _ => None,
+    };
+    let coverage = |sizes: &[u32]| {
+        let (native, upscaled) = split_by_coverage(sizes, native_max);
+        serde_json::json!({ "native": native, "upscaled": upscaled })
+    };
+    serde_json::json!({
+        "path": path.display().to_string(),
+        "kind": "image",
+        "width": img.width(),
+        "height": img.height(),
+        "frames": frames,
+        "windows": coverage(&RECOMMENDED_WINDOWS_SIZES),
+        "macos": coverage(&icns_sizes()),
+    })
 }
 
 /// The .ico-specific half of --inspect's report - see inspect_icons()
@@ -180,11 +291,7 @@ fn inspect_ico_file(path: &Path, dir: &ico::IconDir) {
         }
     }
 
-    let missing: Vec<u32> = RECOMMENDED_WINDOWS_SIZES
-        .iter()
-        .copied()
-        .filter(|s| !present_sizes.contains(s))
-        .collect();
+    let missing = missing_windows_sizes(&present_sizes);
     if !missing.is_empty() {
         println!(
             "  note: missing common Windows sizes (Windows will have to scale a nearby size for these): {missing:?}"
@@ -223,8 +330,7 @@ fn inspect_source_image(path: &Path, img: &image::DynamicImage) {
     }
 
     let report_one = |label: &str, sizes: &[u32]| {
-        let (native, upscaled): (Vec<u32>, Vec<u32>) =
-            sizes.iter().copied().partition(|&s| s <= native_max);
+        let (native, upscaled) = split_by_coverage(sizes, native_max);
         if !native.is_empty() {
             println!("  {label} sizes this image covers natively: {native:?}");
         }

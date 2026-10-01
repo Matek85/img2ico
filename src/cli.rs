@@ -400,6 +400,71 @@ pub struct Args {
     #[arg(long = "skip-existing", conflicts_with = "force")]
     pub skip_existing: bool,
 
+    /// Batch mode: also search the SUBFOLDERS of every folder given as input
+    /// (all the way down), not just the folder itself. Only meaningful when
+    /// an input is a folder. Subfolders are visited in name order, so a run
+    /// is reproducible. Command-line only - not a settings-file option.
+    #[arg(short = 'r', long = "recursive")]
+    pub recursive: bool,
+
+    /// Batch mode: only convert the images found in a folder whose name (or,
+    /// for a pattern containing a "/", whose path below that folder) matches
+    /// this glob pattern, e.g. --include "*.png" or --include "icons/*".
+    /// Can be given several times: a file needs to match any one of them.
+    /// Matching ignores upper/lower case. Applies to what a folder
+    /// contributes - a file named directly on the command line is always
+    /// converted. Command-line only.
+    #[arg(long = "include", value_name = "GLOB")]
+    pub include: Vec<String>,
+
+    /// Batch mode: skip the images found in a folder whose name (or path
+    /// below the folder, for a pattern containing a "/") matches this glob
+    /// pattern, e.g. --exclude "*_old*" or --exclude "backup/**". Can be
+    /// given several times; wins over --include. Command-line only.
+    #[arg(long = "exclude", value_name = "GLOB")]
+    pub exclude: Vec<String>,
+
+    /// Batch mode with -o: rebuild the input folder's subfolder structure
+    /// below the output folder (assets/ui/save.png becomes
+    /// icons/ui/save.ico) instead of putting every icon directly into it.
+    /// Subfolders are created as needed. Without it, two inputs that share a
+    /// file name in different folders would collide and the run is refused.
+    /// Command-line only.
+    #[arg(long = "keep-structure")]
+    pub keep_structure: bool,
+
+    /// Chooses the icons' file names: a pattern with the variables {stem}
+    /// (the input's name without extension), {ext} (its extension, lowercase)
+    /// and {format} (ico or icns), e.g. --name "{stem}-app". The icon's own
+    /// extension is added after it. Without it, the name is just {stem}.
+    /// Handy to keep logo.png and logo.jpg apart: --name "{stem}-{ext}".
+    /// Not usable together with an explicit output FILE. Command-line only.
+    #[arg(long = "name", value_name = "PATTERN")]
+    pub name: Option<String>,
+
+    /// Rehearsal: shows what would happen - for every input the output file
+    /// it would write, the icon sizes, and whether the output already exists
+    /// (and would be skipped, overwritten or refused) - without converting or
+    /// writing anything, not even --out-toml. Also checks the options and
+    /// looks for output name collisions, exactly like a real run. Cannot be
+    /// combined with --report.
+    #[arg(long = "dry-run", conflicts_with = "report")]
+    pub dry_run: bool,
+
+    /// Writes a report about the run to this file: one line per input with
+    /// the output, status (converted, skipped, failed), file size, icon
+    /// sizes, warning count, duration and error message, plus totals. The
+    /// format follows the extension: .csv or .json. Written even when files
+    /// failed, and replaced if it exists. Command-line only.
+    #[arg(long = "report", value_name = "FILE")]
+    pub report: Option<PathBuf>,
+
+    /// With --inspect: prints the report as JSON (one array with an entry per
+    /// file) instead of text, for scripts. Nothing else is printed to
+    /// standard output.
+    #[arg(long = "json", requires = "inspect")]
+    pub json: bool,
+
     /// Loads default values for the "tuning" settings above (--sizes,
     /// --preset, --chroma-key, --tolerance, --seed, --find,
     /// --find-min-size, --auto-apply, --replace-color, --grayscale,
@@ -408,9 +473,11 @@ pub struct Args {
     /// command-line flag for the same setting still wins over whatever
     /// the file says - this only changes what happens when you DON'T
     /// pass a flag. Deliberately does NOT cover the mode
-    /// (--merge/--inspect/--extract/--select), the input file(s), or
-    /// -o/--output - those stay command-line-only,
-    /// since defaulting those rarely makes sense.
+    /// (--merge/--inspect/--extract/--select), the input file(s), -o/--output,
+    /// the file selection and naming of a batch (--recursive, --include,
+    /// --exclude, --keep-structure, --name) or the run's own output
+    /// (--dry-run, --report, --json) - those stay command-line-only, since
+    /// defaulting those rarely makes sense.
     ///
     /// If this is omitted entirely, img2ico looks for "img2ico.toml" in
     /// the current directory instead and uses it automatically if
@@ -541,6 +608,46 @@ mod tests {
     fn skip_existing_contradicts_force() {
         assert!(parse(&["a.png", "--skip-existing", "--force"]).is_err());
         assert!(parse(&["a.png", "--skip-existing", "-f"]).is_err());
+    }
+
+    #[test]
+    fn folder_and_naming_flags_are_parsed() {
+        let args = parse(&[
+            "assets",
+            "-r",
+            "--include",
+            "*.png",
+            "--include",
+            "*.gif",
+            "--exclude",
+            "*_old*",
+            "--keep-structure",
+            "--name",
+            "{stem}-app",
+        ])
+        .unwrap();
+        assert!(args.recursive && args.keep_structure);
+        assert_eq!(args.include, ["*.png", "*.gif"]);
+        assert_eq!(args.exclude, ["*_old*"]);
+        assert_eq!(args.name.as_deref(), Some("{stem}-app"));
+
+        let plain = parse(&["a.png"]).unwrap();
+        assert!(!plain.recursive && !plain.keep_structure && !plain.dry_run && !plain.json);
+        assert!(plain.include.is_empty() && plain.exclude.is_empty());
+        assert!(plain.name.is_none() && plain.report.is_none());
+    }
+
+    #[test]
+    fn dry_run_and_report_exclude_each_other() {
+        assert!(parse(&["a.png", "--dry-run"]).is_ok());
+        assert!(parse(&["a.png", "--report", "r.csv"]).is_ok());
+        assert!(parse(&["a.png", "--dry-run", "--report", "r.csv"]).is_err());
+    }
+
+    #[test]
+    fn json_needs_inspect() {
+        assert!(parse(&["a.ico", "--inspect", "--json"]).is_ok());
+        assert!(parse(&["a.ico", "--json"]).is_err());
     }
 
     // --- Completions -----------------------------------------------------------
