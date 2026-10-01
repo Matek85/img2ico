@@ -169,6 +169,15 @@ fn check_stdio(args: &Args, resolved: &ResolvedSettings) -> Result<(), String> {
     Ok(())
 }
 
+/// Added to a "can't decode" error for an image from standard input on
+/// Windows, where the likeliest cause is Windows PowerShell 5.1: it turns
+/// what it pipes into a native program into text, which damages binary data.
+#[cfg(windows)]
+const STDIN_DECODE_HINT: &str = "
+Hint: if this was piped in from Windows PowerShell, it converts binary data on the way. Let cmd do the redirect instead (cmd /c \"img2ico - -o icon.ico < logo.png\"), or give the file as the input.";
+#[cfg(not(windows))]
+const STDIN_DECODE_HINT: &str = "";
+
 /// Reads the whole of standard input - the image to convert.
 fn read_stdin() -> Result<Vec<u8>, String> {
     let stdin = std::io::stdin();
@@ -817,7 +826,14 @@ fn load_source_image(input_path: &Path, resolved: &ResolvedSettings) -> Result<R
             .and_then(|reader| reader.decode()),
     };
     Ok(decoded
-        .map_err(|e| format!("Could not read input file: {e}"))?
+        .map_err(|e| {
+            let hint = if stdin_bytes.is_some() {
+                STDIN_DECODE_HINT
+            } else {
+                ""
+            };
+            format!("Could not read input file: {e}{hint}")
+        })?
         .to_rgba8())
 }
 

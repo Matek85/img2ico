@@ -1892,6 +1892,13 @@ fn bad_standard_input_is_an_error_and_standard_output_stays_empty() {
     let junk = img2ico_with_stdin(dir.path(), &["-", "-o", "-"], b"this is not an image");
     assert_failure_containing(&junk, "Could not read input file");
     assert!(junk.stdout.is_empty(), "{}", describe(&junk));
+    // On Windows the message also points at the PowerShell pitfall.
+    assert_eq!(
+        stderr(&junk).contains("Windows PowerShell"),
+        cfg!(windows),
+        "{}",
+        describe(&junk)
+    );
 
     let empty = img2ico_with_stdin(dir.path(), &["-", "-o", "-"], b"");
     assert_failure_containing(&empty, "Standard input is empty");

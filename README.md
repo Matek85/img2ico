@@ -757,7 +757,20 @@ What the dash stands for, and what it doesn't:
 - `--what-if` works with both and neither reads nor writes anything. `--out-toml` and `--report` still write their files.
 - If the program reading the pipe stops early, img2ico ends quietly.
 
-**A note for Windows PowerShell.** Windows PowerShell (5.1) re-encodes what it redirects with `>`, which **corrupts binary data** — an icon written with `img2ico … -o - > icon.ico` there is broken. Use `-o icon.ico` directly, or let `cmd` do the redirect: `cmd /c "img2ico logo.png -o - > icon.ico"`. From PowerShell 7.4 on, `|` and `>` pass the bytes between native programs unchanged; and in `bash`, `zsh`, `cmd` and `fish` there is no issue at all.
+**A note for Windows PowerShell.** Windows PowerShell (5.1) turns whatever it passes between native programs into text, which **corrupts binary data** — in both directions:
+
+- **Output:** an icon written with `img2ico logo.png -o - > icon.ico` there is broken (the redirect re-encodes it).
+- **Input:** `Get-Content logo.png | img2ico - -o icon.ico` and `[IO.File]::ReadAllBytes(…) | img2ico …` hand img2ico damaged bytes, and it answers "The image format could not be determined" (with a hint on Windows).
+
+Let `cmd` do the plumbing, or skip the pipe:
+
+```
+cmd /c "img2ico - -o icon.ico < logo.png"          # input from a file, through cmd
+cmd /c "img2ico logo.png -o - > icon.ico"          # output through cmd
+img2ico logo.png -o icon.ico                       # no pipe at all
+```
+
+Chains between two native programs inside `cmd /c "a | b"` keep the bytes intact. From PowerShell 7.4 on, `|` and `>` pass the bytes between native programs unchanged, and in `bash`, `zsh`, `cmd` and `fish` there is no issue at all.
 
 img2ico never opens a network connection: in the `curl` example above, it is `curl` that fetches the image.
 
