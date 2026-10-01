@@ -26,6 +26,10 @@ when cutting a release.
 
 ### Documentation
 
+- The README describes the order in which settings combine - built-in defaults,
+  per-user file, project file (`img2ico.toml` or `--config`), command line -
+  with a worked example, and says that the current directory, not the
+  program's own folder, is searched.
 - `--include` and `--exclude` are explained in the README and in `--help`:
   what a pattern is matched against, the wildcards (`*`, `?`, `[abc]`,
   `{a,b}`, `**`) and worked examples.

@@ -602,10 +602,20 @@ Using settings from 'my-settings.toml'.
 
 ### Which settings files apply
 
-Up to two files can contribute, plus the built-in defaults. From highest to lowest priority:
+A setting can come from up to four places. When the same setting is given in more than one, **the higher one wins**:
 
-1. **The command line.**
-2. **The project file:** the one named with `--config`, or else a file called exactly `img2ico.toml` in the current directory — handy for a project folder where you always want the same settings. An explicit `--config` replaces this lookup entirely; the two are never merged.
+```
+  built-in defaults          lowest priority   - what you get when nobody says anything
+        ↑ overridden by
+  per-user file              - your own defaults, for every project
+        ↑ overridden by
+  project file               - img2ico.toml in the current folder, OR the file named with --config
+        ↑ overridden by
+  command line               highest priority  - what you type for this one run
+```
+
+1. **The command line** always wins.
+2. **The project file:** the file named with `--config`, or else a file called exactly `img2ico.toml` in the **current directory** — handy for a project folder where you always want the same settings. These two are alternatives: an explicit `--config` replaces the `img2ico.toml` lookup entirely; the two are never merged. (img2ico does not look next to the program itself — where the `img2ico` binary is installed makes no difference, only the folder you run it from.)
 3. **The per-user file**, for your own defaults everywhere:
 
    | Platform | Location |
@@ -614,11 +624,26 @@ Up to two files can contribute, plus the built-in defaults. From highest to lowe
    | macOS | `~/Library/Application Support/img2ico/config.toml` |
    | Linux and others | `$XDG_CONFIG_HOME/img2ico/config.toml`, or `~/.config/img2ico/config.toml` |
 
-4. **The built-in defaults.**
+4. **The built-in defaults** (for example tolerance 20, padding 0, sizes 16 to 256).
 
-The layers combine setting by setting, not all or nothing: a project file that only sets `sizes` still gets `padding` from your user file. A setting that takes a list (`seeds`) is replaced by the higher layer's list, not added to, and on/off settings (`grayscale`, `force`, …) are on if any layer turns them on. Every file that was used is named in a notice, so nothing changes silently.
+The layers combine **setting by setting**, not all or nothing: a project file that only sets `padding` still gets everything else from your user file. A setting that takes a list (`seeds`, `include`, `exclude`) is **replaced** by the higher layer's list, not added to, and on/off settings (`grayscale`, `force`, `recursive`, …) are on if *any* layer turns them on — so a file cannot switch off something a lower layer turned on; use `--no-config` for a run that should start clean.
 
-`--no-config` ignores all settings files for one run — handy to reproduce a result or when an automatically found file gets in the way. To see what the layers add up to, use `--verbose` (below): it prints the settings actually in effect.
+*An example.* Suppose your per-user file says `sizes = "16,32"`, `padding = 5` and `grayscale = true`, and the `img2ico.toml` in the current folder says `padding = 10`. Then:
+
+```
+img2ico logo.png --sizes 48
+```
+
+| Setting | Where it comes from | Value |
+|---|---|---|
+| `sizes` | the command line (beats the per-user file's `16,32`) | `48` |
+| `padding` | the project file `img2ico.toml` (beats the per-user file's `5`) | `10` |
+| `grayscale` | the per-user file (nobody overrides it) | on |
+| `tolerance` | the built-in default (no file or flag mentions it) | `20` |
+
+With `--config other.toml` instead of the automatic `img2ico.toml`, `other.toml` takes the project file's place — the `img2ico.toml` in the folder is then ignored, while the per-user file still applies underneath.
+
+Every file that was used is named in a notice, so nothing changes silently. `--no-config` ignores all settings files for one run — handy to reproduce a result or when an automatically found file gets in the way. To see what the layers add up to, use `--verbose` (below): it prints the settings actually in effect.
 
 ### Typos are reported
 
