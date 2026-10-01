@@ -20,7 +20,7 @@ Built in Rust: a single, dependency-free binary — no runtime to install, nothi
 
 ### Download a pre-built release (recommended)
 
-Every [GitHub Release](https://github.com/Matek85/pic2ico/releases) has a ready-to-run bundle for Windows, macOS and Linux — no Rust toolchain, no compiling:
+Every [GitHub Release](https://github.com/Matek85/img2ico/releases) has a ready-to-run bundle for Windows, macOS and Linux — no Rust toolchain, no compiling:
 
 1. Open the latest release and download `img2ico-windows.zip`, `img2ico-macos.zip` or `img2ico-linux.zip`.
 2. Extract it. Each bundle contains the binary (`img2ico.exe` / `img2ico`), this README, the license, and the [`examples/`](examples/) settings files.
@@ -38,8 +38,8 @@ The bundles are built automatically by this project's GitHub Actions workflow fr
 You need Rust **1.88 or newer** (the project uses the 2024 edition). Install it via [rustup](https://rustup.rs) if you don't have it.
 
 ```
-git clone https://github.com/Matek85/pic2ico.git
-cd pic2ico
+git clone https://github.com/Matek85/img2ico.git
+cd img2ico
 cargo build --release
 ```
 
