@@ -43,8 +43,13 @@ fn main() {
                 "Converts any image into an ICO file (with transparency)",
             );
         if let Err(error) = resource.compile() {
-            // Do not fail the whole build over a missing icon: without the
-            // resource compiler the program works exactly the same.
+            // On a developer's machine a missing resource compiler must not
+            // stop the build: the program works exactly the same without the
+            // icon. In an automated build (CI sets `CI`) it has to be an
+            // error, so that a release can never ship without its icon.
+            if std::env::var_os("CI").is_some() {
+                panic!("could not embed the Windows icon: {error}");
+            }
             println!("cargo:warning=could not embed the Windows icon: {error}");
         }
     }
