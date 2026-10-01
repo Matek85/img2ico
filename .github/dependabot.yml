@@ -1,0 +1,22 @@
+version: 2
+
+updates:
+  # Rust dependencies (Cargo.toml / Cargo.lock)
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    # Keep the number of open pull requests small; every one runs the full CI.
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps"
+    labels:
+      - dependencies
+    groups:
+      # Patch and minor updates arrive as one pull request per week.
+      # Major updates stay separate, since they may need code changes.
+      rust-minor-and-patch:
+        update-types:
+          - minor
+          - patch
