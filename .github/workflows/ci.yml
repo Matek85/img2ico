@@ -1,14 +1,16 @@
 name: CI
 
-# The checks every change has to pass. Runs on every push to main and on
-# pull requests that touch code, builds and tests on real Windows, macOS and
+# The checks every change has to pass. Runs on every pull request and on every
+# push to main that touches code, builds and tests on real Windows, macOS and
 # Linux machines, and can also be started by hand ("Run workflow" button) or
 # called by the release workflow, which uses it as its gate.
 #
-# Pushes that only change documentation or other non-code files do not start
-# it - there is nothing to test in a README. (Examples, the Cargo files, the
-# tests and this folder DO count: the tests read the example files, and a
-# change to a workflow should be tried out by running it.)
+# Work reaches main through pull requests, and main is protected: a pull
+# request can only be merged when the checks below have passed. That is why
+# the pull request trigger has NO path filter - a documentation-only pull
+# request would otherwise never get these checks and could never be merged.
+# For pushes to main (the merges) documentation-only changes are skipped:
+# the pull request that brought them in was already checked.
 on:
   push:
     branches: [main]
@@ -18,11 +20,6 @@ on:
       - '.markdownlint.json'
       - '.gitignore'
   pull_request:
-    paths-ignore:
-      - '**.md'
-      - 'LICENSE'
-      - '.markdownlint.json'
-      - '.gitignore'
   workflow_dispatch:
   workflow_call:
 
