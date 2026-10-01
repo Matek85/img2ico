@@ -17,6 +17,12 @@ name: CI
 # branch needs) but start no work. Anything else - and every run that is not a
 # pull request, such as the release gate - runs everything.
 #
+# A push to a pull request that already changed Rust code is judged by what
+# that push changed, not by the whole pull request: a web-only push does not
+# run the Rust checks again - but only if the Rust checks of the commit before
+# it passed. Otherwise a failing Rust check could be "fixed" by a web-only
+# push that skips it.
+#
 # For pushes to main (the merges) web and documentation-only changes are
 # skipped outright: the pull request that brought them in was already checked.
 on:
@@ -58,6 +64,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+      checks: read
     outputs:
       rust: ${{ steps.filter.outputs.rust }}
     steps:
@@ -68,14 +75,47 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           REPOSITORY: ${{ github.repository }}
           PULL_REQUEST: ${{ github.event.pull_request.number }}
+          ACTION: ${{ github.event.action }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.after }}
         run: |
           if [ "$EVENT_NAME" != "pull_request" ]; then
             echo "Not a pull request: running everything."
             echo "rust=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          files=$(gh api "repos/$REPOSITORY/pulls/$PULL_REQUEST/files" --paginate \
-            --jq '.[] | .filename, (.previous_filename // empty)')
+          # A push to an open pull request: only what this push changed counts,
+          # provided the Rust checks of the commit before it passed.
+          scope="the whole pull request"
+          files=""
+          if [ "$ACTION" = "synchronize" ] && [ -n "$BEFORE" ]; then
+            files=$(gh api "repos/$REPOSITORY/compare/$BEFORE...$AFTER" --paginate \
+              --jq '.files[] | .filename, (.previous_filename // empty)' 2>/dev/null || true)
+            if [ -n "$files" ]; then
+              scope="this push"
+              all_passed=true
+              for name in "Format" "Test (windows-latest)" "Test (macos-latest)" "Test (ubuntu-latest)" \
+                          "Rust 1.88 (minimum supported)" "Verify with native macOS tools (iconutil, sips)"; do
+                result=$(gh api "repos/$REPOSITORY/commits/$BEFORE/check-runs?per_page=100" \
+                  --jq "[.check_runs[] | select(.name == \"$name\")] | sort_by(.started_at) | last | .conclusion" \
+                  2>/dev/null || true)
+                if [ "$result" != "success" ]; then
+                  echo "  The commit before this push has no passing '$name' (it says '${result:-nothing}')."
+                  all_passed=false
+                fi
+              done
+              if [ "$all_passed" != true ]; then
+                echo "Judging the whole pull request instead."
+                scope="the whole pull request"
+                files=""
+              fi
+            fi
+          fi
+          if [ -z "$files" ]; then
+            files=$(gh api "repos/$REPOSITORY/pulls/$PULL_REQUEST/files" --paginate \
+              --jq '.[] | .filename, (.previous_filename // empty)')
+          fi
+          echo "Looking at $scope:"
           if [ -z "$files" ]; then
             echo "No file list: running everything."
             echo "rust=true" >> "$GITHUB_OUTPUT"

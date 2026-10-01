@@ -64,7 +64,7 @@ A change is finished when it has tests, the README and `--help` describe it, and
 
 ## The automated checks
 
-The [CI workflow](.github/workflows/ci.yml) runs on every pull request and on every push to `main` that touches code (not for pushes that only change documentation or the web page), and it can be started by hand. A pull request that only changes files under `web/` or `docs/`, or Markdown files, skips the Rust checks below: they report as passed without doing any work (the protected `main` needs them to report). Any other file in a pull request makes them run. The workflow
+The [CI workflow](.github/workflows/ci.yml) runs on every pull request and on every push to `main` that touches code (not for pushes that only change documentation or the web page), and it can be started by hand. A pull request that only changes files under `web/` or `docs/`, or Markdown files, skips the Rust checks below: they report as passed without doing any work (the protected `main` needs them to report). Any other file in a pull request makes them run. Once a pull request has passed the Rust checks, a later push that only changes web or documentation files does not run them again (the check looks at what that push changed, and only trusts it if the previous commit's Rust checks passed). The workflow
 
 - checks the formatting,
 - runs `clippy` and the full test suite on Windows, macOS and Linux,
