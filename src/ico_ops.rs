@@ -267,7 +267,12 @@ fn ico_report_json(path: &Path, dir: &ico::IconDir) -> serde_json::Value {
 fn alpha_share(entry: &ico::IconDirEntry) -> Option<f64> {
     let image = entry.decode().ok()?;
     let pixels = image.rgba_data();
-    let not_opaque = pixels.chunks_exact(4).filter(|p| p[3] < 255).count();
+    let not_opaque = pixels
+        .iter()
+        .skip(3)
+        .step_by(4)
+        .filter(|&&alpha| alpha < 255)
+        .count();
     Some(not_opaque as f64 / (pixels.len() / 4).max(1) as f64)
 }
 
