@@ -113,13 +113,16 @@ jobs:
       - name: Run tests
         run: cargo test --locked
 
-  # Generates a real .icns file on an actual macOS runner, then decomposes
-  # it again with Apple's OWN "iconutil" tool. If Apple's tooling can unpack
-  # the file we produced, that is about as strong a real-world confirmation
-  # of the .icns format as we can get without a person checking it in
-  # Finder (the format was originally verified without any access to a Mac).
+  # What can only be checked on a real Mac, in BOTH directions:
+  #   - what we WRITE: an .icns made by img2ico must be unpackable by Apple's
+  #     own "iconutil" (the format was originally built without any access to
+  #     a Mac, so this is the real-world confirmation);
+  #   - what we READ: files made by Apple's own tools - an .icns from
+  #     "iconutil", TIFF/JPEG/BMP/GIF/TGA from "sips" - must be readable as
+  #     source images. A reader tested only against files our own writer made
+  #     would prove very little; these come from a different implementation.
   verify-icns-on-macos:
-    name: Verify .icns with native macOS tools
+    name: Verify with native macOS tools (iconutil, sips)
     runs-on: macos-latest
     steps:
       - name: Check out repository
@@ -146,12 +149,60 @@ jobs:
       - name: Inspect with sips (macOS's built-in image tool)
         run: sips -g all test.icns
 
-      # And the other direction: read the file we just made as a source
-      # image again (the largest icon of the .icns becomes an .ico).
-      - name: Read the .icns back as a source image
+      # --- the other direction: files made by Apple's tools, read by us ---
+
+      # An .icns that comes out of Apple's own encoder: an iconset (the
+      # ten standard sizes as PNGs, resized by sips) packed by iconutil.
+      - name: Make an .icns with Apple's own iconutil
         run: |
-          ./target/release/img2ico test.icns --output-format ico -o roundtrip.ico --sizes 32 --force
-          ls -la roundtrip.ico
+          mkdir apple.iconset
+          for spec in "16 icon_16x16" "32 icon_16x16@2x" "32 icon_32x32" "64 icon_32x32@2x"                       "128 icon_128x128" "256 icon_128x128@2x" "256 icon_256x256"                       "512 icon_256x256@2x" "512 icon_512x512" "1024 icon_512x512@2x"; do
+            set -- $spec
+            sips -z "$1" "$1" .github/testdata/logo.png --out "apple.iconset/$2.png" > /dev/null
+          done
+          iconutil -c icns apple.iconset -o apple.icns
+          ls -la apple.icns
+
+      # img2ico has to read it, and take its LARGEST icon (1024 px) as the
+      # source - not one of the small ones.
+      - name: Read Apple's .icns as a source image
+        run: |
+          ./target/release/img2ico apple.icns --output-format ico -o from-apple.ico --sizes 32,256 --force --verbose 2> verbose.txt
+          cat verbose.txt
+          grep -F "(1024x1024 pixels)" verbose.txt
+          ./target/release/img2ico --inspect from-apple.ico
+          ./target/release/img2ico --extract from-apple.ico -o from-apple-pngs --force
+          sips -g pixelWidth -g pixelHeight from-apple-pngs/from-apple_256x256.png | grep -F "pixelWidth: 256"
+
+      # The same through standard input, and through --inspect.
+      - name: Read Apple's .icns from standard input and inspect it
+        run: |
+          ./target/release/img2ico - -o from-stdin.ico --output-format ico --sizes 32 --force < apple.icns
+          ls -la from-stdin.ico
+          ./target/release/img2ico --inspect apple.icns
+
+      # An .icns written by "sips" itself, in whatever icon types it
+      # chooses (older macOS versions used RLE-compressed and JPEG 2000
+      # entries). This one is informational about what exists in the wild:
+      # img2ico must read it, because the PNG entries are always there.
+      - name: Read an .icns written by sips
+        run: |
+          sips -s format icns .github/testdata/logo.png --out sips.icns
+          ls -la sips.icns
+          ./target/release/img2ico sips.icns --output-format ico -o from-sips-icns.ico --sizes 32 --force --verbose
+
+      # Raster files written by Apple's image encoders (TIFF with Apple's
+      # compression, JPEG, BMP, GIF, TGA).
+      - name: Read raster files written by sips
+        run: |
+          for format in tiff jpeg bmp gif tga; do
+            extension="$format"
+            if [ "$format" = "jpeg" ]; then extension=jpg; fi
+            sips -s format "$format" .github/testdata/logo.png --out "apple.$extension"
+            ./target/release/img2ico "apple.$extension" --output-format ico -o "from-$extension.ico" --sizes 32 --force
+            test -s "from-$extension.ico"
+            echo "read apple.$extension: OK"
+          done
 
       - name: Upload the generated .icns and its decomposed iconset
         uses: actions/upload-artifact@v6
@@ -160,3 +211,6 @@ jobs:
           path: |
             test.icns
             verified.iconset
+            apple.icns
+            sips.icns
+            from-apple.ico
