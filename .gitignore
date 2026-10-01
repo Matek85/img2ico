@@ -34,6 +34,9 @@ desktop.ini
 *.pdb
 *.ico
 
+# ... except the program's own icon, which is built into the Windows .exe.
+!assets/img2ico.ico
+
 # ignore Markdownlint.json as it is only relevant for coding env
 
 .markdownlint.json
