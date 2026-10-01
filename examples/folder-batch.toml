@@ -1,0 +1,53 @@
+# folder-batch.toml
+#
+# Settings for converting a whole FOLDER of images in one run: look into all
+# its subfolders, take only the file types you want, leave out old versions
+# and backups, and make the run safe to repeat.
+#
+# IMPORTANT - this needs a FOLDER as the input.
+#   "recursive", "include" and "exclude" select files INSIDE a folder, so
+#   they only do something when an input is a folder (for example "assets/").
+#   With a single image file, or only files, they are quietly ignored - the
+#   rest of this file (preset, skip-existing, ...) still applies as usual.
+#   A file named directly on the command line is never filtered.
+#
+# Usage:
+#   img2ico assets/ -o icons/ --config folder-batch.toml
+#   img2ico assets/ -o icons/ --keep-structure --config folder-batch.toml
+#
+# --keep-structure (rebuild the subfolders below -o) and --name (a pattern
+# for the icon names) are command-line only: they describe where this
+# particular run puts its icons, so they are not settings-file options.
+#
+# A list given on the command line replaces the list in this file instead of
+# adding to it: `--include "*.gif"` ignores the "include" below.
+#
+# Check what a combination selects, without converting anything, with:
+#   img2ico assets/ -o icons/ --config folder-batch.toml --what-if
+
+# Also take the images in all subfolders, all the way down.
+recursive = true
+
+# Only these files. A pattern without a "/" is matched against the file name
+# wherever it sits in the tree, ignoring upper/lower case. Several patterns
+# are alternatives: a file needs to match any one of them.
+#   *  any characters   ?  one character   [abc]  one of these   {png,gif}  either
+include = ["*.png", "*.jpg"]
+
+# ...except these. "exclude" always wins over "include". A pattern with a "/"
+# is matched against the path below the input folder, written with forward
+# slashes (also on Windows); "**" stands for any number of folders.
+exclude = ["*_old*", "backup/**"]
+
+# Everything below applies to every file of the batch.
+
+# A named size set instead of listing sizes by hand.
+preset = "windows"
+
+# Leave an input alone whose output already exists, so the run can be
+# repeated and only converts what is missing.
+skip-existing = true
+
+# When one file fails, carry on with the rest (the run still ends with a
+# failing exit code and nothing is deleted).
+keep-going = true

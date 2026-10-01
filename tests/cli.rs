@@ -2770,6 +2770,90 @@ fn the_new_batch_options_are_refused_in_the_modes_that_do_not_convert() {
     }
 }
 
+#[test]
+fn a_settings_file_can_hold_recursive_include_and_exclude() {
+    let dir = tempfile::tempdir().unwrap();
+    write_asset_tree(dir.path());
+    std::fs::write(
+        dir.path().join("folder.toml"),
+        "recursive = true
+include = [\"*.png\"]
+exclude = [\"*_old*\", \"sub/deep/**\"]
+",
+    )
+    .unwrap();
+
+    let out = convert(
+        dir.path(),
+        &[
+            "assets",
+            "-o",
+            "out",
+            "--sizes",
+            "16",
+            "--config",
+            "folder.toml",
+        ],
+    );
+    assert_success(&out);
+    assert_eq!(
+        names_in(&dir.path().join("out")),
+        vec!["a.ico", "b.ico", "c.ico"]
+    );
+}
+
+#[test]
+fn a_list_on_the_command_line_replaces_the_files_list() {
+    let dir = tempfile::tempdir().unwrap();
+    write_asset_tree(dir.path());
+    std::fs::write(
+        dir.path().join("folder.toml"),
+        "recursive = true
+include = [\"*.png\"]
+",
+    )
+    .unwrap();
+    // The file would take every PNG; the command line narrows it to d.png.
+    let out = convert(
+        dir.path(),
+        &[
+            "assets",
+            "-o",
+            "out",
+            "--sizes",
+            "16",
+            "--config",
+            "folder.toml",
+            "--include",
+            "d.*",
+        ],
+    );
+    assert_success(&out);
+    assert_eq!(names_in(&dir.path().join("out")), vec!["d.ico"]);
+}
+
+#[test]
+fn folder_settings_in_a_file_are_ignored_for_single_files() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "a.png", 64, RED);
+    std::fs::write(
+        dir.path().join("folder.toml"),
+        "recursive = true
+include = [\"*.jpg\"]
+exclude = [\"a*\"]
+",
+    )
+    .unwrap();
+    // Typed on the command line this would be an error; from a file it is a
+    // standing default that simply has nothing to do here.
+    let out = convert(
+        dir.path(),
+        &["a.png", "--sizes", "16", "--config", "folder.toml"],
+    );
+    assert_success(&out);
+    assert!(dir.path().join("a.ico").is_file());
+}
+
 // =============================================================================
 // Batch mode: progress, summary, what-if, report
 // =============================================================================

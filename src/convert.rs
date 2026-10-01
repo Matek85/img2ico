@@ -61,12 +61,12 @@ pub fn run(args: &Args, resolved: &ResolvedSettings) -> Result<(), String> {
     // Everything that can be checked without touching an image comes first,
     // so a mistake in the options costs no work.
     let pattern = args.name.as_deref().map(NamePattern::parse).transpose()?;
-    let filter = Filter::new(&args.include, &args.exclude)?;
+    let filter = Filter::new(resolved.include, resolved.exclude)?;
     if let Some(path) = args.report.as_deref() {
         ReportFormat::of(path)?;
     }
     check_folder_options(args)?;
-    let plan = plan_inputs(&args.input, args.recursive, &filter)?;
+    let plan = plan_inputs(&args.input, resolved.recursive, &filter)?;
 
     check_options(resolved)?;
     let replacement = resolved

@@ -45,6 +45,9 @@ pub struct ResolvedSettings<'a> {
     pub force: bool,
     pub keep_going: bool,
     pub skip_existing: bool,
+    pub recursive: bool,
+    pub include: &'a [String],
+    pub exclude: &'a [String],
     pub combine: bool,
     pub index: Option<&'a str>,
     pub sizes: Option<&'a str>,
@@ -93,6 +96,18 @@ impl<'a> ResolvedSettings<'a> {
             force: args.force || settings.force,
             keep_going: args.keep_going || settings.keep_going,
             skip_existing: args.skip_existing || settings.skip_existing,
+            recursive: args.recursive || settings.recursive,
+            // Like seeds: a list from the command line replaces the file's.
+            include: if args.include.is_empty() {
+                &settings.include
+            } else {
+                &args.include
+            },
+            exclude: if args.exclude.is_empty() {
+                &settings.exclude
+            } else {
+                &args.exclude
+            },
             combine: args.combine || settings.combine,
             index: args.index.as_deref().or(settings.index.as_deref()),
             sizes: args.sizes.as_deref().or(settings.sizes.as_deref()),
@@ -146,6 +161,9 @@ impl<'a> ResolvedSettings<'a> {
             force: self.force,
             keep_going: self.keep_going,
             skip_existing: self.skip_existing,
+            recursive: self.recursive,
+            include: self.include.to_vec(),
+            exclude: self.exclude.to_vec(),
             combine: self.combine,
             index: self.index.map(str::to_owned),
             silent: self.silent,
@@ -358,6 +376,44 @@ mod tests {
         let cli = args(&["--skip-existing"]);
         let resolved = ResolvedSettings::resolve(&cli, &file);
         assert!(resolved.skip_existing && !resolved.force && !resolved.keep_going);
+    }
+
+    // --- Folder selection ---------------------------------------------------------
+
+    #[test]
+    fn folder_selection_comes_from_the_file_unless_the_command_line_says_otherwise() {
+        let file = Settings {
+            recursive: true,
+            include: vec!["*.png".to_string()],
+            exclude: vec!["*_old*".to_string(), "backup/**".to_string()],
+            ..Settings::default()
+        };
+        let cli = args(&[]);
+        let resolved = ResolvedSettings::resolve(&cli, &file);
+        assert!(resolved.recursive);
+        assert_eq!(resolved.include, ["*.png"]);
+        assert_eq!(resolved.exclude, ["*_old*", "backup/**"]);
+
+        // A list on the command line replaces the file's list - it does not add to it.
+        let cli = args(&["--include", "*.gif"]);
+        let resolved = ResolvedSettings::resolve(&cli, &file);
+        assert_eq!(resolved.include, ["*.gif"]);
+        assert_eq!(resolved.exclude, ["*_old*", "backup/**"], "untouched");
+
+        let cli = args(&["-r"]);
+        let none = Settings::default();
+        let resolved = ResolvedSettings::resolve(&cli, &none);
+        assert!(resolved.recursive && resolved.include.is_empty());
+    }
+
+    #[test]
+    fn folder_selection_is_part_of_the_settings_snapshot() {
+        let cli = args(&["-r", "--include", "*.png", "--exclude", "old/**"]);
+        let file = Settings::default();
+        let snapshot = ResolvedSettings::resolve(&cli, &file).to_settings();
+        assert!(snapshot.recursive);
+        assert_eq!(snapshot.include, ["*.png"]);
+        assert_eq!(snapshot.exclude, ["old/**"]);
     }
 
     // --- Snapshot for --out-toml -------------------------------------------------

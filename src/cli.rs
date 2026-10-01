@@ -403,7 +403,8 @@ pub struct Args {
     /// Batch mode: also search the SUBFOLDERS of every folder given as input
     /// (all the way down), not just the folder itself. Only meaningful when
     /// an input is a folder. Subfolders are visited in name order, so a run
-    /// is reproducible. Command-line only - not a settings-file option.
+    /// is reproducible. Can also be set in a settings file (`recursive`);
+    /// like all folder options it only matters when an input is a folder.
     #[arg(short = 'r', long = "recursive")]
     pub recursive: bool,
 
@@ -427,7 +428,11 @@ pub struct Args {
     /// applies to what a FOLDER contributes; a file named directly on the
     /// command line is always converted. Put the pattern in quotes, or your
     /// shell may expand it before img2ico sees it. Use --exclude to leave
-    /// files out. Command-line only.
+    /// files out.
+    ///
+    /// Can also be set in a settings file (`include = ["*.png"]`), where
+    /// it only matters when an input is a folder. A list given on the
+    /// command line replaces the file's list.
     ///
     /// Examples:
     ///   --include "*.png"           only PNG files
@@ -444,7 +449,9 @@ pub struct Args {
     /// without it the file name). A file matching ANY --exclude pattern is
     /// skipped, even if it also matches an --include pattern. Like
     /// --include it applies to what a FOLDER contributes only, and the
-    /// pattern should be put in quotes. Command-line only.
+    /// pattern should be put in quotes. Can also be set in a settings file
+    /// (`exclude = ["*_old*"]`), where it only matters when an input is a
+    /// folder; a list given on the command line replaces the file's list.
     ///
     /// Examples:
     ///   --exclude "*_old*"          every file with "_old" in its name
@@ -502,13 +509,13 @@ pub struct Args {
     /// --preset, --chroma-key, --tolerance, --seed, --find,
     /// --find-min-size, --auto-apply, --replace-color, --grayscale,
     /// --padding, --gif-frame, --output-format, --delete-source, --force,
+    /// --skip-existing, --keep-going, --recursive, --include, --exclude,
     /// --combine, --index, --silent) from a TOML file. An explicit
     /// command-line flag for the same setting still wins over whatever
     /// the file says - this only changes what happens when you DON'T
     /// pass a flag. Deliberately does NOT cover the mode
     /// (--merge/--inspect/--extract/--select), the input file(s), -o/--output,
-    /// the file selection and naming of a batch (--recursive, --include,
-    /// --exclude, --keep-structure, --name) or the run's own output
+    /// the output side of a batch (--keep-structure, --name) or the run's own output
     /// (--what-if, --report, --json) - those stay command-line-only, since
     /// defaulting those rarely makes sense.
     ///

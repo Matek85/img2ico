@@ -10,6 +10,15 @@ when cutting a release.
 
 ## [Unreleased]
 
+### Added
+
+- `recursive`, `include` and `exclude` can now be set in a settings file, so
+  a folder batch does not need its filters typed every time. They only
+  matter when an input is a folder and are otherwise ignored. A list on the
+  command line replaces the file's list, like `seeds`.
+- `examples/folder-batch.toml`: a ready-made settings file for converting a
+  folder tree, with a note that it needs a folder as the input.
+
 ### Changed
 
 - `--dry-run` is now called `--what-if`, and its closing line starts with

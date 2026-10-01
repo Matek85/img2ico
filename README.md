@@ -117,9 +117,9 @@ Usage: img2ico [OPTIONS] <INPUT>...
 | `--force` | `-f` | | Allow overwriting existing output |
 | `--skip-existing` | | | Leave an input alone whose output already exists (contradicts `--force`) |
 | `--keep-going` | | | In a batch, carry on after a file fails instead of stopping |
-| `--recursive` | `-r` | | Also search the subfolders of an input folder |
-| `--include` | | glob (repeatable) | Only take folder files whose name (or path, with a `/`) matches |
-| `--exclude` | | glob (repeatable) | Leave out folder files whose name (or path) matches |
+| `--recursive` | `-r` | | Also search the subfolders of an input folder (also settable in a settings file) |
+| `--include` | | glob (repeatable) | Only take folder files whose name (or path, with a `/`) matches (also settable in a settings file) |
+| `--exclude` | | glob (repeatable) | Leave out folder files whose name (or path) matches (also settable in a settings file) |
 | `--keep-structure` | | | With `-o`: rebuild the input folder's subfolders below it |
 | `--name` | | pattern | Name the icons by a pattern with `{stem}`, `{ext}`, `{format}` |
 | `--what-if` | | | Show what would happen; write nothing (contradicts `--report`) |
@@ -262,6 +262,20 @@ assets/photo.JPG       assets/backup/deep/y.png
 | `--exclude "**/old/**"` | everything except `ui/old/x.png` (and any other folder called `old`, at any depth) |
 | `--include "logo*" --exclude "backup/**"` | `logo.png` and `logo_old.png` |
 
+*In a settings file.* You do not have to type the same filters every time: `recursive`, `include` and `exclude` can live in a [settings file](#settings-files), and [`examples/folder-batch.toml`](examples/folder-batch.toml) is a ready-made one:
+
+```toml
+recursive = true
+include = ["*.png", "*.jpg"]
+exclude = ["*_old*", "backup/**"]
+```
+
+```
+img2ico assets/ -o icons/ --config folder-batch.toml
+```
+
+These settings only do something when an input is a **folder**; with single files they are quietly ignored, so one project file can serve both. A list on the command line replaces the file's list instead of adding to it (`--include "*.gif"` ignores the file's `include`), and `recursive` cannot be turned off from the command line once a file sets it — use `--no-config` for such a run.
+
 *Two practical notes.* **Put patterns in quotes.** Without them, `bash` and `zsh` expand `*.png` to the matching files in the *current* folder before img2ico even starts, which is almost never what you mean. **Check with `--what-if`** (see below) to see exactly which files a combination selects before converting anything.
 
 **Where the icons go.** In a batch, `-o` names a **folder** (created if it doesn't exist), and each icon is called after its input: `logo.png` becomes `icons/logo.ico` (or `.icns` with `--output-format icns`). Without `-o`, each icon is written next to its input. If `-o` names an existing file, or looks like a file name such as `out.ico`, img2ico says so instead of quietly creating a folder with that name. To convert one file to a specific file name, give just that one input as before.
@@ -333,7 +347,7 @@ Each input has a line with its output, `status` (`converted`, `skipped` or `fail
 - **`--delete-source` and `--out-toml` act only after a fully successful batch.** If any file failed, no source is deleted — even those that were converted — and no settings snapshot is written. A skipped input is never deleted.
 - **`--find` without `--auto-apply`** prints a report for one image and is refused for a batch; add `--auto-apply` (each file then gets its own discovery), or run it per file.
 - **`--merge`, `--extract`, `--select` and `--inspect`** keep their own rules for their inputs; the batch options of this section (`--recursive`, `--include`, `--exclude`, `--keep-structure`, `--name`, `--what-if`, `--report`) are refused there rather than quietly ignored. The same goes for the folder options given without a folder, and for `--keep-structure` without `-o`.
-- **These options are command-line only.** Which files, what they are called and what gets reported changes with every run, so none of `--recursive`, `--include`, `--exclude`, `--keep-structure`, `--name`, `--what-if`, `--report` and `--json` can be set in a settings file.
+- **Settings file or command line.** `--recursive`, `--include` and `--exclude` can also be set in a settings file (see above). `--keep-structure`, `--name`, `--what-if`, `--report` and `--json` are command-line only: where the icons go and what gets reported changes with every run.
 
 ## Removing or replacing a background color
 
@@ -530,7 +544,7 @@ img2ico --merge small.ico large.ico -o combined.ico --delete-source
 
 ## Settings files
 
-With more than twenty flags, typing the same combination each time gets old. A TOML settings file sets defaults for the "tuning" options: sizes or preset, the chroma-key/`--find` options, padding, grayscale, GIF frame, `--output-format`, `--force`, `--skip-existing`, `--keep-going`, `--delete-source`, `--silent`, and `--select`'s `--combine`/`--index`. **Not** covered: the input file(s), `-o`, the mode (`--merge`/`--inspect`/`--extract`/`--select`), and the options that choose files, names and reporting for a batch (`--recursive`, `--include`, `--exclude`, `--keep-structure`, `--name`, `--what-if`, `--report`, `--json`) — those change with every run. An explicit command-line flag always wins over a file; a file only fills in what you didn't type. Where the files sit, and how they layer, is described under [Which settings files apply](#which-settings-files-apply).
+With more than twenty flags, typing the same combination each time gets old. A TOML settings file sets defaults for the "tuning" options: sizes or preset, the chroma-key/`--find` options, padding, grayscale, GIF frame, `--output-format`, `--force`, `--skip-existing`, `--keep-going`, `--recursive`, `--include`, `--exclude`, `--delete-source`, `--silent`, and `--select`'s `--combine`/`--index`. **Not** covered: the input file(s), `-o`, the mode (`--merge`/`--inspect`/`--extract`/`--select`), and the options that decide where the icons go and what is reported (`--keep-structure`, `--name`, `--what-if`, `--report`, `--json`) — those change with every run. An explicit command-line flag always wins over a file; a file only fills in what you didn't type. Where the files sit, and how they layer, is described under [Which settings files apply](#which-settings-files-apply).
 
 ### TOML in brief
 
@@ -616,7 +630,7 @@ An unrecognized key is almost always a typo, so it is flagged. The conversion st
 
 ### Ready-made examples
 
-The [`examples/`](examples/) folder has ready-to-use settings files for a Windows app icon, a favicon, a macOS `.icns`, a grayscale variant, and a hands-off setup for scripted/CI use. `reference-all-settings.toml` documents every possible setting in one place; it isn't meant to be used as-is, because several of its settings deliberately contradict each other — copy individual lines from it instead.
+The [`examples/`](examples/) folder has ready-to-use settings files for a Windows app icon, a favicon, a macOS `.icns`, a grayscale variant, a hands-off setup for scripted/CI use, and `folder-batch.toml` for converting a whole folder tree (it needs a folder as the input). `reference-all-settings.toml` documents every possible setting in one place; it isn't meant to be used as-is, because several of its settings deliberately contradict each other — copy individual lines from it instead.
 
 ## Scripting and CI
 

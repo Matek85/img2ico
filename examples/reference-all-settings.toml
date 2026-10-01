@@ -78,6 +78,20 @@ keep-going = false
 # Contradicts "force" above - use one or the other.
 skip-existing = false
 
+# Also take the images in the SUBFOLDERS of an input folder, all the way
+# down. Like "include" and "exclude" below, this only matters when an input
+# is a folder; with single files it is ignored. See folder-batch.toml.
+recursive = false
+
+# Only take folder files matching one of these glob patterns. Without a "/"
+# a pattern is matched against the file name, with a "/" against the path
+# below the input folder (forward slashes). Ignores upper/lower case.
+# Wildcards: * ? [abc] {png,gif} and ** for any number of folders.
+include = ["*.png", "*.jpg"]
+
+# Leave out folder files matching one of these patterns; wins over "include".
+exclude = ["*_old*", "backup/**"]
+
 # With --select and multiple --index values: bundle them into one output
 # file instead of one separate file per selected icon.
 combine = false

@@ -185,6 +185,10 @@ pub fn check_batch_options(
 /// Rejects the folder options where they cannot do anything: they select
 /// files inside folders (so some input has to be one), and --keep-structure
 /// places them below an output folder (so -o has to be given).
+///
+/// Only what was typed on the command line is checked. The same options
+/// coming from a settings file are meant as standing defaults and stay
+/// quietly inert when this run converts single files.
 pub fn check_folder_options(args: &Args) -> Result<(), String> {
     let any_folder = args.input.iter().any(|input| input.is_dir());
     if !any_folder {

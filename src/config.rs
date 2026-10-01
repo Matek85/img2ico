@@ -57,6 +57,12 @@ pub struct Settings {
     #[serde(default)]
     pub skip_existing: bool,
     #[serde(default)]
+    pub recursive: bool,
+    #[serde(default)]
+    pub include: Vec<String>,
+    #[serde(default)]
+    pub exclude: Vec<String>,
+    #[serde(default)]
     pub combine: bool,
     pub index: Option<String>,
     #[serde(default)]
@@ -73,8 +79,8 @@ impl Settings {
     /// The rules match how the command line is resolved against a file
     /// (see settings.rs): an absent value falls through, an on/off flag is
     /// on if EITHER layer turns it on (a file can't say "explicitly off"),
-    /// and a non-empty list of seeds replaces the lower layer's list
-    /// instead of adding to it.
+    /// and a non-empty list (seeds, include, exclude) replaces the lower
+    /// layer's list instead of adding to it.
     ///
     /// Written without `..` on purpose: if a field is ever added to
     /// `Settings`, this stops compiling until it says how that field
@@ -102,6 +108,17 @@ impl Settings {
             force: self.force || fallback.force,
             keep_going: self.keep_going || fallback.keep_going,
             skip_existing: self.skip_existing || fallback.skip_existing,
+            recursive: self.recursive || fallback.recursive,
+            include: if self.include.is_empty() {
+                fallback.include
+            } else {
+                self.include
+            },
+            exclude: if self.exclude.is_empty() {
+                fallback.exclude
+            } else {
+                self.exclude
+            },
             combine: self.combine || fallback.combine,
             index: self.index.or(fallback.index),
             silent: self.silent || fallback.silent,
@@ -136,6 +153,9 @@ const KNOWN_SETTINGS_KEYS: &[&str] = &[
     "force",
     "keep-going",
     "skip-existing",
+    "recursive",
+    "include",
+    "exclude",
     "combine",
     "index",
     "silent",
@@ -371,6 +391,9 @@ mod tests {
             force: true,
             keep_going: true,
             skip_existing: true,
+            recursive: true,
+            include: vec!["*.png".to_string()],
+            exclude: vec!["*-old*".to_string(), "backup/**".to_string()],
             combine: true,
             index: Some("0,2".to_string()),
             silent: true,
@@ -594,6 +617,63 @@ mod tests {
         let merged = high.layered_over(low);
         assert!(merged.force && merged.grayscale && merged.silent);
         assert!(!merged.delete_source && !merged.combine && !merged.auto_apply);
+    }
+
+    #[test]
+    fn folder_selection_settings_are_read_from_a_file() {
+        let settings = load(
+            r#"
+            recursive = true
+            include = ["*.png", "*.gif"]
+            exclude = ["*_old*"]
+            "#,
+        )
+        .unwrap();
+        assert!(settings.recursive);
+        assert_eq!(settings.include, ["*.png", "*.gif"]);
+        assert_eq!(settings.exclude, ["*_old*"]);
+    }
+
+    #[test]
+    fn non_empty_include_and_exclude_lists_replace_the_lower_layers_lists() {
+        let with = |include: &[&str], exclude: &[&str]| Settings {
+            include: include.iter().map(|s| s.to_string()).collect(),
+            exclude: exclude.iter().map(|s| s.to_string()).collect(),
+            ..Settings::default()
+        };
+        let merged = with(&["*.png"], &[]).layered_over(with(&["*.gif"], &["old/**"]));
+        assert_eq!(merged.include, ["*.png"], "the higher layer's list wins");
+        assert_eq!(merged.exclude, ["old/**"], "an empty list falls through");
+
+        let on = Settings {
+            recursive: true,
+            ..Settings::default()
+        };
+        assert!(Settings::default().layered_over(on).recursive);
+    }
+
+    #[test]
+    fn the_example_settings_files_only_use_known_keys() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples");
+        let mut checked = 0;
+        for entry in std::fs::read_dir(&dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension().is_none_or(|e| e != "toml") {
+                continue;
+            }
+            let text = std::fs::read_to_string(&path).unwrap();
+            let table: toml::value::Table = toml::from_str(&text)
+                .unwrap_or_else(|e| panic!("{} does not parse: {e}", path.display()));
+            for key in table.keys() {
+                assert!(
+                    KNOWN_SETTINGS_KEYS.contains(&key.as_str()),
+                    "{} uses the unknown setting '{key}'",
+                    path.display()
+                );
+            }
+            checked += 1;
+        }
+        assert!(checked >= 6, "expected the example files, found {checked}");
     }
 
     #[test]
