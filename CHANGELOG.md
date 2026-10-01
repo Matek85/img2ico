@@ -12,6 +12,18 @@ when cutting a release.
 
 ### Added
 
+- `--validate`: checks the structure of existing `.ico` files (files, or
+  folders of them, with `--recursive` below them as well) and says exactly
+  what is wrong with a damaged one - the header, the number of images, every
+  directory entry's size, offset and length, overlapping or protruding
+  images, and the image data itself (PNG chunk by chunk with its checksums,
+  BMP for its header, mask and completeness). Prints a verdict per file and
+  exits with status 1 if any file is invalid, so a build script can fail on
+  it; warnings (extra bytes, duplicate sizes, a cursor file, an oversized
+  PNG) do not make a file invalid. `--json` prints the result for scripts.
+- `--inspect` shows an `alpha:` column for every entry of an `.ico` - whether
+  it has transparency and how much of it - and the JSON report has `alpha`
+  and `non_opaque_share`. For a damaged icon it points to `--validate`.
 - Layout options for how an image gets onto the square icon: `--fit cover`
   fills the square and cuts off the overhang (keeping the middle) instead of
   leaving transparent bars (`--fit contain`, the default, is unchanged);

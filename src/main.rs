@@ -45,6 +45,7 @@ mod convert;
 mod gif;
 mod icns;
 mod ico_ops;
+mod ico_validate;
 mod layout;
 mod plan;
 mod report;
@@ -61,6 +62,7 @@ use config::{Settings, load_layered, user_config_path};
 use ico_ops::{
     extract_icons, inspect_icons, inspect_icons_json, merge_icons, parse_indices, select_icons,
 };
+use ico_validate::validate_files;
 use settings::{ResolvedSettings, finish_run};
 use std::path::{Path, PathBuf};
 
@@ -159,6 +161,13 @@ fn run() -> Result<(), String> {
     reject_conversion_options_in_other_modes(&args)?;
     reject_stdio_in_other_modes(&args)?;
 
+    if args.validate {
+        // Like --inspect it only reads, so no settings files either. The
+        // error it returns when a file is invalid is the non-zero exit
+        // status.
+        return validate_files(&args.input, args.recursive, args.json);
+    }
+
     if args.inspect {
         // --inspect never writes anything to disk (that's the whole
         // point of it), so it deliberately doesn't participate in
@@ -204,13 +213,19 @@ fn run() -> Result<(), String> {
 /// explicitly typing --output-format shouldn't trip this just because icns
 /// happens to be the default.
 fn check_single_mode(args: &Args) -> Result<(), String> {
-    let mode_count = [args.merge, args.inspect, args.extract, args.select]
-        .into_iter()
-        .filter(|&on| on)
-        .count();
+    let mode_count = [
+        args.merge,
+        args.inspect,
+        args.validate,
+        args.extract,
+        args.select,
+    ]
+    .into_iter()
+    .filter(|&on| on)
+    .count();
     if mode_count > 1 || (mode_count == 1 && args.output_format.is_some()) {
         return Err(
-            "--merge, --inspect, --extract, --select and --output-format are mutually exclusive - please use only one at a time."
+            "--merge, --inspect, --validate, --extract, --select and --output-format are mutually exclusive - please use only one at a time."
                 .to_string(),
         );
     }
@@ -221,11 +236,13 @@ fn check_single_mode(args: &Args) -> Result<(), String> {
 /// a rehearsal, a report - mean nothing to the modes that work on existing
 /// .ico files. Saying so beats quietly ignoring them.
 fn reject_conversion_options_in_other_modes(args: &Args) -> Result<(), String> {
-    if !(args.merge || args.inspect || args.extract || args.select) {
+    if !(args.merge || args.inspect || args.validate || args.extract || args.select) {
         return Ok(());
     }
     let used: Vec<&str> = [
-        (args.recursive, "--recursive"),
+        // --validate is the one mode that takes folders, so --recursive means
+        // something there.
+        (args.recursive && !args.validate, "--recursive"),
         (!args.include.is_empty(), "--include"),
         (!args.exclude.is_empty(), "--exclude"),
         (args.keep_structure, "--keep-structure"),
@@ -240,7 +257,7 @@ fn reject_conversion_options_in_other_modes(args: &Args) -> Result<(), String> {
         return Ok(());
     }
     Err(format!(
-        "{} only apply when converting images, not with --merge, --inspect, --extract or --select.",
+        "{} only apply when converting images, not with --merge, --inspect, --validate, --extract or --select.",
         used.join(", ")
     ))
 }
@@ -252,9 +269,9 @@ fn reject_stdio_in_other_modes(args: &Args) -> Result<(), String> {
     let stdio = Path::new("-");
     let uses_stdio = args.output.as_deref() == Some(stdio)
         || args.input.iter().any(|input| input.as_path() == stdio);
-    if uses_stdio && (args.merge || args.inspect || args.extract || args.select) {
+    if uses_stdio && (args.merge || args.inspect || args.validate || args.extract || args.select) {
         return Err(
-            "'-' (standard input, or '-o -' for standard output) only works when converting one image, not with --merge, --inspect, --extract or --select. A file that is really called '-' can be written as './-'."
+            "'-' (standard input, or '-o -' for standard output) only works when converting one image, not with --merge, --inspect, --validate, --extract or --select. A file that is really called '-' can be written as './-'."
                 .to_string(),
         );
     }

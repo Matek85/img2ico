@@ -121,6 +121,7 @@ Usage: img2ico [OPTIONS] <INPUT>...
 | `--index` | | comma list | Which size(s) `--select` pulls out (default `0`) |
 | `--combine` | | | With `--select` and several indices: one file instead of several |
 | `--inspect` | | | Print a report about `.ico` file(s) or source image(s) |
+| `--validate` | | | Check the structure of `.ico` files (or folders of them); exit code 1 if any is invalid |
 | `--force` | `-f` | | Allow overwriting existing output |
 | `--skip-existing` | | | Leave an input alone whose output already exists (contradicts `--force`) |
 | `--keep-going` | | | In a batch, carry on after a file fails instead of stopping |
@@ -131,7 +132,7 @@ Usage: img2ico [OPTIONS] <INPUT>...
 | `--name` | | pattern | Name the icons by a pattern with `{stem}`, `{ext}`, `{format}` |
 | `--what-if` | | | Show what would happen; write nothing (contradicts `--report`) |
 | `--report` | | `.csv` / `.json` file | Write a record of the run: one line per file, plus totals |
-| `--json` | | | With `--inspect`: print the report as JSON |
+| `--json` | | | With `--inspect` or `--validate`: print the report as JSON |
 | `--delete-source` | | | Delete the input file(s) after a successful run |
 | `--config` | | path | Load default settings from a TOML file |
 | `--no-config` | | | Ignore every settings file (cannot be combined with `--config`) |
@@ -143,7 +144,7 @@ Usage: img2ico [OPTIONS] <INPUT>...
 | `--version` | `-V` | | Print the version, platform and compiler (`-V`: just the version) |
 | `--help` | `-h` | | Full built-in help |
 
-**Modes.** `--merge`, `--inspect`, `--extract`, `--select` and `--output-format` are mutually exclusive: each changes what the tool does with its input, so only one can be active per run. Everything else can be combined freely. The exclusivity check looks at what you actually typed, not at the automatic macOS default — so `--merge` works normally on a Mac without ever mentioning `--output-format`.
+**Modes.** `--merge`, `--inspect`, `--validate`, `--extract`, `--select` and `--output-format` are mutually exclusive: each changes what the tool does with its input, so only one can be active per run. Everything else can be combined freely. The exclusivity check looks at what you actually typed, not at the automatic macOS default — so `--merge` works normally on a Mac without ever mentioning `--output-format`.
 
 ## Converting an image
 
@@ -570,10 +571,12 @@ For an `.ico`, the report lists every size with its index, color depth, whether 
 
 ```
 icon.ico:
-  [0]   16x16    32bpp  PNG  1008 bytes
-  [1]   20x20    32bpp  PNG  1422 bytes
+  [0]   16x16    32bpp  PNG  1008 bytes  alpha: yes (31% of pixels not fully opaque)
+  [1]   20x20    32bpp  PNG  1422 bytes  alpha: yes (29% of pixels not fully opaque)
   ...
 ```
+
+The `alpha:` column tells whether the entry has transparency in it: `yes` with the share of pixels that are not fully opaque (transparent or see-through), or `no (fully opaque)`. For an old-style BMP entry it reflects the 1-bit transparency mask. An icon with a rounded shape or a removed background should say `yes`; one that says `no` has a solid square behind the artwork.
 
 For a regular source image, it shows the resolution and which standard sizes the image covers **natively** versus which would need **upscaling** — a good check before you commit to a large icon:
 
@@ -596,7 +599,7 @@ For a GIF it also reports the frame count. Each file is inspected with whichever
     "path": "icon.ico",
     "kind": "ico",
     "entries": [
-      { "index": 0, "width": 16, "height": 16, "bits_per_pixel": 32, "format": "png", "bytes": 1008 }
+      { "index": 0, "width": 16, "height": 16, "bits_per_pixel": 32, "format": "png", "bytes": 1008, "alpha": true, "non_opaque_share": 0.31 }
     ],
     "missing_windows_sizes": [20, 24, 40, 96, 128, 256],
     "warnings": []
@@ -613,7 +616,38 @@ For a GIF it also reports the frame count. Each file is inspected with whichever
 ]
 ```
 
-`frames` is the frame count for a GIF and `null` for every other image; `warnings` lists the same sanity warnings as the text report.
+`alpha` is whether the entry has any pixel that is not fully opaque (`null` if it could not be decoded) and `non_opaque_share` the share of such pixels, from 0 to 1. `frames` is the frame count for a GIF and `null` for every other image; `warnings` lists the same sanity warnings as the text report.
+
+### Validate
+
+```
+img2ico --validate icon.ico
+img2ico --validate icons/ --recursive      # every .ico in a folder tree
+```
+
+Checks that an `.ico` file is **structurally sound** and, if it is not, says exactly what is wrong. `--inspect` reads a good file; `--validate` is for finding out why a file does not work, and for failing a build when a damaged icon sneaks in. It does not use the usual icon library, which only refuses a damaged file with one short error: img2ico reads the bytes itself and reports every problem it finds, with the image and the numbers involved.
+
+What is checked: the header (the reserved field, the type, the number of images), that the directory fits in the file, and for every image its size, offset and length — that the data lies inside the file, does not start in the header, and does not overlap another image. Then the image data itself: a **PNG** chunk by chunk, with the lengths and the checksums (so a flipped byte is found) and an end marker; a **BMP** for its header, its height (which holds the transparency mask too), its compression and whether its data is complete. The width and height the directory states must match what is inside.
+
+```
+cut.ico: INVALID - 1 error, 0 warnings
+  error: image [2]: its image data (bytes 646 to 5902) reaches beyond the end of the file, which has 5877 bytes - the file is truncated or the directory is wrong
+
+good.ico: valid - 3 images (16x16 PNG, 32x32 PNG, 48x48 PNG)
+Checked 2 files: 1 valid, 1 invalid.
+```
+
+**Errors and warnings.** An *error* means the file is damaged or will not be read correctly; a *warning* is something unusual that still works — bytes after the last image, the same size twice, a PNG larger than 256×256 (which Windows does not read in an icon), a cursor (`.cur`) instead of an icon, or an old BMP image with its 1-bit mask. **Only errors make a file invalid.**
+
+**The exit status** is 0 when every file is valid and 1 when any is not, after all of them have been checked — one bad file does not hide the verdict on the others. A file that cannot be read at all counts as invalid. That makes it a one-line gate in a build script or CI:
+
+```
+img2ico --validate assets/icons --recursive || exit 1
+```
+
+A folder stands for the `.ico` files directly inside it (with `--recursive`, below it as well); other files in it are ignored. A shell that does not expand `*.ico` itself (Windows PowerShell and cmd) is no problem when you name the folder instead. `--validate` reads only — nothing is written, and settings files are not used.
+
+**For scripts: `--json`.** `img2ico --validate a.ico b.ico --json` prints one array with an entry per file — `path`, `valid`, `bytes`, `images` (index, size, bits per pixel, format, offset and length), `errors` and `warnings` (each with the `image` it is about, or `null`, and a `message`) — and still sets the exit status.
 
 ### Merge
 
@@ -787,7 +821,7 @@ The [`examples/`](examples/) folder has ready-to-use settings files for a Window
 **Quiet mode.** `--silent` suppresses every advisory warning and notice: upscaling and thin-content warnings, an out-of-range `--seed`, a skipped duplicate in `--merge`, the unknown-setting warning, the "Using settings from …" notice, and so on. It does **not** suppress:
 
 - **Errors** — something going wrong always reaches you, and the exit code.
-- **`--inspect` and `--find` reports** — they are the requested output of those modes.
+- **`--inspect`, `--validate` and `--find` reports** — they are the requested output of those modes.
 - **The final "Done: … created" line** of a single conversion — that is what `--quiet` is for (below).
 - **A batch's failure summary** — in a batch, `--silent` hides the per-file progress lines and the summary of a clean run, but if anything failed, the summary and the errors are printed.
 

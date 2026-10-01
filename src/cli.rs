@@ -97,6 +97,8 @@ const LONG_VERSION: &str = concat!(
     about = "Converts any image into an ICO file (with transparency)",
     version,
     long_version = LONG_VERSION,
+    // --json belongs to the two modes that print a report.
+    group(clap::ArgGroup::new("listing").args(["inspect", "validate"]).multiple(true)),
 )]
 pub struct Args {
     /// Input file(s) or folder(s). A single "-" reads the image from standard
@@ -287,6 +289,22 @@ pub struct Args {
     /// to disk in this mode.
     #[arg(long = "inspect")]
     pub inspect: bool,
+
+    /// Validate mode: checks the structure of existing .ico files (passed
+    /// as INPUT - files, or folders, which stand for the .ico files in
+    /// them; with --recursive also those in subfolders) and says exactly
+    /// what is wrong with a damaged one. It looks at the header, the number
+    /// of images, every directory entry (sizes, offsets, lengths), whether
+    /// the images overlap or stick out of the file, and the image data
+    /// itself - a PNG is checked chunk by chunk with its checksums, a BMP
+    /// for its size and mask - and warns about unusual but harmless things
+    /// (extra bytes, duplicate sizes, a cursor file). Prints a verdict per
+    /// file and exits with a non-zero status if any file is invalid, so a
+    /// build script can fail on it: `img2ico --validate icons/ --recursive`.
+    /// Warnings alone do not make a file invalid. --json prints the result
+    /// as JSON. Nothing is written to disk in this mode.
+    #[arg(long = "validate")]
+    pub validate: bool,
 
     /// Extract mode: instead of converting an image, pull every icon size
     /// out of an existing .ico file (passed as INPUT, exactly one file)
@@ -583,10 +601,10 @@ pub struct Args {
     #[arg(long = "report", value_name = "FILE")]
     pub report: Option<PathBuf>,
 
-    /// With --inspect: prints the report as JSON (one array with an entry per
-    /// file) instead of text, for scripts. Nothing else is printed to
+    /// With --inspect or --validate: prints the report as JSON (one array
+    /// with an entry per file) instead of text, for scripts. Nothing else is printed to
     /// standard output.
-    #[arg(long = "json", requires = "inspect")]
+    #[arg(long = "json", requires = "listing")]
     pub json: bool,
 
     /// Loads default values for the "tuning" settings above (--sizes,
@@ -778,6 +796,7 @@ mod tests {
     fn json_needs_inspect() {
         assert!(parse(&["a.ico", "--inspect", "--json"]).is_ok());
         assert!(parse(&["a.ico", "--json"]).is_err());
+        assert!(parse(&["a.ico", "--validate", "--json"]).is_ok());
     }
 
     // --- Completions -----------------------------------------------------------

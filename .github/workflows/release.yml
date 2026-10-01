@@ -136,6 +136,7 @@ jobs:
           "$binary" --version | head -n 1 | grep -F "img2ico $EXPECTED_VERSION"
           "$binary" .github/testdata/logo.png --output-format ico -o smoke.ico --sizes 16,32
           test -s smoke.ico
+          "$binary" --validate smoke.ico
 
       # Bundles the binary together with examples/, README.md and LICENSE
       # into one downloadable archive. Two steps because Windows and
