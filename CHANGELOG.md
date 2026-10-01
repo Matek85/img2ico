@@ -10,6 +10,29 @@ when cutting a release.
 
 ## [Unreleased]
 
+### Added
+
+- More source formats: WebP, TIFF (`.tif`, `.tiff`), TGA and macOS `.icns`
+  files can be converted like PNG, JPG, BMP and GIF - from a file, from a
+  folder (which now takes these too) and, except for TGA, from standard
+  input. An `.icns` source uses its largest icon, including the old
+  RLE-compressed icon types; `--inspect` reports all of them as source images.
+
+### Changed
+
+- The release binary grows by about 0.9 MB (2.81 MB to 3.70 MB on Windows)
+  because of the new image decoders (WebP, TIFF, TGA) and the `.icns` reader.
+
+### Fixed
+
+- An icon is never written over the image it is made from: an output that is
+  the input file itself - for example an `.icns` converted to `.icns` next to
+  itself, or `-o` naming the input - is refused, even with `--force`; in a
+  batch, an output that is one of the inputs refuses the whole run before
+  anything is written. (Before, `-o` naming the input quietly replaced it.)
+- Output name collisions in a batch are now also found when one path is
+  written with `/` and the other with `\` on Windows.
+
 ## [1.6.0] - 2026-10-01
 
 Pipeline support (standard input and output, `--quiet`), automatic

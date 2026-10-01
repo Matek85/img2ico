@@ -1169,11 +1169,11 @@ fn delete_source_keeps_the_input_when_the_run_fails() {
 }
 
 #[test]
-fn delete_source_never_deletes_the_file_it_just_wrote() {
+fn an_output_that_is_the_input_itself_is_refused_even_with_force_and_delete_source() {
     let dir = tempfile::tempdir().unwrap();
     write_solid(dir.path(), "logo.png", 64, RED);
-    // Output path == input path: the result replaces the source (with
-    // --force); it must not then be deleted as "the source".
+    let before = std::fs::read(dir.path().join("logo.png")).unwrap();
+    // Output path == input path: the icon would replace the source image.
     let out = convert(
         dir.path(),
         &[
@@ -1186,13 +1186,19 @@ fn delete_source_never_deletes_the_file_it_just_wrote() {
             "--delete-source",
         ],
     );
-    assert_success(&out);
-    assert!(dir.path().join("logo.png").is_file(), "{}", describe(&out));
-    assert!(
-        stderr(&out).contains("also the output path"),
-        "{}",
-        describe(&out)
+    assert_failure_containing(&out, "is the input file itself");
+    assert_eq!(
+        std::fs::read(dir.path().join("logo.png")).unwrap(),
+        before,
+        "the source is untouched"
     );
+
+    // The same through a different spelling of the same path.
+    let out = convert(
+        dir.path(),
+        &["logo.png", "--sizes", "16", "-o", "./logo.png", "--force"],
+    );
+    assert_failure_containing(&out, "is the input file itself");
 }
 
 // =============================================================================
@@ -2169,6 +2175,208 @@ fn quiet_also_covers_the_other_modes_success_lines() {
     assert_success(&out);
     assert_eq!(stdout(&out), "", "{}", describe(&out));
     assert!(dir.path().join("m.ico").is_file());
+}
+
+// =============================================================================
+// More source formats: WebP, TIFF, TGA and ICNS
+// =============================================================================
+
+/// A 32x32 image, red on the left half and green on the right, saved in the
+/// format the extension of `name` names.
+fn write_two_color(dir: &Path, name: &str) -> PathBuf {
+    let img = RgbaImage::from_fn(32, 32, |x, _| if x < 16 { Rgba(RED) } else { Rgba(GREEN) });
+    let path = dir.join(name);
+    img.save(&path).unwrap();
+    path
+}
+
+/// The color of the icon's pixel at (x, y) in the `size`x`size` entry.
+fn icon_pixel(path: &Path, size: u32, x: u32, y: u32) -> [u8; 4] {
+    icon_image(path, size).get_pixel(x, y).0
+}
+
+#[test]
+fn webp_tiff_and_tga_sources_are_converted() {
+    let dir = tempfile::tempdir().unwrap();
+    for name in ["logo.webp", "logo.tiff", "logo.tif", "logo.tga"] {
+        write_two_color(dir.path(), name);
+        let out = convert(
+            dir.path(),
+            &[name, "-o", "out.ico", "--sizes", "32", "--force"],
+        );
+        assert_success(&out);
+        assert_eq!(ico_sizes(&dir.path().join("out.ico")), vec![32], "{name}");
+        assert_eq!(
+            icon_pixel(&dir.path().join("out.ico"), 32, 2, 16),
+            RED,
+            "{name}"
+        );
+        assert_eq!(
+            icon_pixel(&dir.path().join("out.ico"), 32, 29, 16),
+            GREEN,
+            "{name}"
+        );
+    }
+}
+
+#[test]
+fn an_icns_file_is_converted_using_its_largest_icon() {
+    let dir = tempfile::tempdir().unwrap();
+    write_two_color(dir.path(), "logo.png");
+    assert_success(&img2ico(
+        dir.path(),
+        &["logo.png", "--output-format", "icns", "-o", "AppIcon.icns"],
+    ));
+    // ... and back to an .ico, as macOS icon -> Windows icon.
+    let out = convert(
+        dir.path(),
+        &["AppIcon.icns", "-o", "back.ico", "--sizes", "64"],
+    );
+    assert_success(&out);
+    assert!(
+        !stderr(&out).contains("upscaled"),
+        "the largest icon (1024 px) is the source: {}",
+        describe(&out)
+    );
+    assert_eq!(icon_pixel(&dir.path().join("back.ico"), 64, 4, 32), RED);
+    assert_eq!(icon_pixel(&dir.path().join("back.ico"), 64, 59, 32), GREEN);
+}
+
+#[test]
+fn the_default_output_name_of_an_icns_is_a_different_file_with_ico_output() {
+    let dir = tempfile::tempdir().unwrap();
+    write_two_color(dir.path(), "logo.png");
+    assert_success(&img2ico(
+        dir.path(),
+        &["logo.png", "--output-format", "icns", "-o", "AppIcon.icns"],
+    ));
+    let out = convert(dir.path(), &["AppIcon.icns", "--sizes", "16"]);
+    assert_success(&out);
+    assert!(dir.path().join("AppIcon.ico").is_file());
+}
+
+#[test]
+fn an_icon_is_never_written_over_the_image_it_is_made_from() {
+    let dir = tempfile::tempdir().unwrap();
+    write_two_color(dir.path(), "logo.png");
+    assert_success(&img2ico(
+        dir.path(),
+        &["logo.png", "--output-format", "icns", "-o", "AppIcon.icns"],
+    ));
+    let before = std::fs::read(dir.path().join("AppIcon.icns")).unwrap();
+
+    // .icns -> .icns next to itself: the default output name is the input's own.
+    for extra in [&[][..], &["--force"], &["--force", "--delete-source"]] {
+        let mut args = vec!["AppIcon.icns", "--output-format", "icns"];
+        args.extend_from_slice(extra);
+        let out = img2ico(dir.path(), &args);
+        assert_failure_containing(&out, "is the input file itself");
+    }
+    assert_eq!(
+        std::fs::read(dir.path().join("AppIcon.icns")).unwrap(),
+        before
+    );
+
+    // In a batch the whole run is refused before anything is written.
+    let folder = dir.path().join("assets");
+    std::fs::create_dir(&folder).unwrap();
+    std::fs::copy(dir.path().join("AppIcon.icns"), folder.join("AppIcon.icns")).unwrap();
+    write_solid(&folder, "other.png", 64, RED);
+    let out = img2ico(
+        dir.path(),
+        &["assets", "--output-format", "icns", "--force"],
+    );
+    assert_failure_containing(&out, "is itself one of the input files");
+    assert_eq!(names_in(&folder), vec!["AppIcon.icns", "other.png"]);
+}
+
+#[test]
+fn a_folder_takes_all_the_supported_formats_and_ignores_the_rest() {
+    let dir = tempfile::tempdir().unwrap();
+    let assets = dir.path().join("assets");
+    std::fs::create_dir(&assets).unwrap();
+    for name in ["a.png", "b.webp", "c.tiff", "d.TIF", "e.tga"] {
+        write_two_color(&assets, name);
+    }
+    write_two_color(dir.path(), "src.png");
+    assert_success(&img2ico(
+        dir.path(),
+        &["src.png", "--output-format", "icns", "-o", "assets/f.icns"],
+    ));
+    write_junk(&assets, "notes.txt");
+    write_junk(&assets, "design.psd");
+    write_junk(&assets, "photo.jxl");
+
+    let out = convert(dir.path(), &["assets", "-o", "out", "--sizes", "16"]);
+    assert_success(&out);
+    assert_eq!(
+        names_in(&dir.path().join("out")),
+        vec!["a.ico", "b.ico", "c.ico", "d.ico", "e.ico", "f.ico"]
+    );
+    assert!(stdout(&out).contains("6 converted"), "{}", describe(&out));
+}
+
+#[test]
+fn the_empty_folder_message_lists_the_supported_formats() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir(dir.path().join("empty")).unwrap();
+    write_junk(&dir.path().join("empty"), "notes.txt");
+    assert_failure_containing(
+        &convert(dir.path(), &["empty"]),
+        "PNG, JPG, BMP, GIF, WebP, TIFF, TGA, ICNS",
+    );
+}
+
+#[test]
+fn webp_and_tiff_work_from_standard_input_but_tga_cannot() {
+    let dir = tempfile::tempdir().unwrap();
+    for name in ["logo.webp", "logo.tiff"] {
+        let bytes = std::fs::read(write_two_color(dir.path(), name)).unwrap();
+        let out = img2ico_with_stdin(
+            dir.path(),
+            &["-", "-o", "-", "--output-format", "ico", "--sizes", "16"],
+            &bytes,
+        );
+        assert_success(&out);
+        ico_in(&out.stdout);
+    }
+    // A TGA has no recognizable header, so without a file name it is unreadable.
+    let tga = std::fs::read(write_two_color(dir.path(), "logo.tga")).unwrap();
+    let out = img2ico_with_stdin(dir.path(), &["-", "-o", "-"], &tga);
+    assert_failure_containing(&out, "Could not read input file");
+    assert!(out.stdout.is_empty());
+}
+
+#[test]
+fn inspect_reports_the_new_formats_as_source_images() {
+    let dir = tempfile::tempdir().unwrap();
+    write_two_color(dir.path(), "logo.webp");
+    write_two_color(dir.path(), "logo.tiff");
+    let out = img2ico(dir.path(), &["--inspect", "logo.webp", "logo.tiff"]);
+    assert_success(&out);
+    assert_eq!(
+        stdout(&out).matches("(source image, 32x32)").count(),
+        2,
+        "{}",
+        describe(&out)
+    );
+
+    let json = img2ico(dir.path(), &["--inspect", "logo.webp", "--json"]);
+    assert_success(&json);
+    let report: serde_json::Value = serde_json::from_str(&stdout(&json)).unwrap();
+    assert_eq!(report[0]["kind"], "image");
+    assert_eq!(report[0]["width"], 32);
+}
+
+#[test]
+fn a_broken_file_of_a_new_format_is_a_clear_error() {
+    let dir = tempfile::tempdir().unwrap();
+    for name in ["bad.webp", "bad.tiff", "bad.icns"] {
+        write_junk(dir.path(), name);
+        let out = convert(dir.path(), &[name]);
+        assert_failure_containing(&out, "Could not read");
+    }
+    assert!(names_in(dir.path()).iter().all(|n| !n.ends_with(".ico")));
 }
 
 // =============================================================================

@@ -6,7 +6,7 @@
 use crate::cli::Args;
 use crate::select::{NamePattern, Source};
 use crate::settings::ResolvedSettings;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 /// One conversion: which image to read and where the icon goes.
@@ -105,14 +105,17 @@ pub fn single_job(
 }
 
 /// A form of `path` in which two paths naming the same file compare equal:
-/// lowercased where the file system ignores case (Windows, macOS).
+/// lowercased where the file system ignores case (Windows, macOS), and with
+/// one kind of separator where both "/" and a backslash are accepted (Windows).
 fn collision_key(path: &Path) -> String {
-    let text = path.to_string_lossy().into_owned();
-    if cfg!(any(windows, target_os = "macos")) {
-        text.to_lowercase()
-    } else {
-        text
+    let mut text = path.to_string_lossy().into_owned();
+    if cfg!(windows) {
+        text = text.replace('\\', "/");
     }
+    if cfg!(any(windows, target_os = "macos")) {
+        text = text.to_lowercase();
+    }
+    text
 }
 
 /// Pairs every input with its output path - and refuses the whole batch,
@@ -122,11 +125,21 @@ fn collision_key(path: &Path) -> String {
 /// silently overwrite the other.
 pub fn plan_jobs(sources: Vec<Source>, naming: &Naming) -> Result<Vec<Job>, String> {
     let make_dirs = naming.keep_structure && naming.folder.is_some();
+    let inputs: HashSet<String> = sources
+        .iter()
+        .map(|source| collision_key(&source.path))
+        .collect();
     let mut claimed: HashMap<String, PathBuf> = HashMap::new();
     let mut jobs = Vec::with_capacity(sources.len());
     for source in sources {
         let output = naming.output_for(&source)?;
         let key = collision_key(&output);
+        if inputs.contains(&key) {
+            return Err(format!(
+                "The output '{}' is itself one of the input files - converting would overwrite a source image. Use -o to put the icons in another folder, or --output-format to choose another extension.",
+                output.display()
+            ));
+        }
         if let Some(first) = claimed.get(&key) {
             return Err(format!(
                 "'{}' and '{}' would both be written to '{}'. Rename one of them, or convert them separately - or use --keep-structure (to keep their folders apart) or --name (for example \"{{stem}}-{{ext}}\", to tell them apart) to give them different output names.",
@@ -469,6 +482,28 @@ mod tests {
     fn where_the_file_system_ignores_case_differing_case_is_a_collision() {
         let files = vec![source("Logo.png"), source("logo.png")];
         assert!(plan_jobs(files, &plain(Some(Path::new("out")), false)).is_err());
+    }
+
+    #[test]
+    fn an_output_that_is_one_of_the_inputs_is_refused() {
+        // e.g. AppIcon.icns converted to .icns next to itself
+        let files = vec![source("art/AppIcon.icns"), source("art/logo.png")];
+        let err = plan_jobs(files, &plain(None, true))
+            .map(|_| ())
+            .unwrap_err();
+        assert!(err.contains("is itself one of the input files"), "{err}");
+        assert!(err.contains("AppIcon.icns"), "{err}");
+
+        let files = vec![source("art/AppIcon.icns")];
+        assert!(
+            plan_jobs(files, &plain(None, false)).is_ok(),
+            "an .ico output is fine"
+        );
+        let files = vec![source("art/AppIcon.icns")];
+        assert!(
+            plan_jobs(files, &plain(Some(Path::new("out")), true)).is_ok(),
+            "another folder is fine"
+        );
     }
 
     #[test]

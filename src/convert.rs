@@ -28,8 +28,9 @@ use crate::select::{Filter, NamePattern, Source, expand_inputs};
 use crate::settings::{
     ResolvedSettings, delete_sources_if_requested, finish_run, maybe_write_out_toml,
 };
+use crate::source::{decode_image_bytes, open_image};
 use crate::util::{
-    check_overwrite, enter_file_context, file_prefix, parse_seed, warn, warnings_so_far,
+    check_overwrite, enter_file_context, file_prefix, parse_seed, same_file, warn, warnings_so_far,
 };
 use image::RgbaImage;
 use std::io::{IsTerminal, Read, Write};
@@ -593,6 +594,17 @@ fn convert_one(
     // Standard output is never "already there" - and `-` is not a file name.
     let to_stdout = is_stdio(output_path);
 
+    // Never let the icon replace the image it is made from - with an .icns
+    // source and --output-format icns (the default on macOS) the default
+    // output name is the input's own, and --force would then destroy the
+    // source.
+    if !to_stdout && !is_stdio(input_path) && same_file(input_path, output_path) {
+        return Err(format!(
+            "The output '{}' is the input file itself - converting would overwrite the source image. Choose another file with -o, or another --output-format.",
+            output_path.display()
+        ));
+    }
+
     // --skip-existing: with the output already there there is nothing to do
     // - and nothing worth loading, so this comes before anything else. (A
     // --find preview writes no file, so it is never skipped.)
@@ -815,15 +827,12 @@ fn load_source_image(input_path: &Path, resolved: &ResolvedSettings) -> Result<R
     // been 6 full copies of the source image, even though the source
     // image doesn't change between sizes.
     //
-    // The format is guessed from the content, for a file as for standard
+    // The format is recognized from the content, for a file as for standard
     // input - image::open() would go by the file extension, and fail on a
-    // file without one or with a wrong one.
+    // file without one or with a wrong one. (See source.rs.)
     let decoded = match &stdin_bytes {
-        Some(bytes) => image::load_from_memory(bytes),
-        None => image::ImageReader::open(input_path)
-            .and_then(|reader| reader.with_guessed_format())
-            .map_err(image::ImageError::IoError)
-            .and_then(|reader| reader.decode()),
+        Some(bytes) => decode_image_bytes(bytes),
+        None => open_image(input_path),
     };
     Ok(decoded
         .map_err(|e| {

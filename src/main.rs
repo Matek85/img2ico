@@ -21,6 +21,7 @@
 //   - resize.rs       alpha-aware resizing and square-icon construction
 //   - gif.rs          animated GIF frame selection
 //   - icns.rs         the macOS .icns container format
+//   - source.rs       reading a source image of any supported format
 //   - ico_ops.rs      --merge, --inspect, --extract, --select (everything
 //                     that reads/writes EXISTING .ico files)
 //   - util.rs         small general-purpose helpers (--seed parsing,
@@ -49,6 +50,7 @@ mod report;
 mod resize;
 mod select;
 mod settings;
+mod source;
 mod util;
 
 use clap::Parser;

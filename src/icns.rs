@@ -1,8 +1,10 @@
-// Everything related to writing the macOS .icns icon format: the size-to-
-// OSType mapping Apple's own tools use, and the container writer itself.
+// Everything related to the macOS .icns icon format: the size-to-OSType
+// mapping Apple's own tools use, the container writer itself, and reading an
+// .icns file as a source image (the largest icon in it).
 
 use crate::resize::make_square_icon;
 use image::{ImageEncoder, RgbaImage};
+use std::io::Cursor;
 
 /// Standard Apple icon sizes (in pixels) mapped to their corresponding
 /// ICNS "OSType" codes, matching what Apple's own `iconutil` produces from
@@ -89,6 +91,45 @@ pub fn encode_icns(
     Ok(file_bytes)
 }
 
+/// Whether `bytes` start like an .icns file (the magic "icns").
+pub fn is_icns(bytes: &[u8]) -> bool {
+    bytes.starts_with(b"icns")
+}
+
+/// Decodes the largest icon of an .icns file as an RGBA image - the best
+/// source to make other icons from. `name` is how the file is called in
+/// messages. Icons the `icns` crate can't decode (some JPEG 2000 entries) are
+/// passed over; it is an error only if none can be decoded.
+pub fn decode_icns(bytes: &[u8], name: &str) -> Result<RgbaImage, String> {
+    let family = icns::IconFamily::read(Cursor::new(bytes))
+        .map_err(|e| format!("Could not read '{name}' as an ICNS file: {e}"))?;
+
+    let mut best: Option<icns::Image> = None;
+    let mut last_error: Option<String> = None;
+    for icon_type in family.available_icons() {
+        match family.get_icon_with_type(icon_type) {
+            Ok(image) => {
+                let area = u64::from(image.width()) * u64::from(image.height());
+                if best
+                    .as_ref()
+                    .is_none_or(|b| area > u64::from(b.width()) * u64::from(b.height()))
+                {
+                    best = Some(image);
+                }
+            }
+            Err(e) => last_error = Some(e.to_string()),
+        }
+    }
+
+    let image = best.ok_or_else(|| match last_error {
+        Some(e) => format!("No icon in '{name}' could be decoded: {e}"),
+        None => format!("'{name}' contains no icons."),
+    })?;
+    let rgba = image.convert_to(icns::PixelFormat::RGBA);
+    RgbaImage::from_raw(rgba.width(), rgba.height(), rgba.data().to_vec())
+        .ok_or_else(|| format!("Unexpected pixel data in '{name}'."))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -138,6 +179,59 @@ mod tests {
     fn sample(source: &RgbaImage, padding: u8) -> Vec<u8> {
         let has_alpha = crate::resize::has_transparency(source);
         encode_icns(source, padding, has_alpha).unwrap()
+    }
+
+    // --- reading ------------------------------------------------------------------
+
+    #[test]
+    fn the_magic_is_recognized() {
+        assert!(is_icns(b"icns\0\0\0\x08"));
+        assert!(!is_icns(b"\x89PNG"));
+        assert!(!is_icns(b"ic"));
+        assert!(!is_icns(b""));
+    }
+
+    #[test]
+    fn decoding_gives_back_the_largest_icon_of_a_written_file() {
+        let source = RgbaImage::from_fn(64, 64, |x, _| Rgba([x as u8 * 3, 10, 200, 255]));
+        let bytes = encode_icns(&source, 0, false).unwrap();
+        let decoded = decode_icns(&bytes, "test.icns").unwrap();
+        assert_eq!(decoded.dimensions(), (1024, 1024));
+        // The picture is the source, scaled up: same colors in the same places.
+        let (left, right) = (decoded.get_pixel(10, 512), decoded.get_pixel(1013, 512));
+        assert!(left[0] < right[0], "the gradient runs left to right");
+        assert_eq!(left[3], 255);
+    }
+
+    #[test]
+    fn a_legacy_rle_icon_family_can_be_read_too() {
+        // The old 128x128 format (a 24-bit RLE image plus a separate mask), as
+        // written by older macOS versions - made here with the icns crate.
+        let mut family = icns::IconFamily::new();
+        let image = icns::Image::from_data(
+            icns::PixelFormat::RGBA,
+            128,
+            128,
+            [200u8, 100, 50, 255].repeat(128 * 128),
+        )
+        .unwrap();
+        family
+            .add_icon_with_type(&image, icns::IconType::RGB24_128x128)
+            .unwrap();
+        let mut bytes = Vec::new();
+        family.write(&mut bytes).unwrap();
+
+        let decoded = decode_icns(&bytes, "legacy.icns").unwrap();
+        assert_eq!(decoded.dimensions(), (128, 128));
+        assert_eq!(decoded.get_pixel(5, 5).0, [200, 100, 50, 255]);
+    }
+
+    #[test]
+    fn broken_or_empty_icns_data_is_an_error_naming_the_file() {
+        let err = decode_icns(b"icns\0\0\0\x08", "empty.icns").unwrap_err();
+        assert!(err.contains("empty.icns"), "{err}");
+        let err = decode_icns(b"icns garbage garbage", "bad.icns").unwrap_err();
+        assert!(err.contains("bad.icns"), "{err}");
     }
 
     #[test]

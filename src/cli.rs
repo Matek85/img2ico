@@ -101,11 +101,12 @@ pub struct Args {
     /// Input file(s) or folder(s). A single "-" reads the image from standard
     /// input instead (for pipelines: `cat logo.png | img2ico - -o icon.ico`);
     /// that needs -o, and works for converting one image only.
-    /// - Normal mode: one image file (PNG, JPG, BMP, GIF) to convert - or
+    /// - Normal mode: one image file (PNG, JPG, BMP, GIF, WebP, TIFF, TGA or
+    ///   a macOS .icns - its largest icon is used) to convert - or
     ///   several files, or a folder, to convert them all in one go (batch
     ///   mode; see --output, --keep-going and --skip-existing). A folder
-    ///   contributes the PNG, JPG, BMP and GIF files directly inside it, in
-    ///   name order; subfolders are not searched.
+    ///   contributes the files of those formats directly inside it, in name
+    ///   order; subfolders are not searched (see --recursive).
     /// - With --merge: two or more existing .ico files whose icons should
     ///   be combined into one output file.
     #[arg(required_unless_present = "completions")]
@@ -458,7 +459,8 @@ pub struct Args {
     ///   **       any number of folders (only as a whole folder part)
     ///
     /// Give --include several times to take files matching ANY of the
-    /// patterns. Only supported image types (PNG, JPG, BMP, GIF) are ever
+    /// patterns. Only supported image types (PNG, JPG, BMP, GIF, WebP, TIFF, TGA,
+    /// ICNS) are ever
     /// converted - a pattern narrows them down, it cannot add others. It
     /// applies to what a FOLDER contributes; a file named directly on the
     /// command line is always converted. Put the pattern in quotes, or your

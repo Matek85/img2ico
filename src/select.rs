@@ -5,13 +5,16 @@
 // Neither touches the file system beyond reading folders, so both are easy
 // to test on their own.
 
+use crate::source::SUPPORTED_FORMATS;
 use globset::{GlobBuilder, GlobMatcher};
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
 /// The file extensions (compared case-insensitively) that a folder given as
 /// input contributes - the formats the normal conversion accepts.
-const IMAGE_EXTENSIONS: [&str; 5] = ["png", "jpg", "jpeg", "bmp", "gif"];
+const IMAGE_EXTENSIONS: [&str; 10] = [
+    "png", "jpg", "jpeg", "bmp", "gif", "webp", "tif", "tiff", "tga", "icns",
+];
 
 /// Whether `path` has one of the extensions in `IMAGE_EXTENSIONS`.
 pub fn is_supported_image(path: &Path) -> bool {
@@ -165,12 +168,12 @@ pub fn expand_inputs(
                 )
             } else if !recursive && has_subfolder {
                 format!(
-                    "No supported images (PNG, JPG, BMP, GIF) found directly in folder '{}'. It has subfolders - add --recursive to search them too.",
+                    "No supported images ({SUPPORTED_FORMATS}) found directly in folder '{}'. It has subfolders - add --recursive to search them too.",
                     input.display()
                 )
             } else {
                 format!(
-                    "No supported images (PNG, JPG, BMP, GIF) found in folder '{}'.",
+                    "No supported images ({SUPPORTED_FORMATS}) found in folder '{}'.",
                     input.display()
                 )
             });
@@ -340,7 +343,20 @@ mod tests {
     #[test]
     fn supported_images_are_recognized_by_extension_ignoring_case() {
         for yes in [
-            "a.png", "a.PNG", "a.jpg", "a.JPEG", "a.bmp", "a.gif", "d/a.Png",
+            "a.png",
+            "a.PNG",
+            "a.jpg",
+            "a.JPEG",
+            "a.bmp",
+            "a.gif",
+            "d/a.Png",
+            "a.webp",
+            "a.WEBP",
+            "a.tif",
+            "a.TIFF",
+            "a.tga",
+            "a.icns",
+            "AppIcon.ICNS",
         ] {
             assert!(is_supported_image(Path::new(yes)), "{yes}");
         }

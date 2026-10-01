@@ -162,7 +162,7 @@ pub fn check_overwrite(path: &Path, force: bool) -> Result<(), String> {
 /// (e.g. because it doesn't exist) - a non-existent path can't be "the
 /// same file" as anything by resolution anyway, so plain comparison is a
 /// reasonable fallback.
-fn paths_refer_to_same_file(a: &Path, b: &Path) -> bool {
+pub fn same_file(a: &Path, b: &Path) -> bool {
     match (a.canonicalize(), b.canonicalize()) {
         (Ok(a), Ok(b)) => a == b,
         _ => a == b,
@@ -183,7 +183,7 @@ fn paths_refer_to_same_file(a: &Path, b: &Path) -> bool {
 pub fn delete_source_files(paths: &[PathBuf], output_path: Option<&Path>, silent: bool) {
     for path in paths {
         if let Some(output_path) = output_path
-            && paths_refer_to_same_file(path, output_path)
+            && same_file(path, output_path)
         {
             if !silent {
                 eprintln!(
@@ -335,7 +335,7 @@ mod tests {
         let file = dir.path().join("a.png");
         std::fs::write(&file, b"x").unwrap();
         let roundabout = dir.path().join(".").join("a.png");
-        assert!(paths_refer_to_same_file(&file, &roundabout));
+        assert!(same_file(&file, &roundabout));
     }
 
     #[test]
@@ -345,17 +345,14 @@ mod tests {
         let b = dir.path().join("b.png");
         std::fs::write(&a, b"x").unwrap();
         std::fs::write(&b, b"x").unwrap();
-        assert!(!paths_refer_to_same_file(&a, &b));
+        assert!(!same_file(&a, &b));
     }
 
     #[test]
     fn nonexistent_paths_fall_back_to_plain_comparison() {
         let a = Path::new("does/not/exist.png");
-        assert!(paths_refer_to_same_file(a, a));
-        assert!(!paths_refer_to_same_file(
-            a,
-            Path::new("does/not/exist2.png")
-        ));
+        assert!(same_file(a, a));
+        assert!(!same_file(a, Path::new("does/not/exist2.png")));
     }
 
     // --- delete_source_files ---------------------------------------------------

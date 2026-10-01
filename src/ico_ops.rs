@@ -131,7 +131,7 @@ pub fn inspect_icons(paths: &[PathBuf]) -> Result<(), String> {
                 // matched on directly) so it is dropped at the same point
                 // in every Rust edition - see the "tail-expr-drop-order"
                 // change in the 2024 edition guide.
-                let opened = image::open(path);
+                let opened = crate::source::open_image(path);
                 match opened {
                     Ok(img) => inspect_source_image(path, &img),
                     Err(image_error) => {
@@ -183,7 +183,7 @@ pub fn inspect_icons_json(paths: &[PathBuf]) -> Result<(), String> {
         let report = match read_icon_dir(path) {
             Ok(dir) => ico_report_json(path, &dir),
             Err(ico_error) => {
-                let opened = image::open(path);
+                let opened = crate::source::open_image(path);
                 match opened {
                     Ok(img) => image_report_json(path, &img),
                     Err(image_error) => {
