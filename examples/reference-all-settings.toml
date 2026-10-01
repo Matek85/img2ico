@@ -67,6 +67,17 @@ delete-source = false
 # refusing to run.
 force = false
 
+# Batch mode (several input files, or a folder): carry on with the other
+# files when one fails, instead of stopping at the first failure. The run
+# still ends with a failing exit code, and --delete-source deletes nothing,
+# if any file failed. No effect on a single file.
+keep-going = false
+
+# Skip an input whose output already exists instead of failing, so a
+# batch run can safely be repeated: only what is missing is converted.
+# Contradicts "force" above - use one or the other.
+skip-existing = false
+
 # With --select and multiple --index values: bundle them into one output
 # file instead of one separate file per selected icon.
 combine = false

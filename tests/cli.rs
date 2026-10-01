@@ -383,17 +383,6 @@ fn unreadable_input_file_is_an_error() {
 }
 
 #[test]
-fn several_inputs_without_merge_are_rejected() {
-    let dir = tempfile::tempdir().unwrap();
-    write_solid(dir.path(), "a.png", 16, RED);
-    write_solid(dir.path(), "b.png", 16, RED);
-    assert_failure_containing(
-        &convert(dir.path(), &["a.png", "b.png"]),
-        "exactly one input",
-    );
-}
-
-#[test]
 fn no_arguments_at_all_is_a_usage_error() {
     let dir = tempfile::tempdir().unwrap();
     let out = img2ico(dir.path(), &[]);
@@ -1823,6 +1812,590 @@ fn verbose_and_silent_contradict_each_other() {
         "{}",
         describe(&out)
     );
+}
+
+// =============================================================================
+// Batch mode: several inputs, or a folder
+// =============================================================================
+
+fn write_junk(dir: &Path, name: &str) {
+    std::fs::write(dir.join(name), b"this is not an image").unwrap();
+}
+
+fn write_jpeg(dir: &Path, name: &str) {
+    let img = RgbaImage::from_pixel(32, 32, Rgba([10, 20, 30, 255]));
+    image::DynamicImage::ImageRgba8(img)
+        .to_rgb8()
+        .save(dir.join(name))
+        .unwrap();
+}
+
+#[test]
+fn several_files_are_converted_next_to_their_inputs() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "a.png", 64, RED);
+    write_solid(dir.path(), "b.png", 64, GREEN);
+
+    let out = convert(dir.path(), &["a.png", "b.png", "--sizes", "16"]);
+    assert_success(&out);
+    assert_eq!(ico_sizes(&dir.path().join("a.ico")), vec![16]);
+    assert_eq!(ico_sizes(&dir.path().join("b.ico")), vec![16]);
+    let text = stdout(&out);
+    assert!(text.contains("Done: 'a.ico'"), "{}", describe(&out));
+    assert!(text.contains("Done: 'b.ico'"), "{}", describe(&out));
+    assert!(
+        text.contains("Batch finished: 2 converted, 0 skipped, 0 failed (2 file(s) in total)."),
+        "{}",
+        describe(&out)
+    );
+}
+
+#[test]
+fn a_single_file_does_not_print_a_batch_summary() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "a.png", 64, RED);
+    let out = convert(dir.path(), &["a.png", "--sizes", "16"]);
+    assert_success(&out);
+    assert!(
+        !stdout(&out).contains("Batch finished"),
+        "{}",
+        describe(&out)
+    );
+}
+
+#[test]
+fn the_output_folder_is_created_and_receives_one_icon_per_input() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "a.png", 64, RED);
+    write_solid(dir.path(), "b.png", 64, GREEN);
+
+    assert_success(&convert(
+        dir.path(),
+        &["a.png", "b.png", "-o", "icons/nested", "--sizes", "16"],
+    ));
+    assert_eq!(
+        names_in(&dir.path().join("icons").join("nested")),
+        vec!["a.ico", "b.ico"]
+    );
+    assert!(
+        !dir.path().join("a.ico").exists(),
+        "nothing next to the inputs"
+    );
+}
+
+#[test]
+fn a_folder_converts_the_images_directly_inside_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let assets = dir.path().join("assets");
+    std::fs::create_dir_all(assets.join("sub")).unwrap();
+    write_solid(&assets, "a.png", 64, RED);
+    write_jpeg(&assets, "b.jpg");
+    write_gif(&assets, "d.gif", &[[255, 0, 0]]);
+    write_solid(&assets.join("sub"), "deep.png", 64, RED); // subfolders are not searched
+    write_junk(&assets, "notes.txt");
+
+    let out = convert(dir.path(), &["assets", "-o", "out", "--sizes", "16"]);
+    assert_success(&out);
+    assert_eq!(
+        names_in(&dir.path().join("out")),
+        vec!["a.ico", "b.ico", "d.ico"]
+    );
+    assert!(stdout(&out).contains("3 converted"), "{}", describe(&out));
+}
+
+#[test]
+fn files_are_converted_in_the_order_given_and_folders_in_name_order() {
+    let dir = tempfile::tempdir().unwrap();
+    let assets = dir.path().join("assets");
+    std::fs::create_dir_all(&assets).unwrap();
+    write_solid(&assets, "m.png", 64, RED);
+    write_solid(&assets, "k.png", 64, RED);
+    write_solid(dir.path(), "z.png", 64, RED);
+
+    let out = convert(dir.path(), &["z.png", "assets", "--sizes", "16"]);
+    assert_success(&out);
+    let text = stdout(&out);
+    let z = text.find("'z.ico'").unwrap();
+    let k = text.find("k.ico").unwrap();
+    let m = text.find("m.ico").unwrap();
+    assert!(z < k && k < m, "{}", describe(&out));
+}
+
+#[test]
+fn an_empty_folder_is_an_error() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir(dir.path().join("empty")).unwrap();
+    write_junk(&dir.path().join("empty"), "notes.txt");
+    assert_failure_containing(&convert(dir.path(), &["empty"]), "No supported images");
+}
+
+#[test]
+fn the_same_settings_apply_to_every_file() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "a.png", 64, RED);
+    write_solid(dir.path(), "b.png", 64, GREEN);
+    assert_success(&convert(
+        dir.path(),
+        &["a.png", "b.png", "--preset", "favicon", "--grayscale"],
+    ));
+    for name in ["a.ico", "b.ico"] {
+        let path = dir.path().join(name);
+        assert_eq!(ico_sizes(&path), vec![16, 32, 48], "{name}");
+        let pixel = icon_image(&path, 32).get_pixel(16, 16).0;
+        assert!(
+            pixel[0] == pixel[1] && pixel[1] == pixel[2],
+            "{name} must be gray"
+        );
+    }
+}
+
+#[test]
+fn the_first_failure_stops_a_batch_and_names_the_file() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "a.png", 64, RED);
+    write_junk(dir.path(), "bad.png");
+    write_solid(dir.path(), "c.png", 64, RED);
+
+    let out = convert(dir.path(), &["a.png", "bad.png", "c.png", "--sizes", "16"]);
+    assert_failure_containing(&out, "bad.png: Could not read input file");
+    assert!(
+        dir.path().join("a.ico").is_file(),
+        "converted before the failure"
+    );
+    assert!(!dir.path().join("c.ico").exists(), "not reached");
+    assert!(
+        !stdout(&out).contains("Batch finished"),
+        "{}",
+        describe(&out)
+    );
+}
+
+#[test]
+fn keep_going_converts_the_rest_and_reports_every_failure() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "a.png", 64, RED);
+    write_junk(dir.path(), "bad.png");
+    write_solid(dir.path(), "c.png", 64, RED);
+
+    let out = convert(
+        dir.path(),
+        &["a.png", "bad.png", "c.png", "--sizes", "16", "--keep-going"],
+    );
+    assert_eq!(out.status.code(), Some(1), "{}", describe(&out));
+    assert!(dir.path().join("a.ico").is_file());
+    assert!(
+        dir.path().join("c.ico").is_file(),
+        "the file after the failure is converted"
+    );
+    let errors = stderr(&out);
+    assert!(
+        errors.contains("Error: bad.png: Could not read input file"),
+        "{errors}"
+    );
+    assert!(errors.contains("1 of 3 file(s) failed."), "{errors}");
+    assert!(
+        stdout(&out)
+            .contains("Batch finished: 2 converted, 0 skipped, 1 failed (3 file(s) in total)."),
+        "{}",
+        describe(&out)
+    );
+}
+
+#[test]
+fn keep_going_can_come_from_a_settings_file() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "a.png", 64, RED);
+    write_junk(dir.path(), "bad.png");
+    write_solid(dir.path(), "c.png", 64, RED);
+    std::fs::write(dir.path().join("img2ico.toml"), "keep-going = true\n").unwrap();
+
+    let out = convert(dir.path(), &["a.png", "bad.png", "c.png", "--sizes", "16"]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(dir.path().join("c.ico").is_file(), "{}", describe(&out));
+}
+
+#[test]
+fn a_missing_file_in_a_batch_is_named() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "a.png", 64, RED);
+    let out = convert(dir.path(), &["a.png", "nope.png", "--sizes", "16"]);
+    assert_failure_containing(&out, "Could not read 'nope.png'");
+    assert!(
+        !stderr(&out).contains("nope.png: Could not read 'nope.png'"),
+        "the name must not be repeated: {}",
+        describe(&out)
+    );
+}
+
+#[test]
+fn skip_existing_makes_a_batch_repeatable() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "a.png", 64, RED);
+    write_solid(dir.path(), "b.png", 64, GREEN);
+    std::fs::write(dir.path().join("a.ico"), b"precious").unwrap();
+
+    let out = convert(
+        dir.path(),
+        &["a.png", "b.png", "--sizes", "16", "--skip-existing"],
+    );
+    assert_success(&out);
+    assert_eq!(
+        std::fs::read(dir.path().join("a.ico")).unwrap(),
+        b"precious"
+    );
+    assert_eq!(ico_sizes(&dir.path().join("b.ico")), vec![16]);
+    assert!(
+        stderr(&out).contains("Skipping 'a.png': 'a.ico' already exists (--skip-existing)."),
+        "{}",
+        describe(&out)
+    );
+    assert!(
+        stdout(&out).contains("Batch finished: 1 converted, 1 skipped, 0 failed"),
+        "{}",
+        describe(&out)
+    );
+
+    // Running it again finds nothing left to do.
+    let again = convert(
+        dir.path(),
+        &["a.png", "b.png", "--sizes", "16", "--skip-existing"],
+    );
+    assert_success(&again);
+    assert!(
+        stdout(&again).contains("0 converted, 2 skipped"),
+        "{}",
+        describe(&again)
+    );
+}
+
+#[test]
+fn skip_existing_notices_can_be_silenced() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "a.png", 64, RED);
+    std::fs::write(dir.path().join("a.ico"), b"precious").unwrap();
+    let out = convert(
+        dir.path(),
+        &["a.png", "--sizes", "16", "--skip-existing", "--silent"],
+    );
+    assert_success(&out);
+    assert_eq!(stderr(&out), "");
+}
+
+#[test]
+fn skip_existing_also_works_for_a_single_file() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "a.png", 64, RED);
+    std::fs::write(dir.path().join("a.ico"), b"precious").unwrap();
+
+    let out = convert(dir.path(), &["a.png", "--sizes", "16", "--skip-existing"]);
+    assert_success(&out);
+    assert_eq!(
+        std::fs::read(dir.path().join("a.ico")).unwrap(),
+        b"precious"
+    );
+    assert!(
+        stderr(&out).contains("Skipping 'a.png'"),
+        "{}",
+        describe(&out)
+    );
+    assert!(!stdout(&out).contains("Batch finished"));
+}
+
+#[test]
+fn skip_existing_and_force_contradict_each_other() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "a.png", 64, RED);
+
+    let on_the_command_line = convert(dir.path(), &["a.png", "--skip-existing", "--force"]);
+    assert_eq!(
+        on_the_command_line.status.code(),
+        Some(2),
+        "{}",
+        describe(&on_the_command_line)
+    );
+
+    std::fs::write(dir.path().join("img2ico.toml"), "force = true\n").unwrap();
+    let across_files = convert(dir.path(), &["a.png", "--skip-existing"]);
+    assert_failure_containing(
+        &across_files,
+        "--force and --skip-existing contradict each other",
+    );
+}
+
+#[test]
+fn outputs_that_would_collide_are_refused_before_anything_is_written() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "logo.png", 64, RED);
+    write_jpeg(dir.path(), "logo.jpg");
+    write_solid(dir.path(), "other.png", 64, RED);
+
+    let out = convert(dir.path(), &["other.png", "logo.png", "logo.jpg"]);
+    assert_failure_containing(&out, "would both be written to");
+    assert!(stderr(&out).contains("logo.png") && stderr(&out).contains("logo.jpg"));
+    assert!(
+        !dir.path().join("other.ico").exists(),
+        "no file may be written when the plan is invalid"
+    );
+}
+
+#[test]
+fn in_a_batch_output_names_a_folder_not_a_file() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "a.png", 64, RED);
+    write_solid(dir.path(), "b.png", 64, RED);
+    std::fs::write(dir.path().join("taken"), b"a file").unwrap();
+
+    let looks_like_a_file = convert(dir.path(), &["a.png", "b.png", "-o", "out.ico"]);
+    assert_failure_containing(&looks_like_a_file, "looks like a file name");
+    let is_a_file = convert(dir.path(), &["a.png", "b.png", "-o", "taken"]);
+    assert_failure_containing(&is_a_file, "is a file");
+    assert!(!dir.path().join("out.ico").exists());
+}
+
+#[test]
+fn a_find_preview_is_not_available_for_a_batch_but_auto_apply_is() {
+    let dir = tempfile::tempdir().unwrap();
+    write_enclosed_patch(dir.path(), "p1.png");
+    write_enclosed_patch(dir.path(), "p2.png");
+
+    let preview = convert(dir.path(), &["p1.png", "p2.png", "--find", "00FF00"]);
+    assert_failure_containing(&preview, "--find without --auto-apply");
+
+    let applied = convert(
+        dir.path(),
+        &[
+            "p1.png",
+            "p2.png",
+            "--find",
+            "00FF00",
+            "--auto-apply",
+            "--sizes",
+            "30",
+            "-o",
+            "out",
+        ],
+    );
+    assert_success(&applied);
+    let text = stdout(&applied);
+    assert!(
+        text.contains("p1.png: Found 1 additional region(s)"),
+        "{}",
+        describe(&applied)
+    );
+    assert!(
+        text.contains("p2.png: Found 1 additional region(s)"),
+        "{}",
+        describe(&applied)
+    );
+    for name in ["p1.ico", "p2.ico"] {
+        let icon = icon_image(&dir.path().join("out").join(name), 30);
+        assert_eq!(
+            icon.get_pixel(12, 12)[3],
+            0,
+            "{name}: the enclosed patch is removed"
+        );
+    }
+}
+
+#[test]
+fn warnings_name_the_file_in_a_batch_but_not_for_a_single_file() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "tiny.png", 16, RED);
+    write_solid(dir.path(), "also-tiny.png", 16, RED);
+
+    let single = convert(
+        dir.path(),
+        &["tiny.png", "--sizes", "16,256", "-o", "single.ico"],
+    );
+    assert_success(&single);
+    assert!(
+        stderr(&single).contains("Warning: the source image is 16x16"),
+        "{}",
+        describe(&single)
+    );
+
+    let batch = convert(
+        dir.path(),
+        &[
+            "tiny.png",
+            "also-tiny.png",
+            "--sizes",
+            "16,256",
+            "-o",
+            "out",
+        ],
+    );
+    assert_success(&batch);
+    let text = stderr(&batch);
+    assert!(
+        text.contains("Warning: tiny.png: the source image is 16x16"),
+        "{text}"
+    );
+    assert!(
+        text.contains("Warning: also-tiny.png: the source image is 16x16"),
+        "{text}"
+    );
+}
+
+#[test]
+fn delete_source_removes_the_inputs_of_a_fully_successful_batch() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "a.png", 64, RED);
+    write_solid(dir.path(), "b.png", 64, RED);
+    let out = convert(
+        dir.path(),
+        &["a.png", "b.png", "--sizes", "16", "--delete-source"],
+    );
+    assert_success(&out);
+    assert_eq!(names_in(dir.path()), vec!["a.ico", "b.ico"]);
+}
+
+#[test]
+fn delete_source_deletes_nothing_if_any_file_of_the_batch_failed() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "a.png", 64, RED);
+    write_junk(dir.path(), "bad.png");
+    let out = convert(
+        dir.path(),
+        &[
+            "a.png",
+            "bad.png",
+            "--sizes",
+            "16",
+            "--keep-going",
+            "--delete-source",
+        ],
+    );
+    assert_eq!(out.status.code(), Some(1));
+    assert!(dir.path().join("a.png").is_file(), "{}", describe(&out));
+    assert!(dir.path().join("bad.png").is_file());
+    assert!(
+        dir.path().join("a.ico").is_file(),
+        "the successful output stays"
+    );
+}
+
+#[test]
+fn skipped_inputs_are_never_deleted() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "a.png", 64, RED);
+    write_solid(dir.path(), "b.png", 64, RED);
+    std::fs::write(dir.path().join("a.ico"), b"precious").unwrap();
+    let out = convert(
+        dir.path(),
+        &[
+            "a.png",
+            "b.png",
+            "--sizes",
+            "16",
+            "--skip-existing",
+            "--delete-source",
+        ],
+    );
+    assert_success(&out);
+    assert!(
+        dir.path().join("a.png").is_file(),
+        "skipped: its source must stay"
+    );
+    assert!(
+        !dir.path().join("b.png").exists(),
+        "converted: its source goes"
+    );
+}
+
+#[test]
+fn out_toml_is_written_once_for_a_successful_batch_only() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "a.png", 64, RED);
+    write_junk(dir.path(), "bad.png");
+    write_solid(dir.path(), "c.png", 64, RED);
+
+    let failing = convert(
+        dir.path(),
+        &[
+            "a.png",
+            "bad.png",
+            "c.png",
+            "--sizes",
+            "16",
+            "--keep-going",
+            "--out-toml",
+            "snap.toml",
+        ],
+    );
+    assert_eq!(failing.status.code(), Some(1));
+    assert!(
+        !dir.path().join("snap.toml").exists(),
+        "no snapshot after a failed batch"
+    );
+
+    let ok = convert(
+        dir.path(),
+        &[
+            "a.png",
+            "c.png",
+            "--sizes",
+            "16",
+            "--force",
+            "--out-toml",
+            "snap.toml",
+        ],
+    );
+    assert_success(&ok);
+    let snapshot = std::fs::read_to_string(dir.path().join("snap.toml")).unwrap();
+    assert!(snapshot.contains("sizes = \"16\""), "{snapshot}");
+    assert_eq!(
+        stdout(&ok).matches("Settings written to").count(),
+        1,
+        "{}",
+        describe(&ok)
+    );
+}
+
+#[test]
+fn a_batch_can_write_icns_files() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "a.png", 64, RED);
+    write_solid(dir.path(), "b.png", 64, RED);
+    assert_success(&img2ico(
+        dir.path(),
+        &["a.png", "b.png", "--output-format", "icns", "-o", "mac"],
+    ));
+    assert_eq!(names_in(&dir.path().join("mac")), vec!["a.icns", "b.icns"]);
+    let bytes = std::fs::read(dir.path().join("mac").join("a.icns")).unwrap();
+    assert_eq!(&bytes[0..4], b"icns");
+}
+
+#[test]
+fn verbose_names_the_file_for_each_line_in_a_batch() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "a.png", 64, RED);
+    write_solid(dir.path(), "b.png", 64, RED);
+    let out = convert(dir.path(), &["a.png", "b.png", "--sizes", "16", "-v"]);
+    assert_success(&out);
+    let text = stderr(&out);
+    assert!(text.contains("verbose: batch: 2 file(s)"), "{text}");
+    assert!(text.contains("verbose: a.png: 16x16: "), "{text}");
+    assert!(text.contains("verbose: b.png: 16x16: "), "{text}");
+    assert!(text.contains("verbose: a.png: finished in"), "{text}");
+}
+
+#[test]
+fn the_other_modes_still_insist_on_their_input_rules() {
+    let dir = tempfile::tempdir().unwrap();
+    make_icos(dir.path());
+    assert_failure_containing(
+        &img2ico(dir.path(), &["--select", "a.ico", "b.ico"]),
+        "exactly one input",
+    );
+    assert_failure_containing(
+        &img2ico(dir.path(), &["--extract", "a.ico", "b.ico"]),
+        "exactly one input",
+    );
+    assert_success(&img2ico(
+        dir.path(),
+        &["--merge", "a.ico", "b.ico", "-o", "m.ico"],
+    ));
 }
 
 // =============================================================================

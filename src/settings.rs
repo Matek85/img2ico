@@ -43,6 +43,8 @@ pub struct ResolvedSettings<'a> {
     pub output_format: Option<OutputFormat>,
     pub delete_source: bool,
     pub force: bool,
+    pub keep_going: bool,
+    pub skip_existing: bool,
     pub combine: bool,
     pub index: Option<&'a str>,
     pub sizes: Option<&'a str>,
@@ -89,6 +91,8 @@ impl<'a> ResolvedSettings<'a> {
             output_format: args.output_format.or(settings.output_format),
             delete_source: args.delete_source || settings.delete_source,
             force: args.force || settings.force,
+            keep_going: args.keep_going || settings.keep_going,
+            skip_existing: args.skip_existing || settings.skip_existing,
             combine: args.combine || settings.combine,
             index: args.index.as_deref().or(settings.index.as_deref()),
             sizes: args.sizes.as_deref().or(settings.sizes.as_deref()),
@@ -140,6 +144,8 @@ impl<'a> ResolvedSettings<'a> {
             output_format: self.output_format,
             delete_source: self.delete_source,
             force: self.force,
+            keep_going: self.keep_going,
+            skip_existing: self.skip_existing,
             combine: self.combine,
             index: self.index.map(str::to_owned),
             silent: self.silent,
@@ -175,10 +181,22 @@ pub fn finish_run(
     sources: &[PathBuf],
     output: Option<&Path>,
 ) -> Result<(), String> {
+    delete_sources_if_requested(resolved, sources, output);
+    maybe_write_out_toml(args.out_toml.as_deref(), resolved)
+}
+
+/// Deletes `sources` if --delete-source is on (never the `output` file
+/// itself - see util::delete_source_files). A no-op otherwise. The caller
+/// decides WHEN it is safe to call this - after everything it was asked to
+/// do has succeeded.
+pub fn delete_sources_if_requested(
+    resolved: &ResolvedSettings,
+    sources: &[PathBuf],
+    output: Option<&Path>,
+) {
     if resolved.delete_source {
         delete_source_files(sources, output, resolved.silent);
     }
-    maybe_write_out_toml(args.out_toml.as_deref(), resolved)
 }
 
 #[cfg(test)]
@@ -310,12 +328,15 @@ mod tests {
             delete_source: true,
             combine: true,
             auto_apply: true,
+            keep_going: true,
+            skip_existing: true,
             ..Settings::default()
         };
         let cli = args(&[]);
         let resolved = ResolvedSettings::resolve(&cli, &file);
         assert!(resolved.grayscale && resolved.force && resolved.silent);
         assert!(resolved.delete_source && resolved.combine && resolved.auto_apply);
+        assert!(resolved.keep_going && resolved.skip_existing);
 
         let cli = args(&[
             "--grayscale",
@@ -324,11 +345,19 @@ mod tests {
             "--delete-source",
             "--combine",
             "--auto-apply",
+            "--keep-going",
         ]);
         let file = Settings::default();
         let resolved = ResolvedSettings::resolve(&cli, &file);
         assert!(resolved.grayscale && resolved.force && resolved.silent);
         assert!(resolved.delete_source && resolved.combine && resolved.auto_apply);
+        assert!(resolved.keep_going && !resolved.skip_existing);
+
+        // --skip-existing contradicts --force on the command line, so it is
+        // checked on its own.
+        let cli = args(&["--skip-existing"]);
+        let resolved = ResolvedSettings::resolve(&cli, &file);
+        assert!(resolved.skip_existing && !resolved.force && !resolved.keep_going);
     }
 
     // --- Snapshot for --out-toml -------------------------------------------------

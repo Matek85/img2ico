@@ -98,15 +98,22 @@ const LONG_VERSION: &str = concat!(
     long_version = LONG_VERSION,
 )]
 pub struct Args {
-    /// Input file(s).
-    /// - Normal mode: exactly one image file (PNG, JPG, BMP, GIF) to convert.
+    /// Input file(s) or folder(s).
+    /// - Normal mode: one image file (PNG, JPG, BMP, GIF) to convert - or
+    ///   several files, or a folder, to convert them all in one go (batch
+    ///   mode; see --output, --keep-going and --skip-existing). A folder
+    ///   contributes the PNG, JPG, BMP and GIF files directly inside it, in
+    ///   name order; subfolders are not searched.
     /// - With --merge: two or more existing .ico files whose icons should
     ///   be combined into one output file.
     #[arg(required_unless_present = "completions")]
     pub input: Vec<PathBuf>,
 
     /// Path to the output file. If not given, the input file's name is
-    /// used, just with the ".ico" extension instead.
+    /// used, just with the ".ico" extension instead. In batch mode (several
+    /// inputs, or a folder) this is instead a FOLDER that receives one icon
+    /// per input, named after the input file; it is created if it doesn't
+    /// exist. Without it, each icon is written next to its input.
     #[arg(short, long)]
     pub output: Option<PathBuf>,
 
@@ -377,6 +384,22 @@ pub struct Args {
     #[arg(short = 'f', long = "force")]
     pub force: bool,
 
+    /// Batch mode: when converting several files (or a folder) and one of
+    /// them fails, carry on with the rest instead of stopping at the first
+    /// failure. Every failure is reported, and the run still ends with a
+    /// failing exit code (and deletes no source files) if any file failed.
+    /// Has no effect on a single file.
+    #[arg(long = "keep-going")]
+    pub keep_going: bool,
+
+    /// Skips an input whose output already exists, instead of failing -
+    /// which makes a batch run safe to repeat: only what is missing gets
+    /// converted. The existing output is left untouched, and skipped
+    /// inputs are never deleted by --delete-source. Contradicts --force,
+    /// which overwrites instead.
+    #[arg(long = "skip-existing", conflicts_with = "force")]
+    pub skip_existing: bool,
+
     /// Loads default values for the "tuning" settings above (--sizes,
     /// --preset, --chroma-key, --tolerance, --seed, --find,
     /// --find-min-size, --auto-apply, --replace-color, --grayscale,
@@ -501,6 +524,23 @@ mod tests {
             parse(&["--version"]).unwrap_err().kind(),
             clap::error::ErrorKind::DisplayVersion
         );
+    }
+
+    // --- Batch flags -----------------------------------------------------------
+
+    #[test]
+    fn batch_flags_default_to_off_and_can_be_turned_on() {
+        let args = parse(&["a.png"]).unwrap();
+        assert!(!args.keep_going && !args.skip_existing);
+        let args = parse(&["a.png", "b.png", "--keep-going", "--skip-existing"]).unwrap();
+        assert!(args.keep_going && args.skip_existing);
+        assert_eq!(args.input.len(), 2);
+    }
+
+    #[test]
+    fn skip_existing_contradicts_force() {
+        assert!(parse(&["a.png", "--skip-existing", "--force"]).is_err());
+        assert!(parse(&["a.png", "--skip-existing", "-f"]).is_err());
     }
 
     // --- Completions -----------------------------------------------------------

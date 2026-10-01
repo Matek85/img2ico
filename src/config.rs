@@ -53,6 +53,10 @@ pub struct Settings {
     #[serde(default)]
     pub force: bool,
     #[serde(default)]
+    pub keep_going: bool,
+    #[serde(default)]
+    pub skip_existing: bool,
+    #[serde(default)]
     pub combine: bool,
     pub index: Option<String>,
     #[serde(default)]
@@ -96,6 +100,8 @@ impl Settings {
             output_format: self.output_format.or(fallback.output_format),
             delete_source: self.delete_source || fallback.delete_source,
             force: self.force || fallback.force,
+            keep_going: self.keep_going || fallback.keep_going,
+            skip_existing: self.skip_existing || fallback.skip_existing,
             combine: self.combine || fallback.combine,
             index: self.index.or(fallback.index),
             silent: self.silent || fallback.silent,
@@ -128,6 +134,8 @@ const KNOWN_SETTINGS_KEYS: &[&str] = &[
     "output-format",
     "delete-source",
     "force",
+    "keep-going",
+    "skip-existing",
     "combine",
     "index",
     "silent",
@@ -361,6 +369,8 @@ mod tests {
             output_format: Some(OutputFormat::Icns),
             delete_source: true,
             force: true,
+            keep_going: true,
+            skip_existing: true,
             combine: true,
             index: Some("0,2".to_string()),
             silent: true,

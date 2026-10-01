@@ -1,8 +1,50 @@
 // Small, general-purpose helpers that don't belong to any one feature:
-// parsing a "--seed" value, the shared overwrite-protection check, and
-// safe source-file deletion for --delete-source.
+// parsing a "--seed" value, the shared overwrite-protection check, safe
+// source-file deletion for --delete-source, and the "which file is this
+// message about" context used while converting several files in a row.
 
+use std::cell::RefCell;
 use std::path::{Path, PathBuf};
+
+thread_local! {
+    /// The input file this thread is converting right now - set only while
+    /// a batch run works through several files (see `enter_file_context`).
+    /// Per thread, so it stays correct if files are ever processed in
+    /// parallel.
+    static CURRENT_FILE: RefCell<Option<String>> = const { RefCell::new(None) };
+}
+
+/// Marks `path` as the file being converted until the returned guard is
+/// dropped. While it is alive, `file_prefix()` yields `"<path>: "`, so a
+/// warning raised deep inside the conversion (an upscaling hint, a seed
+/// outside the image, ...) says which of the many files it is about.
+#[must_use = "the file context ends as soon as this guard is dropped"]
+pub fn enter_file_context(path: &Path) -> FileContext {
+    CURRENT_FILE.with(|current| *current.borrow_mut() = Some(path.display().to_string()));
+    FileContext(())
+}
+
+/// Ends the context begun by `enter_file_context` when dropped.
+pub struct FileContext(());
+
+impl Drop for FileContext {
+    fn drop(&mut self) {
+        CURRENT_FILE.with(|current| *current.borrow_mut() = None);
+    }
+}
+
+/// The text to put in front of a per-file message: `"logo.png: "` while a
+/// file context is active (batch mode), and an empty string otherwise - so
+/// messages from a single conversion read exactly as they always have.
+pub fn file_prefix() -> String {
+    CURRENT_FILE.with(|current| {
+        current
+            .borrow()
+            .as_ref()
+            .map(|path| format!("{path}: "))
+            .unwrap_or_default()
+    })
+}
 
 /// Parses a "--seed" value in the format "x,y" (e.g. "200,50") into a
 /// coordinate pair. Returns an understandable error message if the format
@@ -91,6 +133,45 @@ pub fn delete_source_files(paths: &[PathBuf], output_path: Option<&Path>, silent
 mod tests {
     use super::*;
     use proptest::prelude::*;
+
+    // --- file context ----------------------------------------------------------
+
+    #[test]
+    fn there_is_no_prefix_outside_a_file_context() {
+        assert_eq!(file_prefix(), "");
+    }
+
+    #[test]
+    fn a_file_context_adds_the_path_as_a_prefix_until_it_ends() {
+        {
+            let _context = enter_file_context(Path::new("art/logo.png"));
+            assert_eq!(
+                file_prefix(),
+                format!("{}: ", Path::new("art/logo.png").display())
+            );
+        }
+        assert_eq!(
+            file_prefix(),
+            "",
+            "the prefix must disappear with the guard"
+        );
+    }
+
+    #[test]
+    fn a_new_file_context_replaces_the_previous_one() {
+        let first = enter_file_context(Path::new("a.png"));
+        drop(first);
+        let _second = enter_file_context(Path::new("b.png"));
+        assert!(file_prefix().starts_with("b.png"), "{}", file_prefix());
+    }
+
+    #[test]
+    fn the_file_context_belongs_to_one_thread() {
+        let _context = enter_file_context(Path::new("main-thread.png"));
+        let other = std::thread::spawn(file_prefix).join().unwrap();
+        assert_eq!(other, "", "another thread must not see this thread's file");
+        assert!(file_prefix().starts_with("main-thread.png"));
+    }
 
     // --- parse_seed ------------------------------------------------------------
 

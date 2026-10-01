@@ -1,7 +1,12 @@
-// The normal mode: turning ONE source image into an .ico (or .icns) file.
-// `run` reads top to bottom as the pipeline itself - validate the options,
-// load the image, optionally --find regions, choose the output, recolor,
-// warn, write, clean up - with every step a small function of its own.
+// The normal mode: turning source images into .ico (or .icns) files.
+//
+// With ONE input file that is a single conversion; with several inputs, or
+// a folder, it is a batch of them ("Batch" below). Either way every file
+// goes through the same `convert_one`, which reads top to bottom as the
+// pipeline itself - load the image, optionally --find regions, recolor,
+// warn, write - with every step a small function of its own. What differs
+// between the two modes is only the planning before it and the bookkeeping
+// after it.
 
 use crate::chroma_key::{FoundRegion, apply_chroma_key, find_isolated_regions, parse_hex_color};
 use crate::cli::{Args, OutputFormat};
@@ -11,9 +16,12 @@ use crate::resize::{
     apply_grayscale, has_transparency, make_square_icon, warn_about_thin_content,
     warn_about_upscaling,
 };
-use crate::settings::{ResolvedSettings, finish_run};
-use crate::util::{check_overwrite, parse_seed};
+use crate::settings::{
+    ResolvedSettings, delete_sources_if_requested, finish_run, maybe_write_out_toml,
+};
+use crate::util::{check_overwrite, enter_file_context, file_prefix, parse_seed};
 use image::RgbaImage;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
@@ -24,24 +32,172 @@ const DEFAULT_SIZES: &str = "16,32,48,64,128,256";
 /// ICO files officially only support edge lengths up to 256px.
 const MAX_ICO_SIZE: u32 = 256;
 
+/// The file extensions (compared case-insensitively) that a folder given as
+/// input contributes - the formats the normal conversion accepts.
+const IMAGE_EXTENSIONS: [&str; 5] = ["png", "jpg", "jpeg", "bmp", "gif"];
+
+/// One conversion: which image to read and where the icon goes.
+struct Job {
+    input: PathBuf,
+    output: PathBuf,
+}
+
+/// What became of one input.
+enum Outcome {
+    /// The icon was written.
+    Converted,
+    /// The output already existed and --skip-existing said to leave it.
+    Skipped,
+    /// A --find preview: the report was printed, nothing was written.
+    Previewed,
+}
+
+/// What the command line asks for: one file, or a batch of them.
+enum Plan<'a> {
+    Single(&'a Path),
+    Batch(Vec<PathBuf>),
+}
+
 /// Runs the complete image-to-icon conversion for the parsed `args` and
 /// the `resolved` settings (command line + config file + defaults).
 pub fn run(args: &Args, resolved: &ResolvedSettings) -> Result<(), String> {
-    let started = Instant::now();
+    let plan = plan_inputs(&args.input)?;
 
-    // Normal (non-merge) mode expects exactly one input image.
-    let [input_path] = args.input.as_slice() else {
-        return Err(format!(
-            "Expected exactly one input image, got {} (use --merge to combine multiple existing .ico files instead).",
-            args.input.len()
-        ));
-    };
-
-    check_color_options(resolved)?;
+    check_options(resolved)?;
     let replacement = resolved
         .replace_color
         .map(|hex| parse_hex_color(hex).map_err(|e| format!("Invalid --replace-color value: {e}")))
         .transpose()?;
+
+    match plan {
+        Plan::Single(input) => run_single(args, resolved, replacement, input),
+        Plan::Batch(files) => run_batch(args, resolved, replacement, files),
+    }
+}
+
+/// Converts one file: `-o` (if given) is the output FILE.
+fn run_single(
+    args: &Args,
+    resolved: &ResolvedSettings,
+    replacement: Option<[u8; 3]>,
+    input: &Path,
+) -> Result<(), String> {
+    let use_icns = wants_icns(resolved.output_format);
+    let job = Job {
+        input: input.to_path_buf(),
+        output: output_path(args.output.as_deref(), input, use_icns),
+    };
+
+    match convert_one(&job, resolved, replacement)? {
+        Outcome::Converted => finish_run(
+            args,
+            resolved,
+            std::slice::from_ref(&job.input),
+            Some(&job.output),
+        ),
+        // Nothing was written, so there is nothing to clean up and no
+        // settings snapshot worth saving.
+        Outcome::Skipped | Outcome::Previewed => Ok(()),
+    }
+}
+
+/// Converts several files in a row with the same settings: `-o` (if given)
+/// is the FOLDER the icons go into.
+///
+/// By default the first failure stops the run (the error names the file);
+/// with --keep-going the rest is still converted, every failure is
+/// reported, and the run fails at the end. Either way, source files are
+/// deleted (--delete-source) and the settings snapshot is written
+/// (--out-toml) only if the whole batch succeeded - a half-finished run
+/// must never take the originals with it.
+fn run_batch(
+    args: &Args,
+    resolved: &ResolvedSettings,
+    replacement: Option<[u8; 3]>,
+    files: Vec<PathBuf>,
+) -> Result<(), String> {
+    check_batch_options(args.output.as_deref(), resolved)?;
+
+    let use_icns = wants_icns(resolved.output_format);
+    let jobs = plan_jobs(files, args.output.as_deref(), use_icns)?;
+    resolved.note(format_args!("batch: {} file(s)", jobs.len()));
+
+    if let Some(folder) = args.output.as_deref() {
+        std::fs::create_dir_all(folder)
+            .map_err(|e| format!("Could not create output folder '{}': {e}", folder.display()))?;
+    }
+
+    let mut converted: Vec<&Job> = Vec::new();
+    let mut skipped = 0usize;
+    let mut failed = 0usize;
+    for job in &jobs {
+        // Lets warnings raised deep inside the conversion name this file.
+        let _context = enter_file_context(&job.input);
+        match convert_one(job, resolved, replacement) {
+            Ok(Outcome::Converted) => converted.push(job),
+            Ok(Outcome::Skipped | Outcome::Previewed) => skipped += 1,
+            Err(message) => {
+                // Name the file, unless the message already does.
+                let name = job.input.display().to_string();
+                let message = if message.contains(&name) {
+                    message
+                } else {
+                    format!("{name}: {message}")
+                };
+                if !resolved.keep_going {
+                    return Err(message);
+                }
+                eprintln!("Error: {message}");
+                failed += 1;
+            }
+        }
+    }
+
+    println!(
+        "Batch finished: {} converted, {skipped} skipped, {failed} failed ({} file(s) in total).",
+        converted.len(),
+        jobs.len()
+    );
+    if failed > 0 {
+        return Err(format!("{failed} of {} file(s) failed.", jobs.len()));
+    }
+
+    for job in converted {
+        delete_sources_if_requested(
+            resolved,
+            std::slice::from_ref(&job.input),
+            Some(&job.output),
+        );
+    }
+    maybe_write_out_toml(args.out_toml.as_deref(), resolved)
+}
+
+/// The conversion of one image into one icon file - everything that is the
+/// same for a single file and for each file of a batch.
+fn convert_one(
+    job: &Job,
+    resolved: &ResolvedSettings,
+    replacement: Option<[u8; 3]>,
+) -> Result<Outcome, String> {
+    let started = Instant::now();
+    let input_path = job.input.as_path();
+    let output_path = job.output.as_path();
+    let use_icns = wants_icns(resolved.output_format);
+
+    // --skip-existing: with the output already there there is nothing to do
+    // - and nothing worth loading, so this comes before anything else. (A
+    // --find preview writes no file, so it is never skipped.)
+    let find_preview = resolved.find.is_some() && !resolved.auto_apply;
+    if resolved.skip_existing && !find_preview && output_path.exists() {
+        if !resolved.silent {
+            eprintln!(
+                "Skipping '{}': '{}' already exists (--skip-existing).",
+                input_path.display(),
+                output_path.display()
+            );
+        }
+        return Ok(Outcome::Skipped);
+    }
 
     // Load the input image EARLY - before the output path/--sizes are even
     // looked at - specifically so that a plain "--find" preview (see
@@ -75,14 +231,12 @@ pub fn run(args: &Args, resolved: &ResolvedSettings) -> Result<(), String> {
                     "Re-run with these as --seed values, or add --auto-apply to use them automatically."
                 );
             }
-            return Ok(());
+            return Ok(Outcome::Previewed);
         }
 
         discovered_seeds = regions.into_iter().map(|r| r.seed).collect();
     }
 
-    let use_icns = wants_icns(resolved.output_format);
-    let output_path = output_path(args.output.as_deref(), input_path, use_icns);
     resolved.note(format_args!(
         "output: {} ({})",
         output_path.display(),
@@ -93,7 +247,7 @@ pub fn run(args: &Args, resolved: &ResolvedSettings) -> Result<(), String> {
     // the resolved output already exists and --force wasn't given. This
     // one check covers both the normal ICO path and --icns, since they
     // share this same output_path.
-    check_overwrite(&output_path, resolved.force)?;
+    check_overwrite(output_path, resolved.force)?;
 
     // Only relevant for the normal ICO path - icns output uses its own
     // fixed set of sizes instead (see icns::ICNS_SIZES) - but resolving it
@@ -132,23 +286,181 @@ pub fn run(args: &Args, resolved: &ResolvedSettings) -> Result<(), String> {
     // format (see write_icns) and doesn't use the ICO-specific --sizes
     // list at all.
     if use_icns {
-        write_icns(&source, resolved.padding, has_alpha, &output_path)?;
+        write_icns(&source, resolved.padding, has_alpha, output_path)?;
     } else {
-        write_ico(&source, &sizes, has_alpha, resolved, &output_path)?;
+        write_ico(&source, &sizes, has_alpha, resolved, output_path)?;
     }
 
-    resolved.note(format_args!("finished in {:.1?}", started.elapsed()));
+    resolved.note(format_args!(
+        "{}finished in {:.1?}",
+        file_prefix(),
+        started.elapsed()
+    ));
+    Ok(Outcome::Converted)
+}
 
-    finish_run(
-        args,
-        resolved,
-        std::slice::from_ref(input_path),
-        Some(&output_path),
-    )
+/// Decides whether the inputs are one file or a batch. One input that is
+/// not a folder is a single conversion - including a path that doesn't
+/// exist, which `convert_one` then reports as unreadable, as ever. Anything
+/// else (several inputs, or a folder) is a batch of the files they stand
+/// for.
+fn plan_inputs(inputs: &[PathBuf]) -> Result<Plan<'_>, String> {
+    if let [only] = inputs
+        && !only.is_dir()
+    {
+        return Ok(Plan::Single(only));
+    }
+    expand_inputs(inputs).map(Plan::Batch)
+}
+
+/// Whether `path` has one of the extensions in `IMAGE_EXTENSIONS`.
+fn is_supported_image(path: &Path) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| {
+            IMAGE_EXTENSIONS
+                .iter()
+                .any(|supported| extension.eq_ignore_ascii_case(supported))
+        })
+}
+
+/// Turns the inputs into the list of image files to convert: a file stands
+/// for itself, a folder for the supported image files directly inside it
+/// (subfolders are not searched), in name order so a run is reproducible.
+/// A folder without any such file is an error rather than a silent no-op.
+fn expand_inputs(inputs: &[PathBuf]) -> Result<Vec<PathBuf>, String> {
+    let mut files = Vec::new();
+    for input in inputs {
+        if !input.is_dir() {
+            files.push(input.clone());
+            continue;
+        }
+
+        let entries = std::fs::read_dir(input)
+            .map_err(|e| format!("Could not read folder '{}': {e}", input.display()))?;
+        let mut found: Vec<PathBuf> = entries
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| path.is_file() && is_supported_image(path))
+            .collect();
+        if found.is_empty() {
+            return Err(format!(
+                "No supported images (PNG, JPG, BMP, GIF) found in folder '{}'.",
+                input.display()
+            ));
+        }
+        found.sort();
+        files.extend(found);
+    }
+    Ok(files)
+}
+
+/// Where the icon for `input` goes in a batch: `<stem>.<extension>` inside
+/// `folder`, or - without one - right next to the input.
+fn batch_output_path(folder: Option<&Path>, input: &Path, extension: &str) -> PathBuf {
+    let stem = input
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or("icon");
+    let name = format!("{stem}.{extension}");
+    match folder {
+        Some(folder) => folder.join(name),
+        None => input.with_file_name(name),
+    }
+}
+
+/// A form of `path` in which two paths naming the same file compare equal:
+/// lowercased where the file system ignores case (Windows, macOS).
+fn collision_key(path: &Path) -> String {
+    let text = path.to_string_lossy().into_owned();
+    if cfg!(any(windows, target_os = "macos")) {
+        text.to_lowercase()
+    } else {
+        text
+    }
+}
+
+/// Pairs every input with its output path - and refuses the whole batch,
+/// before anything is written, if two inputs would end up as the same
+/// output file (say `logo.png` and `logo.jpg`, both becoming `logo.ico`):
+/// one would silently overwrite the other.
+fn plan_jobs(
+    files: Vec<PathBuf>,
+    folder: Option<&Path>,
+    use_icns: bool,
+) -> Result<Vec<Job>, String> {
+    let extension = if use_icns { "icns" } else { "ico" };
+    let mut claimed: HashMap<String, PathBuf> = HashMap::new();
+    let mut jobs = Vec::with_capacity(files.len());
+    for input in files {
+        let output = batch_output_path(folder, &input, extension);
+        if let Some(first) = claimed.get(&collision_key(&output)) {
+            return Err(format!(
+                "'{}' and '{}' would both be written to '{}'. Rename one of them, or convert them separately.",
+                first.display(),
+                input.display(),
+                output.display()
+            ));
+        }
+        claimed.insert(collision_key(&output), input.clone());
+        jobs.push(Job { input, output });
+    }
+    Ok(jobs)
+}
+
+/// Rejects options that make no sense for a batch.
+fn check_batch_options(output: Option<&Path>, resolved: &ResolvedSettings) -> Result<(), String> {
+    // A --find preview prints a report for ONE image. Several of them
+    // would be an undifferentiated pile of reports, and the preview isn't
+    // a conversion, so it doesn't belong in one.
+    if resolved.find.is_some() && !resolved.auto_apply {
+        return Err(
+            "--find without --auto-apply prints a report for one image and can't be used with several inputs or a folder. Run it for each file separately, or add --auto-apply."
+                .to_string(),
+        );
+    }
+
+    // In a batch -o names a FOLDER. Catch the two easy mix-ups instead of
+    // quietly creating a folder called "icon.ico" or failing obscurely.
+    if let Some(output) = output {
+        if output.exists() && !output.is_dir() {
+            return Err(format!(
+                "With several inputs (or a folder) -o names an output folder, but '{}' is a file.",
+                output.display()
+            ));
+        }
+        let looks_like_icon_file = output.extension().is_some_and(|extension| {
+            extension.eq_ignore_ascii_case("ico") || extension.eq_ignore_ascii_case("icns")
+        });
+        if !output.exists() && looks_like_icon_file {
+            return Err(format!(
+                "With several inputs (or a folder) -o names an output folder, but '{}' looks like a file name. To convert one file to that name, give just that one input.",
+                output.display()
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// Rejects option combinations that contradict each other or make no
 /// sense on their own.
+fn check_options(resolved: &ResolvedSettings) -> Result<(), String> {
+    check_color_options(resolved)?;
+    // --force overwrites an existing output; --skip-existing leaves it
+    // alone. They can't both decide what happens to the same file. (On the
+    // command line clap already refuses the pair; this also catches one of
+    // them coming from a settings file.)
+    if resolved.force && resolved.skip_existing {
+        return Err(
+            "--force and --skip-existing contradict each other: one overwrites an existing output, the other leaves it alone."
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
+/// Rejects background-color options that contradict each other or make
+/// no sense on their own.
 fn check_color_options(resolved: &ResolvedSettings) -> Result<(), String> {
     // --chroma-key and --find both ultimately specify "the background
     // color" - only one is needed at a time, and allowing both would just
@@ -187,7 +499,10 @@ fn load_source_image(input_path: &Path, resolved: &ResolvedSettings) -> Result<R
     }
 
     if resolved.gif_frame != 1 && !resolved.silent {
-        eprintln!("Warning: --gif-frame only applies to GIF input and is ignored for this file.");
+        eprintln!(
+            "Warning: {}--gif-frame only applies to GIF input and is ignored for this file.",
+            file_prefix()
+        );
     }
     // IMPORTANT (optimization): to_rgba8() converts/copies the entire
     // image. This intentionally happens only ONCE here, regardless of
@@ -220,15 +535,16 @@ fn find_regions(
 /// Prints --find's report: how many regions were found and, for each, a
 /// ready-to-use --seed value.
 fn print_found_regions(find_hex: &str, regions: &[FoundRegion]) {
+    let prefix = file_prefix();
     if regions.is_empty() {
         println!(
-            "No additional regions matching {find_hex} found - the border-based flood fill should already reach everything."
+            "{prefix}No additional regions matching {find_hex} found - the border-based flood fill should already reach everything."
         );
         return;
     }
 
     println!(
-        "Found {} additional region(s) matching {find_hex} that the border-based flood fill can't reach on its own:",
+        "{prefix}Found {} additional region(s) matching {find_hex} that the border-based flood fill can't reach on its own:",
         regions.len()
     );
     for region in regions {
@@ -390,7 +706,10 @@ fn write_ico(
     for &size in sizes {
         if size == 0 || size > MAX_ICO_SIZE {
             if !resolved.silent {
-                eprintln!("Skipping size {size} (valid range: 1-{MAX_ICO_SIZE}).");
+                eprintln!(
+                    "{}Skipping size {size} (valid range: 1-{MAX_ICO_SIZE}).",
+                    file_prefix()
+                );
             }
             continue;
         }
@@ -420,7 +739,11 @@ fn write_ico(
         // practically any use case.
         let entry = ico::IconDirEntry::encode_as_png(&icon_image)
             .map_err(|e| format!("Could not encode size {size}: {e}"))?;
-        resolved.note(format_args!("{size}x{size}: {} bytes", entry.data().len()));
+        resolved.note(format_args!(
+            "{}{size}x{size}: {} bytes",
+            file_prefix(),
+            entry.data().len()
+        ));
         icon_dir.add_entry(entry);
     }
 
@@ -456,6 +779,243 @@ mod tests {
     fn with_resolved<T>(flags: &[&str], check: impl FnOnce(&ResolvedSettings) -> T) -> T {
         let (cli, file) = (parsed(flags), Settings::default());
         check(&ResolvedSettings::resolve(&cli, &file))
+    }
+
+    // --- Planning a batch ----------------------------------------------------------------
+
+    fn touch(dir: &Path, name: &str) -> PathBuf {
+        let path = dir.join(name);
+        std::fs::write(&path, b"x").unwrap();
+        path
+    }
+
+    fn names(files: &[PathBuf]) -> Vec<String> {
+        files
+            .iter()
+            .map(|f| f.file_name().unwrap().to_string_lossy().into_owned())
+            .collect()
+    }
+
+    #[test]
+    fn supported_images_are_recognized_by_extension_ignoring_case() {
+        for yes in [
+            "a.png",
+            "a.PNG",
+            "a.jpg",
+            "a.JPEG",
+            "a.bmp",
+            "a.gif",
+            "dir/a.Png",
+        ] {
+            assert!(is_supported_image(Path::new(yes)), "{yes}");
+        }
+        for no in ["a.ico", "a.txt", "a.pngx", "png", "a", "a."] {
+            assert!(!is_supported_image(Path::new(no)), "{no}");
+        }
+    }
+
+    #[test]
+    fn one_file_is_a_single_conversion_even_if_it_does_not_exist() {
+        let inputs = vec![PathBuf::from("missing.png")];
+        assert!(
+            matches!(plan_inputs(&inputs), Ok(Plan::Single(path)) if path == Path::new("missing.png"))
+        );
+    }
+
+    #[test]
+    fn several_files_or_a_folder_are_a_batch() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(dir.path(), "a.png");
+
+        let two = vec![PathBuf::from("a.png"), PathBuf::from("b.png")];
+        assert!(matches!(plan_inputs(&two), Ok(Plan::Batch(files)) if files.len() == 2));
+
+        let folder = vec![dir.path().to_path_buf()];
+        assert!(matches!(plan_inputs(&folder), Ok(Plan::Batch(files)) if files.len() == 1));
+    }
+
+    #[test]
+    fn a_folder_contributes_its_images_in_name_order() {
+        let dir = tempfile::tempdir().unwrap();
+        for name in [
+            "c.png",
+            "a.PNG",
+            "b.jpg",
+            "notes.txt",
+            "icon.ico",
+            "d.gif",
+            "e.bmp",
+            "f.jpeg",
+        ] {
+            touch(dir.path(), name);
+        }
+        std::fs::create_dir(dir.path().join("sub.png")).unwrap(); // a folder, not an image
+        touch(&dir.path().join("sub.png"), "inner.png"); // subfolders are not searched
+
+        let files = expand_inputs(&[dir.path().to_path_buf()]).unwrap();
+        assert_eq!(
+            names(&files),
+            ["a.PNG", "b.jpg", "c.png", "d.gif", "e.bmp", "f.jpeg"]
+        );
+    }
+
+    #[test]
+    fn files_and_folders_can_be_mixed_and_keep_the_given_order() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(dir.path(), "x.png");
+        touch(dir.path(), "y.png");
+        let inputs = vec![
+            PathBuf::from("first.png"),
+            dir.path().to_path_buf(),
+            PathBuf::from("last.png"),
+        ];
+        let files = expand_inputs(&inputs).unwrap();
+        assert_eq!(names(&files), ["first.png", "x.png", "y.png", "last.png"]);
+    }
+
+    #[test]
+    fn a_folder_without_images_is_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(dir.path(), "notes.txt");
+        let err = expand_inputs(&[dir.path().to_path_buf()]).unwrap_err();
+        assert!(err.contains("No supported images"), "{err}");
+    }
+
+    #[test]
+    fn batch_outputs_go_next_to_the_input_or_into_the_folder() {
+        let input = Path::new("art").join("logo.png");
+        assert_eq!(
+            batch_output_path(None, &input, "ico"),
+            Path::new("art").join("logo.ico")
+        );
+        assert_eq!(
+            batch_output_path(Some(Path::new("out")), &input, "icns"),
+            Path::new("out").join("logo.icns")
+        );
+        assert_eq!(
+            batch_output_path(None, Path::new("logo.png"), "ico"),
+            Path::new("logo.ico")
+        );
+    }
+
+    #[test]
+    fn dots_in_the_file_name_are_kept() {
+        let out = batch_output_path(
+            Some(Path::new("out")),
+            Path::new("logo.v2.final.png"),
+            "ico",
+        );
+        assert_eq!(out, Path::new("out").join("logo.v2.final.ico"));
+    }
+
+    #[test]
+    fn jobs_pair_every_input_with_its_output() {
+        let files = vec![PathBuf::from("a.png"), PathBuf::from("b.jpg")];
+        let jobs = plan_jobs(files, Some(Path::new("out")), false).unwrap();
+        assert_eq!(jobs.len(), 2);
+        assert_eq!(jobs[0].output, Path::new("out").join("a.ico"));
+        assert_eq!(jobs[1].output, Path::new("out").join("b.ico"));
+    }
+
+    #[test]
+    fn two_inputs_that_would_share_an_output_are_refused() {
+        let files = vec![PathBuf::from("logo.png"), PathBuf::from("logo.jpg")];
+        let err = plan_jobs(files, None, false).map(|_| ()).unwrap_err();
+        assert!(
+            err.contains("logo.png") && err.contains("logo.jpg"),
+            "{err}"
+        );
+        assert!(err.contains("would both be written to"), "{err}");
+
+        let same_twice = vec![PathBuf::from("a.png"), PathBuf::from("a.png")];
+        assert!(plan_jobs(same_twice, None, false).is_err());
+    }
+
+    #[test]
+    fn the_same_name_in_different_places_is_not_a_collision() {
+        let files = vec![
+            Path::new("one").join("logo.png"),
+            Path::new("two").join("logo.png"),
+        ];
+        assert!(
+            plan_jobs(files, None, false).is_ok(),
+            "next to their inputs they differ"
+        );
+
+        let files = vec![
+            Path::new("one").join("logo.png"),
+            Path::new("two").join("logo.png"),
+        ];
+        assert!(
+            plan_jobs(files, Some(Path::new("out")), false).is_err(),
+            "in one folder they clash"
+        );
+    }
+
+    #[cfg(any(windows, target_os = "macos"))]
+    #[test]
+    fn where_the_file_system_ignores_case_differing_case_is_a_collision() {
+        let files = vec![PathBuf::from("Logo.png"), PathBuf::from("logo.png")];
+        assert!(plan_jobs(files, Some(Path::new("out")), false).is_err());
+    }
+
+    #[test]
+    fn the_extension_follows_the_output_format() {
+        let jobs = plan_jobs(vec![PathBuf::from("a.png")], None, true).unwrap();
+        assert_eq!(jobs[0].output, Path::new("a.icns"));
+    }
+
+    #[test]
+    fn a_find_preview_cannot_run_as_a_batch() {
+        let err =
+            with_resolved(&["--find", "00FF00"], |r| check_batch_options(None, r)).unwrap_err();
+        assert!(err.contains("--find without --auto-apply"), "{err}");
+        assert!(
+            with_resolved(&["--find", "00FF00", "--auto-apply"], |r| {
+                check_batch_options(None, r)
+            })
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn in_a_batch_output_must_be_a_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = touch(dir.path(), "existing.ico");
+        let check = |out: &Path| with_resolved(&[], |r| check_batch_options(Some(out), r));
+
+        assert!(check(dir.path()).is_ok(), "an existing folder");
+        assert!(
+            check(&dir.path().join("new-folder")).is_ok(),
+            "a folder to be created"
+        );
+        assert!(check(&file).unwrap_err().contains("is a file"));
+        let looks_like_file = dir.path().join("out.ico");
+        assert!(
+            check(&looks_like_file)
+                .unwrap_err()
+                .contains("looks like a file name")
+        );
+        assert!(
+            check(&dir.path().join("OUT.ICNS"))
+                .unwrap_err()
+                .contains("looks like a file name")
+        );
+    }
+
+    #[test]
+    fn force_and_skip_existing_contradict_each_other_when_both_are_set() {
+        let force = Settings {
+            force: true,
+            skip_existing: true,
+            ..Settings::default()
+        };
+        let cli = parsed(&[]);
+        let resolved = ResolvedSettings::resolve(&cli, &force);
+        let err = check_options(&resolved).unwrap_err();
+        assert!(err.contains("--force and --skip-existing"), "{err}");
+        assert!(with_resolved(&["--skip-existing"], check_options).is_ok());
+        assert!(with_resolved(&["--force"], check_options).is_ok());
     }
 
     // --- parse_size_list / resolve_sizes -------------------------------------------
