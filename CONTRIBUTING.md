@@ -25,6 +25,21 @@ The tests come in three kinds:
 - **End-to-end tests** in `tests/cli.rs`, which start the real binary on temporary files and check what it prints, writes and exits with.
 - **Property-based tests** that compare the optimized chroma-key and `--find` code against a deliberately naive reference implementation on random images, so speed-ups cannot silently change results.
 
+## The web page
+
+The page in `web/` needs [Node.js](https://nodejs.org) (the current LTS) and the `wasm32-unknown-unknown` Rust target (`rustup target add wasm32-unknown-unknown`). It also needs the `wasm-bindgen` tool in exactly the version `Cargo.lock` names; if yours does not match, the build tells you the command to install the right one.
+
+```
+cd web
+npm install
+npm run dev                       # builds the engine, then serves the page with live reload
+npm run check                     # type-check
+npm test                          # the page's tests
+npm run build                     # the finished static page in web/dist
+```
+
+`npm run build:wasm` rebuilds only the engine (`crates/wasm`) into `web/src/wasm/pkg/`, which is generated and not committed. The `web/dist` folder works from any address, so it can be copied to any web space.
+
 ## Where things are
 
 | Module | What it does |
