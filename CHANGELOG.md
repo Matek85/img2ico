@@ -10,6 +10,13 @@ when cutting a release.
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-10-01
+
+Layout options for the icon (`--fit`, `--crop`, `--trim`, `--corner-radius`,
+`--sizes auto`), `--validate` for `.ico` files, parallel work with `--jobs`,
+a size limit and atomic writing for robustness, and an icon for the Windows
+`.exe`.
+
 ### Added
 
 - The Windows `.exe` now has the program's icon (Explorer, the taskbar and
