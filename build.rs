@@ -6,7 +6,8 @@
 //
 // Cargo passes each `cargo:rustc-env=NAME=value` line below to the compiler,
 // where `env!("NAME")` turns it into a compile-time string constant (see
-// LONG_VERSION in src/cli.rs).
+// LONG_VERSION in src/cli.rs). On Windows it also embeds the program's icon
+// in the .exe.
 
 use std::process::Command;
 
@@ -29,7 +30,27 @@ fn main() {
     println!("cargo:rustc-env=IMG2ICO_TARGET={target}");
     println!("cargo:rustc-env=IMG2ICO_COMPILER={compiler}");
 
+    // The Windows .exe gets the program's icon (what Explorer, the taskbar
+    // and shortcuts show) and a few details for its Properties dialog. This
+    // is only for a Windows target - other platforms have no such resource.
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
+        let mut resource = winresource::WindowsResource::new();
+        resource
+            .set_icon("assets/img2ico.ico")
+            .set("ProductName", "img2ico")
+            .set(
+                "FileDescription",
+                "Converts any image into an ICO file (with transparency)",
+            );
+        if let Err(error) = resource.compile() {
+            // Do not fail the whole build over a missing icon: without the
+            // resource compiler the program works exactly the same.
+            println!("cargo:warning=could not embed the Windows icon: {error}");
+        }
+    }
+
     // Nothing else can change these values, so there is no need to re-run
-    // this script on every build.
+    // this script on every build (only when the icon changes).
     println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=assets/img2ico.ico");
 }

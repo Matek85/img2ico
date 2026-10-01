@@ -12,6 +12,8 @@ when cutting a release.
 
 ### Added
 
+- The Windows `.exe` now has the program's icon (Explorer, the taskbar and
+  shortcuts show it) and name and description in its Properties dialog.
 - Parallel work: with `--jobs N` (`-j`, or `jobs` in a settings file) - by
   default one thread per processor - the files of a batch are converted at
   the same time, and the icon sizes of a single large image (or an SVG) are

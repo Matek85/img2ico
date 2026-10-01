@@ -15,6 +15,8 @@ cargo clippy --all-targets -- -D warnings
 
 Use a current stable toolchain for `clippy`: its rules grow with every release, and the automated checks use the newest stable. `Cargo.toml` names the oldest supported Rust version (`rust-version`); the checks run the tests with exactly that version too, so keep both in step.
 
+On Windows the build embeds the program's icon (`assets/img2ico.ico`) in the `.exe` with the system's resource compiler (part of the Windows SDK that the Rust toolchain needs anyway); if it is missing the build still succeeds, with a warning, just without the icon.
+
 The tests come in three kinds:
 
 - **Unit tests** next to the code they test.
