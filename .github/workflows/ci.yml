@@ -168,6 +168,7 @@ jobs:
           cat verbose.txt
           grep -F "(1024x1024 pixels)" verbose.txt
           ./target/release/img2ico --inspect from-apple.ico
+          ./target/release/img2ico --validate from-apple.ico
           ./target/release/img2ico --extract from-apple.ico -o from-apple-pngs --force
           sips -g pixelWidth -g pixelHeight from-apple-pngs/from-apple_256x256.png | grep -F "pixelWidth: 256"
 

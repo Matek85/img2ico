@@ -155,10 +155,26 @@ fn neither_ico_nor_image(
     ico_error: &impl std::fmt::Display,
     image_error: &impl std::fmt::Display,
 ) -> String {
+    let hint = if looks_like_ico(path) {
+        " To see exactly what is wrong with it, run --validate."
+    } else {
+        ""
+    };
     format!(
-        "'{}' is neither a readable .ico file ({ico_error}) nor a readable image ({image_error}).",
+        "'{}' is neither a readable .ico file ({ico_error}) nor a readable image ({image_error}).{hint}",
         path.display()
     )
+}
+
+/// Whether the file has the extension or the first bytes of an .ico file.
+fn looks_like_ico(path: &Path) -> bool {
+    let by_name = path
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("ico") || e.eq_ignore_ascii_case("cur"));
+    let by_header = std::fs::read(path)
+        .map(|bytes| bytes.starts_with(&[0, 0, 1, 0]) || bytes.starts_with(&[0, 0, 2, 0]))
+        .unwrap_or(false);
+    by_name || by_header
 }
 
 /// The common Windows icon sizes that `present` lacks.
@@ -232,6 +248,8 @@ fn ico_report_json(path: &Path, dir: &ico::IconDir) -> serde_json::Value {
             "bits_per_pixel": bpp,
             "format": if entry.is_png() { "png" } else { "bmp" },
             "bytes": entry.data().len(),
+            "alpha": alpha_share(entry).map(|share| share > 0.0),
+            "non_opaque_share": alpha_share(entry),
         }));
     }
     serde_json::json!({
@@ -241,6 +259,25 @@ fn ico_report_json(path: &Path, dir: &ico::IconDir) -> serde_json::Value {
         "missing_windows_sizes": missing_windows_sizes(&present_sizes),
         "warnings": warnings,
     })
+}
+
+/// The share (0.0 to 1.0) of an entry's pixels that are not fully opaque -
+/// transparent or translucent - or `None` if the entry cannot be decoded.
+/// For a BMP entry this reflects its 1-bit transparency mask.
+fn alpha_share(entry: &ico::IconDirEntry) -> Option<f64> {
+    let image = entry.decode().ok()?;
+    let pixels = image.rgba_data();
+    let not_opaque = pixels.chunks_exact(4).filter(|p| p[3] < 255).count();
+    Some(not_opaque as f64 / (pixels.len() / 4).max(1) as f64)
+}
+
+/// `alpha_share` as the short text of the --inspect report.
+fn alpha_summary(entry: &ico::IconDirEntry) -> String {
+    match alpha_share(entry) {
+        None => "unknown (could not decode)".to_string(),
+        Some(0.0) => "no (fully opaque)".to_string(),
+        Some(share) => format!("yes ({:.0}% of pixels not fully opaque)", share * 100.0),
+    }
 }
 
 /// The JSON form of `inspect_source_image`'s report.
@@ -282,8 +319,9 @@ fn inspect_ico_file(path: &Path, dir: &ico::IconDir) {
         let format = if entry.is_png() { "PNG" } else { "BMP" };
         let bpp = entry.bits_per_pixel();
         println!(
-            "  [{index}] {w:>4}x{h:<4}  {bpp:>2}bpp  {format}  {} bytes",
-            entry.data().len()
+            "  [{index}] {w:>4}x{h:<4}  {bpp:>2}bpp  {format}  {} bytes  alpha: {}",
+            entry.data().len(),
+            alpha_summary(entry)
         );
         if !entry.is_png() {
             println!(

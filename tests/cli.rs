@@ -3034,6 +3034,241 @@ fn crop_is_refused_for_an_svg_and_sizes_auto_gives_the_default_sizes() {
 }
 
 // =============================================================================
+// --validate and the alpha column of --inspect
+// =============================================================================
+
+/// A good .ico with the given sizes, made by img2ico itself.
+fn make_ico(dir: &Path, name: &str, sizes: &str) -> PathBuf {
+    write_solid(dir, "validate-src.png", 64, RED);
+    let out = convert(
+        dir,
+        &["validate-src.png", "-o", name, "--sizes", sizes, "--force"],
+    );
+    assert_success(&out);
+    dir.join(name)
+}
+
+#[test]
+fn validate_accepts_a_good_file_and_lists_its_images() {
+    let dir = tempfile::tempdir().unwrap();
+    make_ico(dir.path(), "good.ico", "16,32,48");
+    let out = img2ico(dir.path(), &["--validate", "good.ico"]);
+    assert_success(&out);
+    let text = stdout(&out);
+    assert!(
+        text.contains("good.ico: valid - 3 images"),
+        "{}",
+        describe(&out)
+    );
+    assert!(
+        text.contains("16x16 PNG") && text.contains("48x48 PNG"),
+        "{text}"
+    );
+}
+
+#[test]
+fn validate_fails_with_a_report_for_a_truncated_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = make_ico(dir.path(), "cut.ico", "16,32,64");
+    let bytes = std::fs::read(&path).unwrap();
+    std::fs::write(&path, &bytes[..bytes.len() - 25]).unwrap();
+
+    let out = img2ico(dir.path(), &["--validate", "cut.ico"]);
+    assert!(!out.status.success(), "{}", describe(&out));
+    let text = stdout(&out);
+    assert!(text.contains("cut.ico: INVALID - 1 error"), "{text}");
+    assert!(text.contains("image [2]: its image data"), "{text}");
+    assert!(
+        text.contains("reaches beyond the end of the file"),
+        "{text}"
+    );
+    assert!(
+        stderr(&out).contains("1 of 1 file(s) failed validation"),
+        "{}",
+        describe(&out)
+    );
+}
+
+#[test]
+fn validate_checks_every_file_and_the_verdict_covers_all_of_them() {
+    let dir = tempfile::tempdir().unwrap();
+    make_ico(dir.path(), "a.ico", "16");
+    std::fs::write(dir.path().join("b.ico"), b"definitely not an icon").unwrap();
+    make_ico(dir.path(), "c.ico", "32");
+    let out = img2ico(
+        dir.path(),
+        &["--validate", "a.ico", "b.ico", "c.ico", "missing.ico"],
+    );
+    assert!(!out.status.success());
+    let text = stdout(&out);
+    assert!(text.contains("a.ico: valid"), "{text}");
+    assert!(text.contains("b.ico: INVALID"), "{text}");
+    assert!(text.contains("c.ico: valid"), "{text}");
+    assert!(text.contains("missing.ico: INVALID"), "{text}");
+    assert!(text.contains("the file could not be read"), "{text}");
+    assert!(
+        text.contains("Checked 4 files: 2 valid, 2 invalid."),
+        "{text}"
+    );
+}
+
+#[test]
+fn warnings_do_not_make_a_file_invalid() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = make_ico(dir.path(), "extra.ico", "16");
+    let mut bytes = std::fs::read(&path).unwrap();
+    bytes.extend_from_slice(&[0; 9]);
+    std::fs::write(&path, bytes).unwrap();
+    let out = img2ico(dir.path(), &["--validate", "extra.ico"]);
+    assert_success(&out);
+    let text = stdout(&out);
+    assert!(text.contains("extra.ico: valid"), "{text}");
+    assert!(text.contains("1 warning"), "{text}");
+    assert!(text.contains("9 bytes after the last image"), "{text}");
+}
+
+#[test]
+fn validate_takes_folders_and_recurse_only_on_request() {
+    let dir = tempfile::tempdir().unwrap();
+    let icons = dir.path().join("icons");
+    std::fs::create_dir_all(icons.join("deep")).unwrap();
+    make_ico(&icons, "top.ico", "16");
+    make_ico(&icons.join("deep"), "low.ico", "16");
+    std::fs::write(icons.join("notes.txt"), "not an icon, and not looked at").unwrap();
+
+    let out = img2ico(dir.path(), &["--validate", "icons"]);
+    assert_success(&out);
+    let text = stdout(&out);
+    assert!(
+        text.contains("top.ico: valid") && !text.contains("low.ico"),
+        "{text}"
+    );
+
+    let out = img2ico(dir.path(), &["--validate", "icons", "--recursive"]);
+    assert_success(&out);
+    let text = stdout(&out);
+    assert!(
+        text.contains("top.ico: valid") && text.contains("low.ico: valid"),
+        "{text}"
+    );
+    assert!(text.contains("Checked 2 files"), "{text}");
+
+    std::fs::create_dir(dir.path().join("empty")).unwrap();
+    let out = img2ico(dir.path(), &["--validate", "empty"]);
+    assert_failure_containing(&out, "No .ico files found directly in folder");
+}
+
+#[test]
+fn validate_json_describes_every_file_and_finding() {
+    let dir = tempfile::tempdir().unwrap();
+    make_ico(dir.path(), "ok.ico", "16,32");
+    std::fs::write(dir.path().join("bad.ico"), [0, 0, 1, 0, 3, 0]).unwrap();
+    let out = img2ico(dir.path(), &["--validate", "ok.ico", "bad.ico", "--json"]);
+    assert!(!out.status.success(), "a bad file still fails the run");
+    let report: serde_json::Value = serde_json::from_str(&stdout(&out)).unwrap();
+    assert_eq!(report[0]["valid"], true);
+    assert_eq!(report[0]["images"].as_array().unwrap().len(), 2);
+    assert_eq!(report[0]["images"][1]["width"], 32);
+    assert_eq!(report[0]["images"][1]["format"], "PNG");
+    assert_eq!(report[1]["valid"], false);
+    assert!(
+        report[1]["errors"][0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("announces 3 images"),
+        "{report}"
+    );
+}
+
+#[test]
+fn validate_rejects_other_modes_and_stray_options() {
+    let dir = tempfile::tempdir().unwrap();
+    make_ico(dir.path(), "a.ico", "16");
+    for args in [
+        &["--validate", "--inspect", "a.ico"][..],
+        &["--validate", "--merge", "a.ico", "a.ico"],
+        &["--validate", "a.ico", "--output-format", "ico"],
+    ] {
+        assert_failure_containing(&img2ico(dir.path(), args), "mutually exclusive");
+    }
+    assert_failure_containing(
+        &img2ico(dir.path(), &["--validate", "a.ico", "--what-if"]),
+        "only apply when converting images",
+    );
+    assert_failure_containing(
+        &img2ico(dir.path(), &["--validate", "-"]),
+        "only works when converting one image",
+    );
+    // --json belongs to --inspect and --validate only.
+    assert!(!img2ico(dir.path(), &["a.ico", "--json"]).status.success());
+}
+
+#[test]
+fn validate_writes_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    make_ico(dir.path(), "a.ico", "16");
+    let before = names_in(dir.path());
+    assert_success(&img2ico(dir.path(), &["--validate", "a.ico"]));
+    assert_eq!(names_in(dir.path()), before);
+}
+
+#[test]
+fn inspect_shows_whether_an_entry_has_alpha() {
+    let dir = tempfile::tempdir().unwrap();
+    write_image(dir.path(), "round.png", 32, 32, |x, y| {
+        let (dx, dy) = (x as f32 - 15.5, y as f32 - 15.5);
+        if dx * dx + dy * dy < 14.0 * 14.0 {
+            RED
+        } else {
+            [0, 0, 0, 0]
+        }
+    });
+    write_solid(dir.path(), "solid.png", 32, RED);
+    assert_success(&convert(dir.path(), &["round.png", "--sizes", "32"]));
+    assert_success(&convert(dir.path(), &["solid.png", "--sizes", "32"]));
+
+    let out = img2ico(dir.path(), &["--inspect", "round.ico"]);
+    assert_success(&out);
+    assert!(stdout(&out).contains("alpha: yes ("), "{}", describe(&out));
+    let out = img2ico(dir.path(), &["--inspect", "solid.ico"]);
+    assert_success(&out);
+    assert!(
+        stdout(&out).contains("alpha: no (fully opaque)"),
+        "{}",
+        describe(&out)
+    );
+
+    let json = img2ico(
+        dir.path(),
+        &["--inspect", "round.ico", "solid.ico", "--json"],
+    );
+    let report: serde_json::Value = serde_json::from_str(&stdout(&json)).unwrap();
+    assert_eq!(report[0]["entries"][0]["alpha"], true);
+    assert!(
+        report[0]["entries"][0]["non_opaque_share"]
+            .as_f64()
+            .unwrap()
+            > 0.1
+    );
+    assert_eq!(report[1]["entries"][0]["alpha"], false);
+}
+
+#[test]
+fn inspect_points_to_validate_for_a_damaged_icon() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = make_ico(dir.path(), "cut.ico", "16,32");
+    let bytes = std::fs::read(&path).unwrap();
+    std::fs::write(&path, &bytes[..bytes.len() - 30]).unwrap();
+    let out = img2ico(dir.path(), &["--inspect", "cut.ico"]);
+    assert_failure_containing(&out, "run --validate");
+
+    // A broken image that is no icon gets no such hint.
+    write_junk(dir.path(), "broken.png");
+    let out = img2ico(dir.path(), &["--inspect", "broken.png"]);
+    assert!(!stderr(&out).contains("--validate"), "{}", describe(&out));
+}
+
+// =============================================================================
 // Shell completions
 // =============================================================================
 
