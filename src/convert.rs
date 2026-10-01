@@ -78,8 +78,8 @@ pub fn run(args: &Args, resolved: &ResolvedSettings) -> Result<(), String> {
     match plan {
         Plan::Single(input) => {
             let job = single_job(args.output.as_deref(), input, pattern.as_ref(), use_icns)?;
-            if args.dry_run {
-                return dry_run(&[job], resolved);
+            if args.what_if {
+                return what_if(&[job], resolved);
             }
             run_single(args, resolved, replacement, job)
         }
@@ -92,8 +92,8 @@ pub fn run(args: &Args, resolved: &ResolvedSettings) -> Result<(), String> {
                 use_icns,
             };
             let jobs = plan_jobs(sources, &naming)?;
-            if args.dry_run {
-                return dry_run(&jobs, resolved);
+            if args.what_if {
+                return what_if(&jobs, resolved);
             }
             run_batch(args, resolved, replacement, jobs)
         }
@@ -253,11 +253,11 @@ fn run_batch(
     finish_report(args, &records, started.elapsed(), ran)
 }
 
-/// --dry-run: says, for every job, what a real run would do - the output it
+/// --what-if: says, for every job, what a real run would do - the output it
 /// would write, the icon sizes, and what an output that already exists
 /// means (skipped, replaced or refused) - without loading an image or
 /// writing a byte. Fails if any job would.
-fn dry_run(jobs: &[Job], resolved: &ResolvedSettings) -> Result<(), String> {
+fn what_if(jobs: &[Job], resolved: &ResolvedSettings) -> Result<(), String> {
     let sizes = if wants_icns(resolved.output_format) {
         icns_sizes()
     } else {
@@ -301,7 +301,7 @@ fn dry_run(jobs: &[Job], resolved: &ResolvedSettings) -> Result<(), String> {
         );
     }
     println!(
-        "Dry run: {convert} would be converted, {skip} skipped, {fail} would fail. Nothing was written."
+        "What if: {convert} would be converted, {skip} skipped, {fail} would fail. Nothing was written."
     );
     if fail > 0 {
         return Err(format!("{fail} of {total} file(s) would fail."));

@@ -2760,7 +2760,7 @@ fn the_new_batch_options_are_refused_in_the_modes_that_do_not_convert() {
     for flags in [
         &["--inspect", "--recursive"][..],
         &["--extract", "--name", "x"],
-        &["--select", "--dry-run"],
+        &["--select", "--what-if"],
         &["--merge", "--report", "r.csv"],
     ] {
         let mut args = vec!["logo.ico"];
@@ -2771,7 +2771,7 @@ fn the_new_batch_options_are_refused_in_the_modes_that_do_not_convert() {
 }
 
 // =============================================================================
-// Batch mode: progress, summary, dry run, report
+// Batch mode: progress, summary, what-if, report
 // =============================================================================
 
 #[test]
@@ -2902,7 +2902,7 @@ fn silent_hides_progress_and_a_clean_summary_but_not_a_failure_summary() {
 }
 
 #[test]
-fn dry_run_shows_what_would_happen_and_writes_nothing() {
+fn what_if_shows_what_would_happen_and_writes_nothing() {
     let dir = tempfile::tempdir().unwrap();
     write_solid(dir.path(), "a.png", 64, RED);
     write_solid(dir.path(), "b.png", 64, RED);
@@ -2915,7 +2915,7 @@ fn dry_run_shows_what_would_happen_and_writes_nothing() {
             "out",
             "--sizes",
             "16,32",
-            "--dry-run",
+            "--what-if",
         ],
     );
     assert_success(&out);
@@ -2928,7 +2928,7 @@ fn dry_run_shows_what_would_happen_and_writes_nothing() {
     );
     assert!(
         text.contains(
-            "Dry run: 2 would be converted, 0 skipped, 0 would fail. Nothing was written."
+            "What if: 2 would be converted, 0 skipped, 0 would fail. Nothing was written."
         ),
         "{}",
         describe(&out)
@@ -2938,13 +2938,13 @@ fn dry_run_shows_what_would_happen_and_writes_nothing() {
 }
 
 #[test]
-fn dry_run_predicts_what_existing_outputs_mean() {
+fn what_if_predicts_what_existing_outputs_mean() {
     let dir = tempfile::tempdir().unwrap();
     write_solid(dir.path(), "a.png", 64, RED);
     write_solid(dir.path(), "b.png", 64, RED);
     assert_success(&convert(dir.path(), &["a.png", "--sizes", "16"]));
 
-    let refused = convert(dir.path(), &["a.png", "b.png", "--dry-run"]);
+    let refused = convert(dir.path(), &["a.png", "b.png", "--what-if"]);
     assert_eq!(refused.status.code(), Some(1), "{}", describe(&refused));
     assert!(
         stdout(&refused).contains("would fail: the output already exists"),
@@ -2959,12 +2959,12 @@ fn dry_run_predicts_what_existing_outputs_mean() {
 
     let skip = convert(
         dir.path(),
-        &["a.png", "b.png", "--dry-run", "--skip-existing"],
+        &["a.png", "b.png", "--what-if", "--skip-existing"],
     );
     assert_success(&skip);
     assert!(stdout(&skip).contains("would skip"), "{}", describe(&skip));
 
-    let force = convert(dir.path(), &["a.png", "b.png", "--dry-run", "--force"]);
+    let force = convert(dir.path(), &["a.png", "b.png", "--what-if", "--force"]);
     assert_success(&force);
     assert!(
         stdout(&force).contains("replacing the existing output"),
@@ -2975,16 +2975,16 @@ fn dry_run_predicts_what_existing_outputs_mean() {
 }
 
 #[test]
-fn dry_run_catches_name_collisions_and_missing_inputs() {
+fn what_if_catches_name_collisions_and_missing_inputs() {
     let dir = tempfile::tempdir().unwrap();
     write_solid(dir.path(), "logo.png", 64, RED);
     write_jpeg(dir.path(), "logo.jpg");
     assert_failure_containing(
-        &convert(dir.path(), &["logo.png", "logo.jpg", "--dry-run"]),
+        &convert(dir.path(), &["logo.png", "logo.jpg", "--what-if"]),
         "would both be written to",
     );
 
-    let missing = convert(dir.path(), &["logo.png", "nope.png", "--dry-run"]);
+    let missing = convert(dir.path(), &["logo.png", "nope.png", "--what-if"]);
     assert_eq!(missing.status.code(), Some(1), "{}", describe(&missing));
     assert!(
         stdout(&missing).contains("input file not found"),
@@ -2994,10 +2994,10 @@ fn dry_run_catches_name_collisions_and_missing_inputs() {
 }
 
 #[test]
-fn dry_run_works_for_a_single_file_and_ignores_find_previews() {
+fn what_if_works_for_a_single_file_and_ignores_find_previews() {
     let dir = tempfile::tempdir().unwrap();
     write_solid(dir.path(), "a.png", 64, RED);
-    let out = convert(dir.path(), &["a.png", "--preset", "favicon", "--dry-run"]);
+    let out = convert(dir.path(), &["a.png", "--preset", "favicon", "--what-if"]);
     assert_success(&out);
     assert!(
         stdout(&out).contains("a.png -> a.ico (would convert, sizes [16, 32, 48])"),
@@ -3008,14 +3008,14 @@ fn dry_run_works_for_a_single_file_and_ignores_find_previews() {
 }
 
 #[test]
-fn dry_run_does_not_write_the_settings_snapshot_or_delete_sources() {
+fn what_if_does_not_write_the_settings_snapshot_or_delete_sources() {
     let dir = tempfile::tempdir().unwrap();
     write_solid(dir.path(), "a.png", 64, RED);
     let out = convert(
         dir.path(),
         &[
             "a.png",
-            "--dry-run",
+            "--what-if",
             "--delete-source",
             "--out-toml",
             "snap.toml",
@@ -3027,10 +3027,10 @@ fn dry_run_does_not_write_the_settings_snapshot_or_delete_sources() {
 }
 
 #[test]
-fn dry_run_and_report_cannot_be_combined() {
+fn what_if_and_report_cannot_be_combined() {
     let dir = tempfile::tempdir().unwrap();
     write_solid(dir.path(), "a.png", 64, RED);
-    let out = convert(dir.path(), &["a.png", "--dry-run", "--report", "r.csv"]);
+    let out = convert(dir.path(), &["a.png", "--what-if", "--report", "r.csv"]);
     assert_eq!(out.status.code(), Some(2), "{}", describe(&out));
 }
 

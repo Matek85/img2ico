@@ -9,7 +9,7 @@ Built in Rust: a single, dependency-free binary — no runtime to install, nothi
 ## Features
 
 - **Convert** PNG, JPG, BMP and GIF to `.ico` with full 32-bit color and a clean alpha channel — never a reduced-color legacy format. Size presets, padding, grayscale, and frame selection for animated GIFs.
-- **Batch conversion:** several files, or a whole folder tree, in one run with the same settings — with file filters, name patterns, a progress line per file, a rehearsal mode (`--dry-run`), a CSV or JSON report, and a choice of stopping at the first failure or carrying on.
+- **Batch conversion:** several files, or a whole folder tree, in one run with the same settings — with file filters, name patterns, a progress line per file, a rehearsal mode (`--what-if`), a CSV or JSON report, and a choice of stopping at the first failure or carrying on.
 - **Remove or replace a background color** ("chroma key") with a soft, anti-aliased edge instead of a hard cutout, including background areas enclosed by the artwork — found automatically with `--find`.
 - **macOS `.icns`** from the same source image (chosen automatically as the default when running on macOS).
 - **Work with existing `.ico` files:** inspect them, merge several into one, extract every size as PNG, or pull out specific sizes as standalone `.ico` files.
@@ -122,7 +122,7 @@ Usage: img2ico [OPTIONS] <INPUT>...
 | `--exclude` | | glob (repeatable) | Leave out folder files whose name (or path) matches |
 | `--keep-structure` | | | With `-o`: rebuild the input folder's subfolders below it |
 | `--name` | | pattern | Name the icons by a pattern with `{stem}`, `{ext}`, `{format}` |
-| `--dry-run` | | | Show what would happen; write nothing (contradicts `--report`) |
+| `--what-if` | | | Show what would happen; write nothing (contradicts `--report`) |
 | `--report` | | `.csv` / `.json` file | Write a record of the run: one line per file, plus totals |
 | `--json` | | | With `--inspect`: print the report as JSON |
 | `--delete-source` | | | Delete the input file(s) after a successful run |
@@ -266,17 +266,17 @@ Wrote 2 icon file(s), 6 KB in all, in 41 ms.
 img2ico assets/ -o icons/ --skip-existing
 ```
 
-**Rehearsal.** `--dry-run` shows what a run *would* do and writes nothing — no icons, no output folder, no `--report`, no `--out-toml`, and `--delete-source` deletes nothing. Every input gets one line with the icon it would produce, the sizes, and what an already existing output would mean:
+**Rehearsal.** `--what-if` (called `--dry-run` in 1.5.0, which still works) shows what a run *would* do and writes nothing — no icons, no output folder, no `--report`, no `--out-toml`, and `--delete-source` deletes nothing. Every input gets one line with the icon it would produce, the sizes, and what an already existing output would mean:
 
 ```
-img2ico assets/ -r -o icons/ --keep-structure --dry-run --skip-existing
+img2ico assets/ -r -o icons/ --keep-structure --what-if --skip-existing
 ```
 
 ```
 [1/3] assets/logo.png -> icons/logo.ico (would convert, sizes [16, 32, 48, 64, 128, 256])
 [2/3] assets/ui/old.png -> icons/ui/old.ico (would skip: the output already exists)
 [3/3] assets/ui/save.png -> icons/ui/save.ico (would convert, sizes [16, 32, 48, 64, 128, 256])
-Dry run: 2 would be converted, 1 skipped, 0 would fail. Nothing was written.
+What if: 2 would be converted, 1 skipped, 0 would fail. Nothing was written.
 ```
 
 The options are checked and name clashes are looked for exactly as in a real run, so a rehearsal that passes is a good sign. It does not open the images, so it cannot know about a damaged file; a missing input file, and an existing output that would be refused (without `--force` or `--skip-existing`), are reported as `would fail`, and the exit code is then 1. A `--find` preview is not part of a rehearsal. It also works for a single file.
@@ -296,8 +296,8 @@ Each input has a line with its output, `status` (`converted`, `skipped` or `fail
 - **Warnings say which file they are about** (`Warning: logo.png: the source image is …`). For a single file the messages are unchanged.
 - **`--delete-source` and `--out-toml` act only after a fully successful batch.** If any file failed, no source is deleted — even those that were converted — and no settings snapshot is written. A skipped input is never deleted.
 - **`--find` without `--auto-apply`** prints a report for one image and is refused for a batch; add `--auto-apply` (each file then gets its own discovery), or run it per file.
-- **`--merge`, `--extract`, `--select` and `--inspect`** keep their own rules for their inputs; the batch options of this section (`--recursive`, `--include`, `--exclude`, `--keep-structure`, `--name`, `--dry-run`, `--report`) are refused there rather than quietly ignored. The same goes for the folder options given without a folder, and for `--keep-structure` without `-o`.
-- **These options are command-line only.** Which files, what they are called and what gets reported changes with every run, so none of `--recursive`, `--include`, `--exclude`, `--keep-structure`, `--name`, `--dry-run`, `--report` and `--json` can be set in a settings file.
+- **`--merge`, `--extract`, `--select` and `--inspect`** keep their own rules for their inputs; the batch options of this section (`--recursive`, `--include`, `--exclude`, `--keep-structure`, `--name`, `--what-if`, `--report`) are refused there rather than quietly ignored. The same goes for the folder options given without a folder, and for `--keep-structure` without `-o`.
+- **These options are command-line only.** Which files, what they are called and what gets reported changes with every run, so none of `--recursive`, `--include`, `--exclude`, `--keep-structure`, `--name`, `--what-if`, `--report` and `--json` can be set in a settings file.
 
 ## Removing or replacing a background color
 
@@ -494,7 +494,7 @@ img2ico --merge small.ico large.ico -o combined.ico --delete-source
 
 ## Settings files
 
-With more than twenty flags, typing the same combination each time gets old. A TOML settings file sets defaults for the "tuning" options: sizes or preset, the chroma-key/`--find` options, padding, grayscale, GIF frame, `--output-format`, `--force`, `--skip-existing`, `--keep-going`, `--delete-source`, `--silent`, and `--select`'s `--combine`/`--index`. **Not** covered: the input file(s), `-o`, the mode (`--merge`/`--inspect`/`--extract`/`--select`), and the options that choose files, names and reporting for a batch (`--recursive`, `--include`, `--exclude`, `--keep-structure`, `--name`, `--dry-run`, `--report`, `--json`) — those change with every run. An explicit command-line flag always wins over a file; a file only fills in what you didn't type. Where the files sit, and how they layer, is described under [Which settings files apply](#which-settings-files-apply).
+With more than twenty flags, typing the same combination each time gets old. A TOML settings file sets defaults for the "tuning" options: sizes or preset, the chroma-key/`--find` options, padding, grayscale, GIF frame, `--output-format`, `--force`, `--skip-existing`, `--keep-going`, `--delete-source`, `--silent`, and `--select`'s `--combine`/`--index`. **Not** covered: the input file(s), `-o`, the mode (`--merge`/`--inspect`/`--extract`/`--select`), and the options that choose files, names and reporting for a batch (`--recursive`, `--include`, `--exclude`, `--keep-structure`, `--name`, `--what-if`, `--report`, `--json`) — those change with every run. An explicit command-line flag always wins over a file; a file only fills in what you didn't type. Where the files sit, and how they layer, is described under [Which settings files apply](#which-settings-files-apply).
 
 ### TOML in brief
 
@@ -593,7 +593,7 @@ The [`examples/`](examples/) folder has ready-to-use settings files for a Window
 
 `--silent` can also be set in a settings file, with one nuance: it only takes effect once that file has been loaded, so it can never hide a warning about the file itself.
 
-**Machine-readable output.** `--report report.json` (or `.csv`) records a conversion run file by file, and `--inspect --json` prints an inspection as JSON; see [Several files at once](#converting-several-files-at-once) and [Inspect](#inspect). Both leave standard output free of anything else you did not ask for. `--dry-run` lets a script check what a run would do before doing it.
+**Machine-readable output.** `--report report.json` (or `.csv`) records a conversion run file by file, and `--inspect --json` prints an inspection as JSON; see [Several files at once](#converting-several-files-at-once) and [Inspect](#inspect). Both leave standard output free of anything else you did not ask for. `--what-if` lets a script check what a run would do before doing it.
 
 **Diagnostics.** `--verbose` (`-v`) prints details to standard error while it works: the settings actually in effect after all layers are combined (in the same form `--out-toml` writes), the source image, the output, background removal, each generated size with its byte count, and how long the steps took. Standard output is unchanged, so scripts keep working. It is command-line only and cannot be combined with `--silent`.
 
@@ -644,7 +644,7 @@ img2ico assets/ -r -o icons/ --keep-structure --exclude "backup/**" --keep-going
 
 **Look before you leap — what would a run do?**
 ```
-img2ico assets/ -r -o icons/ --keep-structure --dry-run
+img2ico assets/ -r -o icons/ --keep-structure --what-if
 ```
 
 **Combine two teams' icons into one shared file:**

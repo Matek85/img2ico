@@ -211,7 +211,7 @@ fn reject_conversion_options_in_other_modes(args: &Args) -> Result<(), String> {
         (!args.exclude.is_empty(), "--exclude"),
         (args.keep_structure, "--keep-structure"),
         (args.name.is_some(), "--name"),
-        (args.dry_run, "--dry-run"),
+        (args.what_if, "--what-if"),
         (args.report.is_some(), "--report"),
     ]
     .into_iter()

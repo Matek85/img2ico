@@ -448,8 +448,8 @@ pub struct Args {
     /// writing anything, not even --out-toml. Also checks the options and
     /// looks for output name collisions, exactly like a real run. Cannot be
     /// combined with --report.
-    #[arg(long = "dry-run", conflicts_with = "report")]
-    pub dry_run: bool,
+    #[arg(long = "what-if", alias = "dry-run", conflicts_with = "report")]
+    pub what_if: bool,
 
     /// Writes a report about the run to this file: one line per input with
     /// the output, status (converted, skipped, failed), file size, icon
@@ -476,7 +476,7 @@ pub struct Args {
     /// (--merge/--inspect/--extract/--select), the input file(s), -o/--output,
     /// the file selection and naming of a batch (--recursive, --include,
     /// --exclude, --keep-structure, --name) or the run's own output
-    /// (--dry-run, --report, --json) - those stay command-line-only, since
+    /// (--what-if, --report, --json) - those stay command-line-only, since
     /// defaulting those rarely makes sense.
     ///
     /// If this is omitted entirely, img2ico looks for "img2ico.toml" in
@@ -632,16 +632,21 @@ mod tests {
         assert_eq!(args.name.as_deref(), Some("{stem}-app"));
 
         let plain = parse(&["a.png"]).unwrap();
-        assert!(!plain.recursive && !plain.keep_structure && !plain.dry_run && !plain.json);
+        assert!(!plain.recursive && !plain.keep_structure && !plain.what_if && !plain.json);
         assert!(plain.include.is_empty() && plain.exclude.is_empty());
         assert!(plain.name.is_none() && plain.report.is_none());
     }
 
     #[test]
-    fn dry_run_and_report_exclude_each_other() {
-        assert!(parse(&["a.png", "--dry-run"]).is_ok());
+    fn what_if_and_report_exclude_each_other() {
+        assert!(parse(&["a.png", "--what-if"]).is_ok());
         assert!(parse(&["a.png", "--report", "r.csv"]).is_ok());
-        assert!(parse(&["a.png", "--dry-run", "--report", "r.csv"]).is_err());
+        assert!(parse(&["a.png", "--what-if", "--report", "r.csv"]).is_err());
+    }
+
+    #[test]
+    fn the_old_name_dry_run_still_works() {
+        assert!(parse(&["a.png", "--dry-run"]).unwrap().what_if);
     }
 
     #[test]

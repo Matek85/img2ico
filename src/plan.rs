@@ -1,7 +1,7 @@
 // Planning a conversion before any of it happens: which output file each
 // input produces, whether two of them would clash, and whether the options
 // given make sense for the inputs given. Nothing here writes anything -
-// which is also what lets --dry-run reuse it as it is.
+// which is also what lets --what-if reuse it as it is.
 
 use crate::cli::Args;
 use crate::select::{NamePattern, Source};
