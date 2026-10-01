@@ -1,15 +1,53 @@
 // Reading a source image of any supported format into memory: PNG, JPEG,
-// BMP, GIF, WebP, TIFF and TGA through the `image` crate, and macOS .icns
-// files through the `icns` crate (see icns.rs). Used by the conversion and by
+// BMP, GIF, WebP, TIFF and TGA through the `image` crate, macOS .icns
+// files through the `icns` crate (see icns.rs) and SVG through resvg (see
+// vector.rs). Used by the conversion and by
 // --inspect, so both agree on what counts as an image.
 
 use crate::icns::{decode_icns, is_icns};
+use crate::vector::{VectorImage, is_svg};
 use image::DynamicImage;
 use std::io::Read;
 use std::path::Path;
 
 /// What img2ico can read as a source image, as shown in messages.
-pub const SUPPORTED_FORMATS: &str = "PNG, JPG, BMP, GIF, WebP, TIFF, TGA, ICNS";
+pub const SUPPORTED_FORMATS: &str = "PNG, JPG, BMP, GIF, WebP, TIFF, TGA, ICNS, SVG";
+
+/// A source: a picture of pixels, or a drawing that can be rendered at any
+/// size.
+pub enum Artwork {
+    Raster(DynamicImage),
+    Vector(VectorImage),
+}
+
+/// Opens the file at `path` as a source of either kind. SVG is recognized
+/// from the content, like the raster formats.
+pub fn open_source(path: &Path) -> Result<Artwork, String> {
+    let mut file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    let mut header = [0u8; 4096];
+    let mut filled = 0;
+    while filled < header.len() {
+        match file.read(&mut header[filled..]) {
+            Ok(0) => break,
+            Ok(n) => filled += n,
+            Err(e) => return Err(e.to_string()),
+        }
+    }
+    drop(file);
+    if is_svg(&header[..filled]) {
+        let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+        return VectorImage::parse(&bytes, &path.display().to_string()).map(Artwork::Vector);
+    }
+    open_image(path).map(Artwork::Raster)
+}
+
+/// The same for a source already in memory (read from standard input).
+pub fn decode_source_bytes(bytes: &[u8]) -> Result<Artwork, String> {
+    if is_svg(bytes) {
+        return VectorImage::parse(bytes, "standard input").map(Artwork::Vector);
+    }
+    decode_image_bytes(bytes).map(Artwork::Raster)
+}
 
 /// Opens the image file at `path`. The format is recognized from the file's
 /// CONTENT where the format has a recognizable header; only for a format
@@ -141,7 +179,10 @@ mod tests {
     #[test]
     fn an_icns_file_opens_as_its_largest_image() {
         let dir = tempfile::tempdir().unwrap();
-        let bytes = crate::icns::encode_icns(&sample(), 0, false).unwrap();
+        let bytes = crate::icns::encode_icns(&|size| {
+            crate::resize::make_square_icon(&sample(), size, 0, false)
+        })
+        .unwrap();
         let path = dir.path().join("a.icns");
         std::fs::write(&path, &bytes).unwrap();
         let image = open_image(&path).unwrap();

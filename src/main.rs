@@ -52,6 +52,7 @@ mod select;
 mod settings;
 mod source;
 mod util;
+mod vector;
 
 use clap::Parser;
 use cli::Args;

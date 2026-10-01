@@ -2380,6 +2380,245 @@ fn a_broken_file_of_a_new_format_is_a_clear_error() {
 }
 
 // =============================================================================
+// SVG as a source
+// =============================================================================
+
+/// 100x50 units: a red left half and a green right half.
+const TWO_SQUARES_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="50"><rect width="50" height="50" fill="#ff0000"/><rect x="50" width="50" height="50" fill="#00ff00"/></svg>"##;
+
+fn write_svg(dir: &Path, name: &str) -> PathBuf {
+    let path = dir.join(name);
+    std::fs::write(&path, TWO_SQUARES_SVG).unwrap();
+    path
+}
+
+#[test]
+fn an_svg_is_rendered_at_every_size() {
+    let dir = tempfile::tempdir().unwrap();
+    write_svg(dir.path(), "logo.svg");
+    let out = convert(
+        dir.path(),
+        &["logo.svg", "-o", "out.ico", "--sizes", "16,64,256"],
+    );
+    assert_success(&out);
+    let ico = dir.path().join("out.ico");
+    assert_eq!(ico_sizes(&ico), vec![16, 64, 256]);
+    for size in [16, 64, 256] {
+        // The 2:1 drawing is fitted into the square, centered: red left,
+        // green right, transparent above and below.
+        assert_eq!(icon_pixel(&ico, size, size / 8, size / 2), RED, "{size}");
+        assert_eq!(
+            icon_pixel(&ico, size, size - 1 - size / 8, size / 2),
+            GREEN,
+            "{size}"
+        );
+        assert_eq!(icon_pixel(&ico, size, size / 2, 0)[3], 0, "{size}");
+    }
+}
+
+#[test]
+fn an_svg_never_triggers_the_upscaling_warning() {
+    let dir = tempfile::tempdir().unwrap();
+    write_svg(dir.path(), "logo.svg");
+    let out = convert(dir.path(), &["logo.svg", "--sizes", "256"]);
+    assert_success(&out);
+    assert!(!stderr(&out).contains("upscal"), "{}", describe(&out));
+}
+
+#[test]
+fn an_svg_makes_an_icns_and_works_from_standard_input() {
+    let dir = tempfile::tempdir().unwrap();
+    write_svg(dir.path(), "logo.svg");
+    assert_success(&img2ico(
+        dir.path(),
+        &["logo.svg", "--output-format", "icns", "-o", "logo.icns"],
+    ));
+    assert!(dir.path().join("logo.icns").is_file());
+
+    let out = img2ico_with_stdin(
+        dir.path(),
+        &["-", "-o", "-", "--output-format", "ico", "--sizes", "32"],
+        TWO_SQUARES_SVG.as_bytes(),
+    );
+    assert_success(&out);
+    ico_in(&out.stdout);
+}
+
+#[test]
+fn a_compressed_svgz_works_and_the_format_is_found_by_content() {
+    use std::io::Write;
+    let dir = tempfile::tempdir().unwrap();
+    let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+    encoder.write_all(TWO_SQUARES_SVG.as_bytes()).unwrap();
+    std::fs::write(dir.path().join("logo.svgz"), encoder.finish().unwrap()).unwrap();
+    // No extension at all: found by content.
+    std::fs::write(dir.path().join("drawing"), TWO_SQUARES_SVG).unwrap();
+    for name in ["logo.svgz", "drawing"] {
+        let out = convert(
+            dir.path(),
+            &[name, "-o", "out.ico", "--sizes", "32", "--force"],
+        );
+        assert_success(&out);
+        assert_eq!(
+            icon_pixel(&dir.path().join("out.ico"), 32, 4, 16),
+            RED,
+            "{name}"
+        );
+    }
+}
+
+#[test]
+fn a_folder_takes_svg_files_along_with_the_rest() {
+    let dir = tempfile::tempdir().unwrap();
+    let assets = dir.path().join("assets");
+    std::fs::create_dir(&assets).unwrap();
+    write_svg(&assets, "a.svg");
+    write_solid(&assets, "b.png", 64, RED);
+    let out = convert(dir.path(), &["assets", "-o", "out", "--sizes", "16"]);
+    assert_success(&out);
+    assert_eq!(names_in(&dir.path().join("out")), vec!["a.ico", "b.ico"]);
+}
+
+/// A 64x64 drawing with a white background and a red square in the middle.
+const WHITE_BACKGROUND_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="#ffffff"/><rect x="16" y="16" width="32" height="32" fill="#ff0000"/></svg>"##;
+
+#[test]
+fn a_background_color_is_removed_from_every_rendered_size_of_an_svg() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("logo.svg"), WHITE_BACKGROUND_SVG).unwrap();
+    for color in ["ffffff", "auto"] {
+        let out = convert(
+            dir.path(),
+            &[
+                "logo.svg",
+                "-c",
+                color,
+                "-o",
+                "out.ico",
+                "--sizes",
+                "16,64,256",
+                "--force",
+            ],
+        );
+        assert_success(&out);
+        let ico = dir.path().join("out.ico");
+        for size in [16, 64, 256] {
+            assert_eq!(
+                icon_pixel(&ico, size, 1, 1)[3],
+                0,
+                "{color} {size}: corner is clear"
+            );
+            assert_eq!(
+                icon_pixel(&ico, size, size / 2, size / 2),
+                RED,
+                "{color} {size}"
+            );
+        }
+        if color == "auto" {
+            assert!(
+                stdout(&out).contains("Detected background color #FFFFFF"),
+                "{}",
+                describe(&out)
+            );
+        }
+    }
+}
+
+#[test]
+fn the_background_of_an_svg_can_be_replaced_and_is_checked_once() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("logo.svg"), WHITE_BACKGROUND_SVG).unwrap();
+    let out = convert(
+        dir.path(),
+        &[
+            "logo.svg",
+            "-c",
+            "ffffff",
+            "--replace-color",
+            "0000ff",
+            "--sizes",
+            "16,32,64",
+        ],
+    );
+    assert_success(&out);
+    assert_eq!(
+        icon_pixel(&dir.path().join("logo.ico"), 32, 1, 1),
+        [0, 0, 255, 255]
+    );
+
+    // A color that is not there: one warning, not one per size.
+    let out = convert(
+        dir.path(),
+        &["logo.svg", "-c", "00ff00", "--sizes", "16,32,64", "--force"],
+    );
+    assert_success(&out);
+    assert_eq!(
+        stderr(&out).matches("nothing was removed").count(),
+        1,
+        "{}",
+        describe(&out)
+    );
+}
+
+#[test]
+fn pixel_position_options_are_refused_for_an_svg() {
+    let dir = tempfile::tempdir().unwrap();
+    write_svg(dir.path(), "logo.svg");
+    for args in [
+        &["--find", "auto"][..],
+        &["--chroma-key", "ffffff", "--seed", "0,0"],
+    ] {
+        let mut all = vec!["logo.svg", "--sizes", "16"];
+        all.extend_from_slice(args);
+        let out = convert(dir.path(), &all);
+        assert_failure_containing(&out, "does not apply to an SVG");
+    }
+    assert!(!dir.path().join("logo.ico").exists());
+}
+
+#[test]
+fn grayscale_applies_to_every_rendered_size_of_an_svg() {
+    let dir = tempfile::tempdir().unwrap();
+    write_svg(dir.path(), "logo.svg");
+    assert_success(&convert(
+        dir.path(),
+        &["logo.svg", "--grayscale", "-o", "g.ico", "--sizes", "32"],
+    ));
+    let pixel = icon_pixel(&dir.path().join("g.ico"), 32, 4, 16);
+    assert_eq!(pixel[0], pixel[1]);
+    assert_eq!(pixel[1], pixel[2]);
+    assert_eq!(pixel[3], 255);
+}
+
+#[test]
+fn inspect_reports_an_svg_as_a_vector_image() {
+    let dir = tempfile::tempdir().unwrap();
+    write_svg(dir.path(), "logo.svg");
+    let out = img2ico(dir.path(), &["--inspect", "logo.svg"]);
+    assert_success(&out);
+    assert!(stdout(&out).contains("vector image"), "{}", describe(&out));
+
+    let json = img2ico(dir.path(), &["--inspect", "logo.svg", "--json"]);
+    assert_success(&json);
+    let report: serde_json::Value = serde_json::from_str(&stdout(&json)).unwrap();
+    assert_eq!(report[0]["kind"], "vector");
+    assert_eq!(report[0]["width"], 100.0);
+}
+
+#[test]
+fn a_broken_svg_is_a_clear_error() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("bad.svg"),
+        "<svg xmlns=\"http://www.w3.org/2000/svg\"><rect",
+    )
+    .unwrap();
+    let out = convert(dir.path(), &["bad.svg"]);
+    assert_failure_containing(&out, "Could not read");
+    assert!(!dir.path().join("bad.ico").exists());
+}
+
+// =============================================================================
 // Shell completions
 // =============================================================================
 

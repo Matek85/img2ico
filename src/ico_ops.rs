@@ -131,9 +131,12 @@ pub fn inspect_icons(paths: &[PathBuf]) -> Result<(), String> {
                 // matched on directly) so it is dropped at the same point
                 // in every Rust edition - see the "tail-expr-drop-order"
                 // change in the 2024 edition guide.
-                let opened = crate::source::open_image(path);
+                let opened = crate::source::open_source(path);
                 match opened {
-                    Ok(img) => inspect_source_image(path, &img),
+                    Ok(crate::source::Artwork::Raster(img)) => inspect_source_image(path, &img),
+                    Ok(crate::source::Artwork::Vector(drawing)) => {
+                        inspect_vector_image(path, &drawing)
+                    }
                     Err(image_error) => {
                         return Err(neither_ico_nor_image(path, &ico_error, &image_error));
                     }
@@ -183,9 +186,12 @@ pub fn inspect_icons_json(paths: &[PathBuf]) -> Result<(), String> {
         let report = match read_icon_dir(path) {
             Ok(dir) => ico_report_json(path, &dir),
             Err(ico_error) => {
-                let opened = crate::source::open_image(path);
+                let opened = crate::source::open_source(path);
                 match opened {
-                    Ok(img) => image_report_json(path, &img),
+                    Ok(crate::source::Artwork::Raster(img)) => image_report_json(path, &img),
+                    Ok(crate::source::Artwork::Vector(drawing)) => {
+                        vector_report_json(path, &drawing)
+                    }
                     Err(image_error) => {
                         return Err(neither_ico_nor_image(path, &ico_error, &image_error));
                     }
@@ -349,6 +355,25 @@ fn inspect_source_image(path: &Path, img: &image::DynamicImage) {
             "  tip: for consistently sharp icons at every common size, a source of at least 256x256 (1024x1024 if you also need .icns) is recommended."
         );
     }
+}
+
+/// --inspect for an SVG: a drawing has no resolution of its own, so there is
+/// no "natively covered" or "upscaled" - every size is drawn sharp.
+fn inspect_vector_image(path: &Path, drawing: &crate::vector::VectorImage) {
+    let (w, h) = drawing.size();
+    println!("{} (vector image, SVG, {w}x{h} units):", path.display());
+    println!("  rendered anew at every icon size - all sizes come out sharp, none is upscaled");
+}
+
+/// The JSON form of `inspect_vector_image`.
+fn vector_report_json(path: &Path, drawing: &crate::vector::VectorImage) -> serde_json::Value {
+    let (w, h) = drawing.size();
+    serde_json::json!({
+        "path": path.display().to_string(),
+        "kind": "vector",
+        "width": w,
+        "height": h,
+    })
 }
 
 /// The file name for the `width`x`height` icon of `stem` -

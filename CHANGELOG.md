@@ -12,6 +12,16 @@ when cutting a release.
 
 ### Added
 
+- SVG as a source (`.svg`, compressed `.svgz`, also from standard input): the
+  drawing is rendered anew at every icon size instead of being scaled down
+  from one picture, which gives the sharpest small icons. Works for `.ico` and
+  `.icns` output, in folders and batches, with `--padding` and `--grayscale`;
+  `--inspect` reports it as a vector image. A background color can be removed
+  or replaced (`--chroma-key`, `--replace-color`, also `auto`) - applied to
+  every rendered size; `--seed` and `--find` name pixel positions and are
+  refused for an SVG with a message. Text in an SVG is drawn with the fonts
+  installed on the computer, so it can look different elsewhere; links to
+  other files or the web are never followed.
 - More source formats: WebP, TIFF (`.tif`, `.tiff`), TGA and macOS `.icns`
   files can be converted like PNG, JPG, BMP and GIF - from a file, from a
   folder (which now takes these too) and, except for TGA, from standard
@@ -20,8 +30,9 @@ when cutting a release.
 
 ### Changed
 
-- The release binary grows by about 0.9 MB (2.81 MB to 3.70 MB on Windows)
-  because of the new image decoders (WebP, TIFF, TGA) and the `.icns` reader.
+- The release binary grows by about 2.9 MB (2.81 MB to 5.7 MB on Windows):
+  about 0.9 MB for the new image decoders (WebP, TIFF, TGA) and the `.icns`
+  reader, about 2 MB for the SVG renderer.
 
 ### Fixed
 
