@@ -52,7 +52,7 @@ serde_json = "1"
 # Reading macOS .icns files as a source image (the largest icon in them),
 # including the old RLE-compressed formats. Writing .icns is done by hand in
 # icns.rs; this crate is only for reading.
-icns = "0.3"
+icns = "0.5"
 resvg = { version = "0.48.1", default-features = false, features = ["text", "system-fonts", "svgz", "raster-images"] }
 
 [dev-dependencies]
