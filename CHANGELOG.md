@@ -57,9 +57,9 @@ when cutting a release.
 - Several input files without `--merge` are no longer an error: they are
   now converted as a batch (see above). `--merge`, `--extract` and
   `--select` keep their own rules for their inputs.
-- The release binary grows by about 120 KB (1.57 MB to 1.69 MB on
-  Windows) because of the completion generator and the additional help
-  text.
+- The release binary grows by about 190 KB (1.57 MB to 1.76 MB on
+  Windows) because of the completion generator, the batch mode and the
+  additional help text.
 
 ### Fixed
 
