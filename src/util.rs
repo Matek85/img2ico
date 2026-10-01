@@ -204,8 +204,27 @@ pub fn delete_source_files(paths: &[PathBuf], output_path: Option<&Path>, silent
     }
 }
 
+/// The SHA-256 of `bytes` as 64 lowercase hex digits.
+pub fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(bytes);
+    digest.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn sha256_matches_the_known_test_vectors() {
+        assert_eq!(
+            super::sha256_hex(b""),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+        assert_eq!(
+            super::sha256_hex(b"abc"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+    }
+
     use super::*;
     use proptest::prelude::*;
 

@@ -61,6 +61,8 @@ pub struct ResolvedSettings<'a> {
     /// equivalent and isn't part of the --out-toml snapshot: it only
     /// controls how much this particular run says about itself.
     pub verbose: bool,
+    /// --checksum: command-line only, like --verbose.
+    pub checksum: bool,
 }
 
 impl<'a> ResolvedSettings<'a> {
@@ -131,6 +133,7 @@ impl<'a> ResolvedSettings<'a> {
             index: args.index.as_deref().or(settings.index.as_deref()),
             sizes: args.sizes.as_deref().or(settings.sizes.as_deref()),
             verbose: args.verbose,
+            checksum: args.checksum,
         }
     }
 

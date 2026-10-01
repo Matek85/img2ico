@@ -132,6 +132,7 @@ Usage: img2ico [OPTIONS] <INPUT>...
 | `--name` | | pattern | Name the icons by a pattern with `{stem}`, `{ext}`, `{format}` |
 | `--what-if` | | | Show what would happen; write nothing (contradicts `--report`) |
 | `--report` | | `.csv` / `.json` file | Write a record of the run: one line per file, plus totals |
+| `--checksum` | | | Print the SHA-256 of every icon written, in `sha256sum` format |
 | `--json` | | | With `--inspect` or `--validate`: print the report as JSON |
 | `--delete-source` | | | Delete the input file(s) after a successful run |
 | `--config` | | path | Load default settings from a TOML file |
@@ -424,7 +425,7 @@ img2ico assets/ -r -o icons/ --keep-going --report report.csv
 img2ico assets/ -r -o icons/ --keep-going --report report.json
 ```
 
-Each input has a line with its output, `status` (`converted`, `skipped` or `failed`), `size_bytes` of the icon, the `sizes` inside it, the number of `warnings` it raised, `duration_ms` and, for a failure or a skip, a `message`. The CSV has a header line, with the sizes separated by spaces; the JSON is `{"summary": {…totals…}, "files": [ … ]}`. The report is written even when files failed — that is when it is most useful — and an existing report file is replaced. With the default stop at the first failure the report holds the files up to and including the failed one. Warnings are counted in the report even with `--silent`.
+Each input has a line with its output, `status` (`converted`, `skipped` or `failed`), `size_bytes` of the icon, the `sizes` inside it, the number of `warnings` it raised, `duration_ms`, for a failure or a skip a `message`, and — with `--checksum` — the `sha256` of the icon file. The CSV has a header line, with the sizes separated by spaces; the JSON is `{"summary": {…totals…}, "files": [ … ]}`. The report is written even when files failed — that is when it is most useful — and an existing report file is replaced. With the default stop at the first failure the report holds the files up to and including the failed one. Warnings are counted in the report even with `--silent`.
 
 **Good to know**
 
@@ -835,6 +836,18 @@ img2ico assets/ -o icons/ --quiet --silent      # nothing at all, except errors
 `--quiet` is command-line only. `--silent` can also be set in a settings file, with one nuance: it only takes effect once that file has been loaded, so it can never hide a warning about the file itself.
 
 **Machine-readable output.** `--report report.json` (or `.csv`) records a conversion run file by file, and `--inspect --json` prints an inspection as JSON; see [Several files at once](#converting-several-files-at-once) and [Inspect](#inspect). Both leave standard output free of anything else you did not ask for. `--what-if` lets a script check what a run would do before doing it.
+
+**Checksums.** `--checksum` prints the SHA-256 of every icon file a run writes — one line per file, in the format of the `sha256sum` tool (the hash, two spaces, the file), so the output can be saved and checked later:
+
+```
+img2ico logo.png -o icon.ico --checksum
+9f2c…e41a  icon.ico
+
+img2ico assets/ -o icons/ --quiet --checksum > SHA256SUMS
+sha256sum -c SHA256SUMS                      # later: are the icons still the same?
+```
+
+It is the hash of exactly the bytes written. `--checksum` lines are printed even with `--quiet` (it is what you asked for), so `--quiet --checksum` leaves nothing but the hashes. With `-o -` (the icon goes to standard output) the line goes to standard error and names the file `-`. A file that was skipped (`--skip-existing`) or not written (a `--find` preview) has no checksum, and `--checksum` cannot be combined with `--what-if`, which writes nothing. With `--report` the hash is a column (`sha256`) of the report as well. The same input and settings give the same icon, and so the same checksum, every time on the same machine and program version — a quick way to confirm that two runs or two builds produce identical icons. Across platforms or processor types the scaling may differ in the last digit of a pixel, so compare checksums made on the same kind of machine; an SVG with text also depends on the fonts installed.
 
 **Diagnostics.** `--verbose` (`-v`) prints details to standard error while it works: the settings actually in effect after all layers are combined (in the same form `--out-toml` writes), the source image, the output, background removal, each generated size with its byte count, and how long the steps took. Standard output is unchanged, so scripts keep working. It is command-line only and cannot be combined with `--silent`.
 

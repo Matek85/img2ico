@@ -45,6 +45,8 @@ pub struct FileRecord {
     pub duration_ms: u64,
     /// The error, or the reason a file was skipped.
     pub message: Option<String>,
+    /// SHA-256 of the icon file (only with --checksum, converted files only).
+    pub sha256: Option<String>,
 }
 
 /// Totals over all records of a run.
@@ -136,7 +138,7 @@ fn csv_field(text: &str) -> String {
 /// The report as CSV text: a header line, then one line per file.
 pub fn to_csv(records: &[FileRecord]) -> String {
     let mut out =
-        String::from("input,output,status,size_bytes,sizes,warnings,duration_ms,message\n");
+        String::from("input,output,status,size_bytes,sizes,warnings,duration_ms,message,sha256\n");
     for record in records {
         let sizes = record
             .sizes
@@ -153,6 +155,7 @@ pub fn to_csv(records: &[FileRecord]) -> String {
             record.warnings.to_string(),
             record.duration_ms.to_string(),
             csv_field(record.message.as_deref().unwrap_or("")),
+            record.sha256.clone().unwrap_or_default(),
         ];
         out.push_str(&fields.join(","));
         out.push('\n');
@@ -202,6 +205,7 @@ mod tests {
             warnings: 0,
             duration_ms: 5,
             message: None,
+            sha256: None,
         }
     }
 
@@ -282,10 +286,10 @@ mod tests {
         let lines: Vec<&str> = csv.lines().collect();
         assert_eq!(
             lines[0],
-            "input,output,status,size_bytes,sizes,warnings,duration_ms,message"
+            "input,output,status,size_bytes,sizes,warnings,duration_ms,message,sha256"
         );
-        assert_eq!(lines[1], "a.png,a.png.ico,converted,1000,16 32,1,5,");
-        assert_eq!(lines[2], "b.png,b.png.ico,skipped,,,0,5,");
+        assert_eq!(lines[1], "a.png,a.png.ico,converted,1000,16 32,1,5,,");
+        assert_eq!(lines[2], "b.png,b.png.ico,skipped,,,0,5,,");
         assert_eq!(lines.len(), 3);
     }
 

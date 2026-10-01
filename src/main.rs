@@ -249,6 +249,7 @@ fn reject_conversion_options_in_other_modes(args: &Args) -> Result<(), String> {
         (args.name.is_some(), "--name"),
         (args.what_if, "--what-if"),
         (args.report.is_some(), "--report"),
+        (args.checksum, "--checksum"),
     ]
     .into_iter()
     .filter_map(|(on, name)| on.then_some(name))

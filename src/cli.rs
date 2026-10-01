@@ -601,6 +601,20 @@ pub struct Args {
     #[arg(long = "report", value_name = "FILE")]
     pub report: Option<PathBuf>,
 
+    /// Prints the SHA-256 checksum of every icon file written by this run,
+    /// one line per file in the format of the `sha256sum` tool - the hash,
+    /// two spaces, the file - so the output can be saved and checked later
+    /// with `sha256sum -c`. It is the hash of exactly the bytes written
+    /// (also with `-o -`, where the line goes to standard error and names
+    /// the file `-`). The lines are printed even with --quiet, so
+    /// `img2ico icons/ -o out --quiet --checksum > SHA256SUMS` leaves
+    /// nothing but the checksums. A file that was skipped (--skip-existing)
+    /// or not written (--find preview) has none. With --report the checksum
+    /// is a column of the report too. Useful to show that two runs - on
+    /// different machines, say - produce identical icons. Command-line only.
+    #[arg(long = "checksum", conflicts_with = "what_if")]
+    pub checksum: bool,
+
     /// With --inspect or --validate: prints the report as JSON (one array
     /// with an entry per file) instead of text, for scripts. Nothing else is printed to
     /// standard output.

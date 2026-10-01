@@ -30,7 +30,8 @@ use crate::settings::{
 };
 use crate::source::{Artwork, decode_source_bytes, open_source};
 use crate::util::{
-    check_overwrite, enter_file_context, file_prefix, parse_seed, same_file, warn, warnings_so_far,
+    check_overwrite, enter_file_context, file_prefix, parse_seed, same_file, sha256_hex, warn,
+    warnings_so_far,
 };
 use crate::vector::VectorImage;
 use image::RgbaImage;
@@ -47,8 +48,13 @@ const MAX_ICO_SIZE: u32 = 256;
 
 /// What became of one input.
 enum Outcome {
-    /// The icon was written: its size in bytes and the icon sizes inside.
-    Converted { bytes: u64, sizes: Vec<u32> },
+    /// The icon was written: its size in bytes, the icon sizes inside and,
+    /// with --checksum, the SHA-256 of the bytes written.
+    Converted {
+        bytes: u64,
+        sizes: Vec<u32>,
+        sha256: Option<String>,
+    },
     /// The output already existed and --skip-existing said to leave it.
     Skipped,
     /// A --find preview: the report was printed, nothing was written.
@@ -261,11 +267,14 @@ fn run_single(
     let (result, record) = run_job(&job, resolved, replacement);
 
     let ran = match result {
-        Ok(Outcome::Converted { sizes, .. }) => {
+        Ok(Outcome::Converted { sizes, sha256, .. }) => {
             say!(
                 "{}",
                 done_line(&job.output, &sizes, wants_icns(resolved.output_format))
             );
+            if let Some(hash) = &sha256 {
+                print_checksum(hash, &job.output);
+            }
             finish_run(
                 args,
                 resolved,
@@ -323,12 +332,19 @@ fn run_batch(
         let count = progress_prefix(index + 1, total);
 
         match result {
-            Ok(Outcome::Converted { bytes, sizes }) => {
+            Ok(Outcome::Converted {
+                bytes,
+                sizes,
+                sha256,
+            }) => {
                 if !resolved.silent {
                     say!(
                         "{count}{}",
                         converted_line(job, bytes, &sizes, total, use_icns)
                     );
+                }
+                if let Some(hash) = &sha256 {
+                    print_checksum(hash, &job.output);
                 }
                 converted.push(job);
             }
@@ -451,6 +467,17 @@ fn progress_prefix(position: usize, total: usize) -> String {
 }
 
 /// The line after a single file was converted.
+/// Prints one `--checksum` line in the format of the `sha256sum` tool. It is
+/// printed even with --quiet - it is what was asked for - and to standard
+/// error when standard output carries the icon itself (`-o -`).
+fn print_checksum(hash: &str, output: &Path) {
+    if is_stdio(output) {
+        eprintln!("{hash}  -");
+    } else {
+        println!("{hash}  {}", output.display());
+    }
+}
+
 fn done_line(output: &Path, sizes: &[u32], use_icns: bool) -> String {
     if is_stdio(output) {
         format!("Done: icon written to standard output, with sizes {sizes:?}.")
@@ -535,12 +562,18 @@ fn run_job(
         warnings: warnings_so_far() - warnings_before,
         duration_ms: started.elapsed().as_millis() as u64,
         message: None,
+        sha256: None,
     };
     match &result {
-        Ok(Outcome::Converted { bytes, sizes }) => {
+        Ok(Outcome::Converted {
+            bytes,
+            sizes,
+            sha256,
+        }) => {
             record.status = Status::Converted;
             record.size_bytes = Some(*bytes);
             record.sizes = sizes.clone();
+            record.sha256 = sha256.clone();
         }
         Ok(Outcome::Skipped) => {
             record.status = Status::Skipped;
@@ -729,6 +762,7 @@ fn convert_one(
     };
     write_output(output_path, &icon_bytes, use_icns)?;
     let bytes = icon_bytes.len() as u64;
+    let sha256 = resolved.checksum.then(|| sha256_hex(&icon_bytes));
 
     resolved.note(format_args!(
         "{}finished in {:.1?}",
@@ -738,6 +772,7 @@ fn convert_one(
     Ok(Outcome::Converted {
         bytes,
         sizes: written_sizes,
+        sha256,
     })
 }
 
@@ -938,6 +973,7 @@ fn convert_vector(
     Ok(Outcome::Converted {
         bytes: icon_bytes.len() as u64,
         sizes: written_sizes,
+        sha256: resolved.checksum.then(|| sha256_hex(&icon_bytes)),
     })
 }
 

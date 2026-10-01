@@ -3269,6 +3269,276 @@ fn inspect_points_to_validate_for_a_damaged_icon() {
 }
 
 // =============================================================================
+// --checksum
+// =============================================================================
+
+/// The SHA-256 of a file as lowercase hex, computed independently of img2ico.
+fn sha256_of(path: &Path) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(std::fs::read(path).unwrap())
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+#[test]
+fn checksum_prints_the_sha256_of_the_written_file_in_sha256sum_format() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "red.png", 32, RED);
+    let out = convert(dir.path(), &["red.png", "--checksum", "--sizes", "16,32"]);
+    assert_success(&out);
+    let expected = format!("{}  red.ico", sha256_of(&dir.path().join("red.ico")));
+    assert!(
+        stdout(&out).lines().any(|line| line == expected),
+        "expected the line {expected:?}\n{}",
+        describe(&out)
+    );
+}
+
+#[test]
+fn without_checksum_nothing_is_hashed() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "red.png", 32, RED);
+    let out = convert(dir.path(), &["red.png", "--sizes", "16"]);
+    assert_success(&out);
+    let hex_line = stdout(&out)
+        .lines()
+        .any(|line| line.split("  ").next().is_some_and(|h| h.len() == 64));
+    assert!(!hex_line, "{}", describe(&out));
+}
+
+#[test]
+fn quiet_leaves_only_the_checksum_line() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "red.png", 32, RED);
+    let out = convert(
+        dir.path(),
+        &["red.png", "--checksum", "--quiet", "--sizes", "16"],
+    );
+    assert_success(&out);
+    let text = stdout(&out);
+    let lines: Vec<&str> = text.lines().collect();
+    assert_eq!(lines.len(), 1, "{}", describe(&out));
+    assert_eq!(
+        lines[0],
+        format!("{}  red.ico", sha256_of(&dir.path().join("red.ico")))
+    );
+}
+
+#[test]
+fn a_batch_prints_one_checksum_line_per_file_that_sha256sum_can_check() {
+    let dir = tempfile::tempdir().unwrap();
+    let assets = dir.path().join("assets");
+    std::fs::create_dir(&assets).unwrap();
+    write_solid(&assets, "a.png", 32, RED);
+    write_solid(&assets, "b.png", 32, GREEN);
+    let out = convert(
+        dir.path(),
+        &[
+            "assets",
+            "-o",
+            "out",
+            "--checksum",
+            "--quiet",
+            "--sizes",
+            "16",
+        ],
+    );
+    assert_success(&out);
+    let text = stdout(&out);
+    let lines: Vec<&str> = text.lines().collect();
+    assert_eq!(lines.len(), 2, "{}", describe(&out));
+    for (line, name) in lines.iter().zip(["a.ico", "b.ico"]) {
+        let (hash, path) = line.split_once("  ").unwrap();
+        assert_eq!(
+            hash,
+            sha256_of(&dir.path().join("out").join(name)),
+            "{line}"
+        );
+        assert!(path.ends_with(name), "{line}");
+    }
+    // Two different inputs, two different hashes.
+    assert_ne!(lines[0][..64], lines[1][..64]);
+}
+
+#[test]
+fn the_same_input_gives_the_same_checksum_every_time() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "red.png", 64, RED);
+    let hash = |name: &str| {
+        let out = convert(
+            dir.path(),
+            &[
+                "red.png",
+                "-o",
+                name,
+                "--checksum",
+                "--quiet",
+                "--sizes",
+                "16,48",
+            ],
+        );
+        assert_success(&out);
+        stdout(&out).split("  ").next().unwrap().to_string()
+    };
+    assert_eq!(hash("one.ico"), hash("two.ico"));
+}
+
+#[test]
+fn checksum_works_for_icns_and_svg_output() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "red.png", 64, RED);
+    std::fs::write(dir.path().join("logo.svg"), TWO_SQUARES_SVG).unwrap();
+    let out = img2ico(
+        dir.path(),
+        &[
+            "red.png",
+            "--output-format",
+            "icns",
+            "-o",
+            "a.icns",
+            "--checksum",
+            "--quiet",
+        ],
+    );
+    assert_success(&out);
+    assert!(stdout(&out).starts_with(&sha256_of(&dir.path().join("a.icns"))));
+    let out = convert(
+        dir.path(),
+        &[
+            "logo.svg",
+            "-o",
+            "s.ico",
+            "--checksum",
+            "--quiet",
+            "--sizes",
+            "32",
+        ],
+    );
+    assert_success(&out);
+    assert!(stdout(&out).starts_with(&sha256_of(&dir.path().join("s.ico"))));
+}
+
+#[test]
+fn with_output_to_stdout_the_checksum_goes_to_stderr_and_matches_the_stream() {
+    let dir = tempfile::tempdir().unwrap();
+    let bytes = std::fs::read(write_solid(dir.path(), "red.png", 32, RED)).unwrap();
+    let out = img2ico_with_stdin(
+        dir.path(),
+        &[
+            "-",
+            "-o",
+            "-",
+            "--output-format",
+            "ico",
+            "--sizes",
+            "16",
+            "--checksum",
+        ],
+        &bytes,
+    );
+    assert_success(&out);
+    use sha2::{Digest, Sha256};
+    let streamed: String = Sha256::digest(&out.stdout)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    assert!(
+        stderr(&out).contains(&format!("{streamed}  -")),
+        "{}",
+        describe(&out)
+    );
+    ico_in(&out.stdout);
+}
+
+#[test]
+fn the_report_gets_a_sha256_column_and_field() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "a.png", 32, RED);
+    write_solid(dir.path(), "b.png", 32, GREEN);
+    for ext in ["csv", "json"] {
+        let report = format!("report.{ext}");
+        assert_success(&convert(
+            dir.path(),
+            &[
+                "a.png",
+                "b.png",
+                "--checksum",
+                "--report",
+                &report,
+                "--sizes",
+                "16",
+                "--force",
+            ],
+        ));
+        let text = std::fs::read_to_string(dir.path().join(&report)).unwrap();
+        let expected = sha256_of(&dir.path().join("a.ico"));
+        if ext == "csv" {
+            assert!(text.lines().next().unwrap().ends_with(",sha256"), "{text}");
+            assert!(
+                text.lines()
+                    .nth(1)
+                    .unwrap()
+                    .ends_with(&format!(",{expected}")),
+                "{text}"
+            );
+        } else {
+            let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+            assert_eq!(value["files"][0]["sha256"], expected);
+        }
+    }
+    // Without --checksum the field is there but empty.
+    assert_success(&convert(
+        dir.path(),
+        &[
+            "a.png",
+            "--report",
+            "plain.json",
+            "--sizes",
+            "16",
+            "--force",
+        ],
+    ));
+    let value: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(dir.path().join("plain.json")).unwrap())
+            .unwrap();
+    assert!(value["files"][0]["sha256"].is_null());
+}
+
+#[test]
+fn skipped_and_previewed_files_have_no_checksum() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "a.png", 32, RED);
+    assert_success(&convert(dir.path(), &["a.png", "--sizes", "16"]));
+    let out = convert(
+        dir.path(),
+        &[
+            "a.png",
+            "--skip-existing",
+            "--checksum",
+            "--quiet",
+            "--sizes",
+            "16",
+        ],
+    );
+    assert_success(&out);
+    assert!(stdout(&out).trim().is_empty(), "{}", describe(&out));
+}
+
+#[test]
+fn checksum_cannot_be_combined_with_what_if_or_the_ico_modes() {
+    let dir = tempfile::tempdir().unwrap();
+    make_ico(dir.path(), "a.ico", "16");
+    write_solid(dir.path(), "a.png", 32, RED);
+    let out = convert(dir.path(), &["a.png", "--checksum", "--what-if"]);
+    assert!(!out.status.success(), "{}", describe(&out));
+    assert_failure_containing(
+        &img2ico(dir.path(), &["--inspect", "a.ico", "--checksum"]),
+        "only apply when converting images",
+    );
+}
+
+// =============================================================================
 // Shell completions
 // =============================================================================
 
@@ -5015,7 +5285,7 @@ fn a_csv_report_lists_every_file_even_after_failures() {
     let lines: Vec<&str> = csv.lines().collect();
     assert_eq!(
         lines[0],
-        "input,output,status,size_bytes,sizes,warnings,duration_ms,message"
+        "input,output,status,size_bytes,sizes,warnings,duration_ms,message,sha256"
     );
     assert_eq!(lines.len(), 4, "{csv}");
     assert!(lines[1].starts_with("a.png,a.ico,converted,"), "{csv}");

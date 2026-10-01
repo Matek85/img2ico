@@ -12,6 +12,11 @@ when cutting a release.
 
 ### Added
 
+- `--checksum` prints the SHA-256 of every icon file written, one line per
+  file in the format of `sha256sum` (so `sha256sum -c` can check it later).
+  The lines are printed even with `--quiet`, go to standard error with
+  `-o -`, and with `--report` the hash is a column (`sha256`) of the report.
+  The CSV report therefore has one more column at its end.
 - `--validate`: checks the structure of existing `.ico` files (files, or
   folders of them, with `--recursive` below them as well) and says exactly
   what is wrong with a damaged one - the header, the number of images, every
