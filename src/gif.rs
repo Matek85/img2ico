@@ -57,14 +57,25 @@ pub fn count_gif_frames(path: &Path) -> Result<usize, String> {
 /// the GIF at `path`. Returns a clear, bounds-checked error - naming the
 /// GIF's actual frame count - if `frame_number` doesn't exist, the same
 /// way --select reports an out-of-range --index.
-pub fn extract_gif_frame(path: &Path, frame_number: usize) -> Result<image::RgbaImage, String> {
+pub fn extract_gif_frame_limited(
+    path: &Path,
+    frame_number: usize,
+    max_pixels: u64,
+) -> Result<image::RgbaImage, String> {
     let file = std::fs::File::open(path)
         .map_err(|e| format!("Could not read '{}': {e}", path.display()))?;
     extract_gif_frame_from(
         BufReader::new(file),
         &path.display().to_string(),
         frame_number,
+        max_pixels,
     )
+}
+
+/// `extract_gif_frame_limited` with the default limit.
+#[cfg(test)]
+pub fn extract_gif_frame(path: &Path, frame_number: usize) -> Result<image::RgbaImage, String> {
+    extract_gif_frame_limited(path, frame_number, crate::source::DEFAULT_MAX_PIXELS)
 }
 
 /// `extract_gif_frame` for a GIF that is already in memory (read from
@@ -72,8 +83,14 @@ pub fn extract_gif_frame(path: &Path, frame_number: usize) -> Result<image::Rgba
 pub fn extract_gif_frame_from_bytes(
     bytes: &[u8],
     frame_number: usize,
+    max_pixels: u64,
 ) -> Result<image::RgbaImage, String> {
-    extract_gif_frame_from(Cursor::new(bytes), "standard input", frame_number)
+    extract_gif_frame_from(
+        Cursor::new(bytes),
+        "standard input",
+        frame_number,
+        max_pixels,
+    )
 }
 
 /// The shared work of both: `name` is how the GIF is called in messages.
@@ -81,6 +98,7 @@ fn extract_gif_frame_from<R: BufRead + Seek>(
     reader: R,
     name: &str,
     frame_number: usize,
+    max_pixels: u64,
 ) -> Result<image::RgbaImage, String> {
     if frame_number == 0 {
         return Err(
@@ -90,6 +108,9 @@ fn extract_gif_frame_from<R: BufRead + Seek>(
 
     let decoder =
         GifDecoder::new(reader).map_err(|e| format!("Could not read '{name}' as a GIF: {e}"))?;
+    let (width, height) = image::ImageDecoder::dimensions(&decoder);
+    crate::source::check_pixel_limit(width, height, max_pixels)
+        .map_err(|e| format!("Could not read '{name}': {e}"))?;
 
     // A single pass over the frames: decoding happens once per frame
     // regardless, so counting the total (for a helpful error message if

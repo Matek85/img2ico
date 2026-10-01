@@ -14,7 +14,7 @@ use crate::chroma_key::{
     format_hex, parse_hex_color, warn_about_removal_extent,
 };
 use crate::cli::{Args, OutputFormat};
-use crate::gif::{extract_gif_frame, extract_gif_frame_from_bytes, is_gif, is_gif_bytes};
+use crate::gif::{extract_gif_frame_from_bytes, extract_gif_frame_limited, is_gif, is_gif_bytes};
 use crate::icns::{encode_icns, icns_sizes};
 use crate::layout::{Layout, Trimmed, auto_sizes, crop, make_icon, parse_crop, trim_transparent};
 use crate::plan::{Job, Naming, check_batch_options, check_folder_options, plan_jobs, single_job};
@@ -22,15 +22,17 @@ use crate::report::{
     FileRecord, ReportFormat, Status, Summary, human_duration, human_size, write_report,
 };
 use crate::resize::{
-    apply_grayscale, has_transparency, warn_about_thin_content, warn_about_upscaling,
+    AlphaMode, apply_grayscale, has_transparency, premultiply, warn_about_thin_content,
+    warn_about_upscaling,
 };
 use crate::select::{Filter, NamePattern, Source, expand_inputs};
 use crate::settings::{
     ResolvedSettings, delete_sources_if_requested, finish_run, maybe_write_out_toml,
 };
-use crate::source::{Artwork, decode_source_bytes, open_source};
+use crate::source::{Artwork, decode_source_bytes, open_source, peek_pixels};
 use crate::util::{
-    check_overwrite, enter_file_context, file_prefix, parse_seed, same_file, warn, warnings_so_far,
+    Budget, available_threads, check_overwrite, enter_file_context, file_prefix, for_each_ordered,
+    parallel_map, parse_seed, same_file, warn, warnings_so_far,
 };
 use crate::vector::VectorImage;
 use image::RgbaImage;
@@ -44,6 +46,35 @@ const DEFAULT_SIZES: &str = "16,32,48,64,128,256";
 
 /// ICO files officially only support edge lengths up to 256px.
 const MAX_ICO_SIZE: u32 = 256;
+
+/// A source with fewer pixels than this is scaled to its icon sizes one after
+/// the other even when more threads are allowed: the sizes are done in a
+/// few milliseconds then, and starting threads would cost more than it saves.
+const PARALLEL_SIZES_MIN_PIXELS: u64 = 250_000;
+
+/// How many threads this run works with. An explicit --jobs (or `jobs` in a
+/// settings file) is taken as given, 0 meaning one per processor. Without
+/// one, it is one per processor - except for a run whose output only makes
+/// sense in sequence: --verbose (its trace of one file after the other) and a
+/// --find preview (it prints a multi-line report per file).
+pub fn worker_count(resolved: &ResolvedSettings) -> usize {
+    match resolved.jobs {
+        Some(0) | None => {
+            let find_preview = resolved.find.is_some() && !resolved.auto_apply;
+            if resolved.verbose || find_preview {
+                1
+            } else {
+                available_threads()
+            }
+        }
+        Some(jobs) => jobs,
+    }
+}
+
+/// How many pixels of source images may be held decoded by all workers
+/// together: 150 million, which is some 1.2 GB with the working copies. A
+/// batch of large photos then runs a few at a time instead of all at once.
+const DECODED_PIXELS_IN_FLIGHT: u64 = 150_000_000;
 
 /// What became of one input.
 enum Outcome {
@@ -222,14 +253,15 @@ fn write_output(output: &Path, bytes: &[u8], use_icns: bool) -> Result<(), Strin
         };
     }
 
-    if use_icns {
-        std::fs::write(output, bytes).map_err(|e| format!("Could not write ICNS file: {e}"))
-    } else {
-        let mut file = std::fs::File::create(output)
-            .map_err(|e| format!("Could not create output file: {e}"))?;
-        file.write_all(bytes)
-            .map_err(|e| format!("Error writing ICO file: {e}"))
-    }
+    // Written atomically: the output is either complete or not there (or
+    // still the old file), never cut off by a crash or a Ctrl+C.
+    crate::util::write_atomic(output, bytes).map_err(|e| {
+        format!(
+            "Could not write {} file '{}': {e}",
+            if use_icns { "ICNS" } else { "ICO" },
+            output.display()
+        )
+    })
 }
 
 /// Decides whether the inputs are one file or a batch. One input that is
@@ -258,7 +290,7 @@ fn run_single(
     job: Job,
 ) -> Result<(), String> {
     let started = Instant::now();
-    let (result, record) = run_job(&job, resolved, replacement);
+    let (result, record) = run_job(&job, resolved, replacement, worker_count(resolved));
 
     let ran = match result {
         Ok(Outcome::Converted { sizes, .. }) => {
@@ -316,48 +348,73 @@ fn run_batch(
     let mut converted: Vec<&Job> = Vec::new();
     let mut stopped_by: Option<String> = None;
 
-    for (index, job) in jobs.iter().enumerate() {
-        // Lets warnings raised deep inside the conversion name this file.
-        let _context = enter_file_context(&job.input);
-        let (result, mut record) = run_job(job, resolved, replacement);
-        let count = progress_prefix(index + 1, total);
+    // The files are converted on up to `workers` threads, but reported
+    // strictly in input order, as they come up in line. With several
+    // workers each file's sizes are done one after the other - the cores are
+    // busy with other files already; with one file or one worker the sizes
+    // get all the threads instead.
+    let threads = worker_count(resolved);
+    let workers = threads.min(total);
+    let size_threads = if workers > 1 { 1 } else { threads };
+    resolved.note(format_args!(
+        "batch: {workers} worker(s), {size_threads} thread(s) per file"
+    ));
 
-        match result {
-            Ok(Outcome::Converted { bytes, sizes }) => {
-                if !resolved.silent {
-                    say!(
-                        "{count}{}",
-                        converted_line(job, bytes, &sizes, total, use_icns)
-                    );
+    let memory = Budget::new(DECODED_PIXELS_IN_FLIGHT);
+    for_each_ordered(
+        &jobs,
+        workers,
+        |_, job| {
+            // Lets warnings raised deep inside the conversion name this file.
+            let _context = enter_file_context(&job.input);
+            // Wait for a share of the memory budget before decoding: a few
+            // huge images take turns, many small ones run side by side.
+            let _share = (workers > 1 && !is_stdio(&job.input))
+                .then(|| memory.take(peek_pixels(&job.input)));
+            run_job(job, resolved, replacement, size_threads)
+        },
+        |index, (result, mut record)| {
+            let job = &jobs[index];
+            let count = progress_prefix(index + 1, total);
+
+            match result {
+                Ok(Outcome::Converted { bytes, sizes }) => {
+                    if !resolved.silent {
+                        say!(
+                            "{count}{}",
+                            converted_line(job, bytes, &sizes, total, use_icns)
+                        );
+                    }
+                    converted.push(job);
                 }
-                converted.push(job);
-            }
-            Ok(Outcome::Skipped | Outcome::Previewed) => {
-                if !resolved.silent {
-                    eprintln!("{count}{}", skip_line(job));
+                Ok(Outcome::Skipped | Outcome::Previewed) => {
+                    if !resolved.silent {
+                        eprintln!("{count}{}", skip_line(job));
+                    }
+                }
+                Err(message) => {
+                    // Name the file, unless the message already does.
+                    let name = job.input.display().to_string();
+                    let message = if message.contains(&name) {
+                        message
+                    } else {
+                        format!("{name}: {message}")
+                    };
+                    record.message = Some(message.clone());
+                    if !resolved.keep_going {
+                        // The first failure is the one that stops the run;
+                        // files that were already under way are finished
+                        // and reported, but no new one is started.
+                        stopped_by.get_or_insert(message);
+                    } else {
+                        eprintln!("{count}Error: {message}");
+                    }
                 }
             }
-            Err(message) => {
-                // Name the file, unless the message already does.
-                let name = job.input.display().to_string();
-                let message = if message.contains(&name) {
-                    message
-                } else {
-                    format!("{name}: {message}")
-                };
-                record.message = Some(message.clone());
-                if !resolved.keep_going {
-                    stopped_by = Some(message);
-                } else {
-                    eprintln!("{count}Error: {message}");
-                }
-            }
-        }
-        records.push(record);
-        if stopped_by.is_some() {
-            break;
-        }
-    }
+            records.push(record);
+            stopped_by.is_none()
+        },
+    );
 
     let summary = Summary::of(&records, started.elapsed());
     let ran = match stopped_by {
@@ -521,10 +578,11 @@ fn run_job(
     job: &Job,
     resolved: &ResolvedSettings,
     replacement: Option<[u8; 3]>,
+    threads: usize,
 ) -> (Result<Outcome, String>, FileRecord) {
     let started = Instant::now();
     let warnings_before = warnings_so_far();
-    let result = convert_one(job, resolved, replacement);
+    let result = convert_one(job, resolved, replacement, threads);
 
     let mut record = FileRecord {
         input: job.input.display().to_string(),
@@ -587,6 +645,7 @@ fn convert_one(
     job: &Job,
     resolved: &ResolvedSettings,
     replacement: Option<[u8; 3]>,
+    threads: usize,
 ) -> Result<Outcome, String> {
     let started = Instant::now();
     let input_path = job.input.as_path();
@@ -623,7 +682,14 @@ fn convert_one(
     let mut source = match load_source_image(input_path, resolved)? {
         Loaded::Raster(image) => image,
         Loaded::Vector(drawing) => {
-            return convert_vector(job, resolved, replacement, &drawing, started, load_started);
+            return convert_vector(
+                job,
+                resolved,
+                replacement,
+                &drawing,
+                (started, load_started),
+                threads,
+            );
         }
     };
     let (width, height) = source.dimensions();
@@ -701,6 +767,15 @@ fn convert_one(
     // (for every single icon size) instead of re-checking per size - see
     // has_transparency()'s doc comment for why this matters.
     let has_alpha = has_transparency(&source);
+    // A source with transparency is multiplied with its alpha ONCE, here -
+    // not once per icon size, which for a large image is a full copy each
+    // time (see resize.rs). The sizes are then scaled from that.
+    let alpha_mode = if has_alpha {
+        premultiply(&mut source);
+        AlphaMode::Premultiplied
+    } else {
+        AlphaMode::Opaque
+    };
 
     // --sizes auto can only be settled now: it depends on how big the image
     // is after --crop and --trim.
@@ -721,11 +796,18 @@ fn convert_one(
     // format (see write_icns) and doesn't use the ICO-specific --sizes
     // list at all.
     let layout = layout_of(resolved);
-    let render = |size: u32| make_icon(&source, size, &layout, has_alpha);
+    let render = |size: u32| make_icon(&source, size, &layout, alpha_mode);
+    // A small source is scaled so quickly that threads would not pay.
+    let size_threads =
+        if u64::from(source.width()) * u64::from(source.height()) >= PARALLEL_SIZES_MIN_PIXELS {
+            threads
+        } else {
+            1
+        };
     let (icon_bytes, written_sizes) = if use_icns {
-        (encode_icns(&render)?, icns_sizes())
+        (encode_icns(&render, size_threads)?, icns_sizes())
     } else {
-        encode_ico(&render, &sizes, resolved)?
+        encode_ico(&render, &sizes, resolved, size_threads)?
     };
     write_output(output_path, &icon_bytes, use_icns)?;
     let bytes = icon_bytes.len() as u64;
@@ -851,8 +933,8 @@ fn convert_vector(
     resolved: &ResolvedSettings,
     replacement: Option<[u8; 3]>,
     drawing: &VectorImage,
-    started: Instant,
-    load_started: Instant,
+    (started, load_started): (Instant, Instant),
+    threads: usize,
 ) -> Result<Outcome, String> {
     let output_path = job.output.as_path();
     let use_icns = wants_icns(resolved.output_format);
@@ -924,9 +1006,9 @@ fn convert_vector(
         square
     };
     let (icon_bytes, written_sizes) = if use_icns {
-        (encode_icns(&render)?, icns_sizes())
+        (encode_icns(&render, threads)?, icns_sizes())
     } else {
-        encode_ico(&render, &sizes, resolved)?
+        encode_ico(&render, &sizes, resolved, threads)?
     };
     write_output(output_path, &icon_bytes, use_icns)?;
 
@@ -1012,8 +1094,10 @@ fn load_source_image(input_path: &Path, resolved: &ResolvedSettings) -> Result<L
     };
     if is_gif {
         return match &stdin_bytes {
-            Some(bytes) => extract_gif_frame_from_bytes(bytes, resolved.gif_frame),
-            None => extract_gif_frame(input_path, resolved.gif_frame),
+            Some(bytes) => {
+                extract_gif_frame_from_bytes(bytes, resolved.gif_frame, resolved.max_pixels)
+            }
+            None => extract_gif_frame_limited(input_path, resolved.gif_frame, resolved.max_pixels),
         }
         .map(Loaded::Raster);
     }
@@ -1039,8 +1123,8 @@ fn load_source_image(input_path: &Path, resolved: &ResolvedSettings) -> Result<L
     // input - image::open() would go by the file extension, and fail on a
     // file without one or with a wrong one. (See source.rs.)
     let decoded = match &stdin_bytes {
-        Some(bytes) => decode_source_bytes(bytes),
-        None => open_source(input_path),
+        Some(bytes) => decode_source_bytes(bytes, resolved.max_pixels),
+        None => open_source(input_path, resolved.max_pixels),
     };
     let source = decoded.map_err(|e| {
         let hint = if stdin_bytes.is_some() {
@@ -1051,7 +1135,7 @@ fn load_source_image(input_path: &Path, resolved: &ResolvedSettings) -> Result<L
         format!("Could not read input file: {e}{hint}")
     })?;
     Ok(match source {
-        Artwork::Raster(image) => Loaded::Raster(image.to_rgba8()),
+        Artwork::Raster(image) => Loaded::Raster(image.into_rgba8()),
         Artwork::Vector(drawing) => Loaded::Vector(drawing),
     })
 }
@@ -1308,27 +1392,40 @@ fn warn_about_small_source(
 /// Builds the .ico: one square icon per requested size, all PNG-encoded, all
 /// together in one file's bytes - and the sizes that went into it.
 fn encode_ico(
-    render: &dyn Fn(u32) -> RgbaImage,
+    render: &(dyn Fn(u32) -> RgbaImage + Sync),
     sizes: &[u32],
     resolved: &ResolvedSettings,
+    threads: usize,
 ) -> Result<(Vec<u8>, Vec<u32>), String> {
     // An IconDir collects all the resolutions that will be written
     // together into ONE .ico file at the end.
     let mut icon_dir = ico::IconDir::new(ico::ResourceType::Icon);
     let mut written = Vec::with_capacity(sizes.len());
 
-    for &size in sizes {
-        if size == 0 || size > MAX_ICO_SIZE {
-            warn(
-                resolved.silent,
-                format_args!(
-                    "{}Skipping size {size} (valid range: 1-{MAX_ICO_SIZE}).",
-                    file_prefix()
-                ),
-            );
-            continue;
-        }
+    // Sizes an .ico cannot hold are named and left out first - in one thread,
+    // so the messages keep naming the right file.
+    let valid: Vec<u32> = sizes
+        .iter()
+        .copied()
+        .filter(|&size| {
+            let fits = size != 0 && size <= MAX_ICO_SIZE;
+            if !fits {
+                warn(
+                    resolved.silent,
+                    format_args!(
+                        "{}Skipping size {size} (valid range: 1-{MAX_ICO_SIZE}).",
+                        file_prefix()
+                    ),
+                );
+            }
+            fits
+        })
+        .collect();
 
+    // Scaling and PNG-encoding a size depends on nothing but the source, so
+    // the sizes can be made at the same time; the entries are collected in
+    // the order of the sizes either way.
+    let entries = parallel_map(&valid, threads, |&size| {
         let square = render(size);
         let (w, h) = square.dimensions();
 
@@ -1352,8 +1449,12 @@ fn encode_ico(
         // was required for "transparency as a feature". PNG-in-ICO has been
         // supported by Windows since Vista (2007), so it's safe for
         // practically any use case.
-        let entry = ico::IconDirEntry::encode_as_png(&icon_image)
-            .map_err(|e| format!("Could not encode size {size}: {e}"))?;
+        ico::IconDirEntry::encode_as_png(&icon_image)
+            .map_err(|e| format!("Could not encode size {size}: {e}"))
+    });
+
+    for (&size, entry) in valid.iter().zip(entries) {
+        let entry = entry?;
         resolved.note(format_args!(
             "{}{size}x{size}: {} bytes",
             file_prefix(),

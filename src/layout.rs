@@ -6,7 +6,7 @@
 // The scaling itself stays in resize.rs; this module decides WHAT is scaled
 // and what is done to the result.
 
-use crate::resize::{make_square_icon, resize_rgba};
+use crate::resize::{AlphaMode, make_square_icon, resize_rgba};
 use image::RgbaImage;
 
 /// The highest --corner-radius: 50% of the shorter edge makes a circle (or a
@@ -54,10 +54,17 @@ pub fn content_edge(size: u32, padding_percent: u8) -> f32 {
 }
 
 /// Builds the `size` x `size` icon from `rgba` according to `layout`.
-/// `has_alpha` is has_transparency() of `rgba`, computed once by the caller.
-pub fn make_icon(rgba: &RgbaImage, size: u32, layout: &Layout, has_alpha: bool) -> RgbaImage {
+/// `alpha` says what the alpha channel of `rgba` needs while it is scaled
+/// (a plain `has_transparency()` bool works too), settled once by the caller.
+pub fn make_icon(
+    rgba: &RgbaImage,
+    size: u32,
+    layout: &Layout,
+    alpha: impl Into<AlphaMode>,
+) -> RgbaImage {
+    let alpha = alpha.into();
     if layout.fit == FitMode::Contain && layout.corner_radius == 0 {
-        return make_square_icon(rgba, size, layout.padding, has_alpha);
+        return make_square_icon(rgba, size, layout.padding, alpha);
     }
 
     let (orig_w, orig_h) = rgba.dimensions();
@@ -67,7 +74,7 @@ pub fn make_icon(rgba: &RgbaImage, size: u32, layout: &Layout, has_alpha: bool) 
             let scale = (content / orig_w as f32).min(content / orig_h as f32);
             let w = ((orig_w as f32 * scale).round() as u32).max(1);
             let h = ((orig_h as f32 * scale).round() as u32).max(1);
-            resize_rgba(rgba, w, h, has_alpha)
+            resize_rgba(rgba, w, h, alpha)
         }
         FitMode::Cover => {
             // Scale until the shorter edge fills the square, then cut the
@@ -76,7 +83,7 @@ pub fn make_icon(rgba: &RgbaImage, size: u32, layout: &Layout, has_alpha: bool) 
             let scale = (edge as f32 / orig_w as f32).max(edge as f32 / orig_h as f32);
             let w = ((orig_w as f32 * scale).round() as u32).max(edge);
             let h = ((orig_h as f32 * scale).round() as u32).max(edge);
-            let resized = resize_rgba(rgba, w, h, has_alpha);
+            let resized = resize_rgba(rgba, w, h, alpha);
             image::imageops::crop_imm(&resized, (w - edge) / 2, (h - edge) / 2, edge, edge)
                 .to_image()
         }

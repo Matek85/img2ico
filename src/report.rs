@@ -184,7 +184,7 @@ pub fn write_report(path: &Path, records: &[FileRecord], summary: &Summary) -> R
         ReportFormat::Csv => to_csv(records),
         ReportFormat::Json => to_json(records, summary)?,
     };
-    std::fs::write(path, text)
+    crate::util::write_atomic(path, text.as_bytes())
         .map_err(|e| format!("Could not write the report '{}': {e}", path.display()))
 }
 

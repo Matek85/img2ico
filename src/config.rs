@@ -53,6 +53,8 @@ pub struct Settings {
     #[serde(default)]
     pub trim: bool,
     pub corner_radius: Option<u8>,
+    pub max_pixels: Option<u64>,
+    pub jobs: Option<usize>,
     pub gif_frame: Option<usize>,
     pub output_format: Option<OutputFormat>,
     #[serde(default)]
@@ -114,6 +116,8 @@ impl Settings {
             crop: self.crop.or(fallback.crop),
             trim: self.trim || fallback.trim,
             corner_radius: self.corner_radius.or(fallback.corner_radius),
+            max_pixels: self.max_pixels.or(fallback.max_pixels),
+            jobs: self.jobs.or(fallback.jobs),
             gif_frame: self.gif_frame.or(fallback.gif_frame),
             output_format: self.output_format.or(fallback.output_format),
             delete_source: self.delete_source || fallback.delete_source,
@@ -164,6 +168,8 @@ const KNOWN_SETTINGS_KEYS: &[&str] = &[
     "crop",
     "trim",
     "corner-radius",
+    "max-pixels",
+    "jobs",
     "gif-frame",
     "output-format",
     "delete-source",
@@ -367,7 +373,7 @@ pub fn settings_to_toml(settings: &Settings) -> Result<String, String> {
 /// folder for automatic pickup.
 pub fn write_config(settings: &Settings, path: &Path) -> Result<(), String> {
     let text = settings_to_toml(settings)?;
-    std::fs::write(path, text)
+    crate::util::write_atomic(path, text.as_bytes())
         .map_err(|e| format!("Could not write settings file '{}': {e}", path.display()))
 }
 
@@ -407,6 +413,8 @@ mod tests {
             crop: Some("1,2,30,40".to_string()),
             trim: true,
             corner_radius: Some(22),
+            max_pixels: Some(5_000_000),
+            jobs: Some(3),
             gif_frame: Some(3),
             output_format: Some(OutputFormat::Icns),
             delete_source: true,
@@ -549,6 +557,8 @@ mod tests {
         assert_eq!(loaded.crop, expected.crop);
         assert_eq!(loaded.trim, expected.trim);
         assert_eq!(loaded.corner_radius, expected.corner_radius);
+        assert_eq!(loaded.max_pixels, expected.max_pixels);
+        assert_eq!(loaded.jobs, expected.jobs);
         assert_eq!(loaded.gif_frame, expected.gif_frame);
         assert_eq!(loaded.output_format, expected.output_format);
         assert_eq!(loaded.delete_source, expected.delete_source);

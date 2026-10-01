@@ -55,10 +55,13 @@ pub fn icns_sizes() -> Vec<u32> {
 /// the environment this was written in only has Linux available. A
 /// real-world test on macOS is still worth doing before relying on this
 /// for anything important.
-pub fn encode_icns(render: &dyn Fn(u32) -> RgbaImage) -> Result<Vec<u8>, String> {
-    let mut body: Vec<u8> = Vec::new();
-
-    for &(size, type_codes) in ICNS_SIZES {
+pub fn encode_icns(
+    render: &(dyn Fn(u32) -> RgbaImage + Sync),
+    threads: usize,
+) -> Result<Vec<u8>, String> {
+    // Every size is rendered and PNG-encoded on its own - several at a time
+    // if `threads` allows - and the entries are put together in order.
+    let pngs = crate::util::parallel_map(ICNS_SIZES, threads, |&(size, _)| {
         let square = render(size);
 
         // Encode this size as a standalone PNG in memory (not a file on
@@ -68,7 +71,12 @@ pub fn encode_icns(render: &dyn Fn(u32) -> RgbaImage) -> Result<Vec<u8>, String>
         image::codecs::png::PngEncoder::new(&mut png_bytes)
             .write_image(square.as_raw(), size, size, image::ExtendedColorType::Rgba8)
             .map_err(|e| format!("Could not encode the {size}x{size} icon as PNG: {e}"))?;
+        Ok::<_, String>(png_bytes)
+    });
 
+    let mut body: Vec<u8> = Vec::new();
+    for (&(_, type_codes), png_bytes) in ICNS_SIZES.iter().zip(pngs) {
+        let png_bytes = png_bytes?;
         for type_code in type_codes {
             body.extend_from_slice(type_code);
             let entry_len: u32 = 8 + png_bytes.len() as u32;
@@ -174,7 +182,11 @@ mod tests {
 
     fn sample(source: &RgbaImage, padding: u8) -> Vec<u8> {
         let has_alpha = crate::resize::has_transparency(source);
-        encode_icns(&|size| make_square_icon(source, size, padding, has_alpha)).unwrap()
+        encode_icns(
+            &|size| make_square_icon(source, size, padding, has_alpha),
+            1,
+        )
+        .unwrap()
     }
 
     // --- reading ------------------------------------------------------------------
@@ -190,7 +202,7 @@ mod tests {
     #[test]
     fn decoding_gives_back_the_largest_icon_of_a_written_file() {
         let source = RgbaImage::from_fn(64, 64, |x, _| Rgba([x as u8 * 3, 10, 200, 255]));
-        let bytes = encode_icns(&|size| make_square_icon(&source, size, 0, false)).unwrap();
+        let bytes = encode_icns(&|size| make_square_icon(&source, size, 0, false), 1).unwrap();
         let decoded = decode_icns(&bytes, "test.icns").unwrap();
         assert_eq!(decoded.dimensions(), (1024, 1024));
         // The picture is the source, scaled up: same colors in the same places.

@@ -106,6 +106,8 @@ Usage: img2ico [OPTIONS] <INPUT>...
 | `--corner-radius` | | 0–50 (default 0) | Round the corners, in percent of the image's shorter edge |
 | `--grayscale` | | | Remove all color, keep only brightness |
 | `--gif-frame` | | number (default 1) | Which frame of an animated GIF to use |
+| `--jobs` | `-j` | number (default: one per processor) | Threads to work with; `1` turns parallel work off |
+| `--max-pixels` | | count, e.g. `50M` (default `100M`) | Refuse a source image with more pixels; `0` = no limit |
 | `--chroma-key` | `-c` | hex color, or `auto` | Remove this background color; `auto` detects it from the image border |
 | `--tolerance` | `-t` | 0–100 (default 20) | How strictly `--chroma-key`/`--find` match colors |
 | `--feather` | | 0–100 (default 50) | How soft the edge of the removed background is; `0` is a hard edge |
@@ -946,13 +948,41 @@ img2ico --inspect logo.png
 img2ico logo.png --output-format icns --force
 ```
 
+## Speed, large images and safe writing
+
+**Threads (`--jobs`, `-j`).** img2ico works on several things at once. The files of a **batch** are converted side by side, and for a **single large image** the icon sizes are scaled and encoded side by side — by default with one thread per processor. On a 32-thread machine, 60 images of 512×512 took 0.76 s one after the other and 0.09 s together; one 6000×6000 image with the six default sizes 1.0 s and 0.33 s. The icons are **byte for byte the same** whatever the number of threads (the test suite compares them), so this only changes how long it takes.
+
+```
+img2ico assets/ -o icons/                # all processors
+img2ico assets/ -o icons/ --jobs 4       # at most four threads
+img2ico assets/ -o icons/ -j 1           # strictly one thing after the other
+```
+
+`--jobs 1` (or `jobs = 1` in a [settings file](#settings-files)) turns it all off; `--jobs 0` is the same as leaving it out. A few things are different with several threads:
+
+- The progress lines of a batch (`[3/40] …`) still come out **in input order**. Warnings and `--verbose` notes of different files can interleave; every line names its file. That is why a `--verbose` run and a `--find` preview — whose report is several lines per file — work one file at a time unless you give `--jobs` yourself.
+- **The first failure** stops a batch from starting new files; files already under way are finished (and listed in the report), so with several threads a file or two after the failing one may have been converted. `--jobs 1` gives the strict one-after-the-other stop. With `--keep-going` nothing changes: everything else is converted.
+- **Memory is rationed:** the workers together hold at most about 150 megapixels of decoded images, so a batch of large photos takes turns instead of using up the machine's memory (eight 6000×6000 pictures peaked at 646 MB, one at a time at 167 MB).
+- A small source (under about 250,000 pixels) is scaled to its sizes on one thread — it is done in milliseconds, and starting threads would cost more than it saves.
+
+**Large and hostile images (`--max-pixels`).** A source image with more than **100 million pixels** (a 10000×10000 picture, about 400 MB once decoded) is refused with a message — *before* it is decoded, from the size its header states. This protects a pipeline against "decompression bombs": a file of a few kilobytes that claims to be a hundred thousand pixels wide and would otherwise eat all memory. Change the limit with `--max-pixels` (digits, or with a `K` / `M` suffix: `--max-pixels 50M`) or `max-pixels` in a settings file; `0` turns it off for files you trust. It applies to raster images from files and from standard input, GIFs included; an SVG is only drawn at the icon sizes and has no such limit.
+
+```
+img2ico huge-scan.tif                        # refused: 14000x14000 pixels (196.0 megapixels) ...
+img2ico huge-scan.tif --max-pixels 200M      # allowed
+```
+
+**Atomic writing.** Every file img2ico writes — icons, merged and selected `.ico` files, extracted PNGs, reports and settings files — is first written to a temporary file in the same folder and then renamed into place in one step. If the program is killed (Ctrl+C, a crash, a full disk, a power cut) the output is either complete or still what it was before; there is never a half-written `.ico`. The temporary file (named `.<name>.<number>.tmp`) is removed again if a write fails.
+
+**Memory.** A large source is held in memory once (four bytes per pixel) — the decoded copy is converted in place instead of duplicated, and a transparent image is multiplied with its alpha once for all sizes instead of once per size. That took the peak for a 6000×6000 image from 280 MB to 166 MB, and from 304 MB to 212 MB when a background color is removed from it.
+
 ## Quality and safety
 
 - Every icon size is PNG-encoded at full color depth — never the older, lower-quality BMP-with-reduced-palette format. Whenever the image has any transparency, the PNG carries a full alpha channel; a fully opaque icon is stored without one, since there is nothing to preserve.
 - Resizing is alpha-aware (premultiplied), so shrinking a transparent image doesn't leave a colored fringe around soft edges.
 - Destructive operations are opt-in and fail safe: nothing is overwritten without `--force`, and nothing is deleted unless the run succeeded.
 - **Privacy:** img2ico works entirely on your machine. It never opens a network connection, has no telemetry, no update check and uploads nothing; it only reads the files you name and writes the files you ask for.
-- Input parsing is hardened against malformed and adversarial input and covered by property-based tests.
+- Input parsing is hardened against malformed and adversarial input and covered by property-based tests; oversized images are refused before they are decoded and files are written atomically ([details](#speed-large-images-and-safe-writing)).
 - Every change is checked by the automated test suite, `rustfmt` and `clippy` (warnings are errors) on Windows, macOS and Linux — see [Development](#development).
 
 ## Development

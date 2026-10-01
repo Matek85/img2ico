@@ -147,19 +147,56 @@ pub fn has_transparency(img: &RgbaImage) -> bool {
     img.pixels().any(|p| p[3] != 255)
 }
 
-/// Resizes an RGBA image with Lanczos3 filtering, taking the alpha-fringe
-/// fix in resize_rgba_premultiplied only when the image actually has any
-/// transparency to worry about - see has_transparency() above for why.
-pub fn resize_rgba(src: &RgbaImage, new_width: u32, new_height: u32, has_alpha: bool) -> RgbaImage {
-    if has_alpha {
-        resize_rgba_premultiplied(src, new_width, new_height)
-    } else {
-        image::imageops::resize(src, new_width, new_height, FilterType::Lanczos3)
+/// What the alpha channel of a source image needs while it is resized.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AlphaMode {
+    /// Fully opaque: nothing to take care of, the cheap plain resize.
+    Opaque,
+    /// Has transparency, colors are stored as they are (straight alpha): the
+    /// resize multiplies them with their alpha first and divides again after.
+    Straight,
+    /// Has transparency and the colors were multiplied with their alpha
+    /// already by `premultiply` - done ONCE for a source that is resized to
+    /// several icon sizes, instead of a full copy for every size.
+    Premultiplied,
+}
+
+impl From<bool> for AlphaMode {
+    /// `has_alpha` as has_transparency() reports it.
+    fn from(has_alpha: bool) -> Self {
+        if has_alpha {
+            AlphaMode::Straight
+        } else {
+            AlphaMode::Opaque
+        }
     }
 }
 
-/// Downscales an RGBA image "alpha-correctly", without a colored fringe
-/// appearing at transparent/semi-transparent edges.
+/// Resizes an RGBA image with Lanczos3 filtering, taking the alpha-fringe
+/// fix of "premultiplied alpha" only when the image actually has any
+/// transparency to worry about - see has_transparency() above for why.
+pub fn resize_rgba(
+    src: &RgbaImage,
+    new_width: u32,
+    new_height: u32,
+    alpha: impl Into<AlphaMode>,
+) -> RgbaImage {
+    match alpha.into() {
+        AlphaMode::Opaque => {
+            image::imageops::resize(src, new_width, new_height, FilterType::Lanczos3)
+        }
+        AlphaMode::Straight => {
+            let mut premultiplied = src.clone();
+            premultiply(&mut premultiplied);
+            resize_premultiplied(&premultiplied, new_width, new_height)
+        }
+        AlphaMode::Premultiplied => resize_premultiplied(src, new_width, new_height),
+    }
+}
+
+/// Converts an image into the "premultiplied" representation in place: every
+/// color channel multiplied by its own alpha value (a fully transparent pixel
+/// thereby becomes (0,0,0), regardless of its original color).
 ///
 /// Background: A resize filter (Lanczos3 here) averages several old
 /// neighboring pixels for every new pixel. If a neighboring pixel still
@@ -167,52 +204,42 @@ pub fn resize_rgba(src: &RgbaImage, new_width: u32, new_height: u32, has_alpha: 
 /// chroma key, where only the alpha channel was set to 0), that
 /// "invisible" but technically still-present color would still factor
 /// into the calculation when downscaling and become visible as a faint
-/// color haze at the edges.
-///
-/// The standard solution for this is called "premultiplied alpha": before
-/// resizing, we multiply every color channel by its own alpha value (a
-/// fully transparent pixel thereby becomes (0,0,0), regardless of its
-/// original color). After resizing we compute this back
-/// ("un-premultiply"). This way invisible pixels no longer carry any
-/// disruptive residual color into the calculation.
-fn resize_rgba_premultiplied(src: &RgbaImage, new_width: u32, new_height: u32) -> RgbaImage {
-    let (width, height) = src.dimensions();
-
-    // Step 1: convert into the "premultiplied" representation.
-    let mut premultiplied = RgbaImage::new(width, height);
-    for (x, y, pixel) in src.enumerate_pixels() {
+/// color haze at the edges. With the alpha weighting baked in, invisible
+/// pixels no longer carry any disruptive residual color into the
+/// calculation.
+pub fn premultiply(img: &mut RgbaImage) {
+    for pixel in img.pixels_mut() {
         let alpha = pixel[3] as f32 / 255.0;
-        let r = (pixel[0] as f32 * alpha).round() as u8;
-        let g = (pixel[1] as f32 * alpha).round() as u8;
-        let b = (pixel[2] as f32 * alpha).round() as u8;
-        premultiplied.put_pixel(x, y, Rgba([r, g, b, pixel[3]]));
+        pixel[0] = (pixel[0] as f32 * alpha).round() as u8;
+        pixel[1] = (pixel[1] as f32 * alpha).round() as u8;
+        pixel[2] = (pixel[2] as f32 * alpha).round() as u8;
     }
+}
 
-    // Step 2: resize completely normally, as before. Since the color
-    // channels now already have the alpha weighting "baked in", the
-    // resize behaves consistently across all four channels.
-    let resized =
-        image::imageops::resize(&premultiplied, new_width, new_height, FilterType::Lanczos3);
-
-    // Step 3: compute back ("un-premultiply") - divide every color channel
-    // by its (new, resized) alpha value again. Without this step, all
-    // semi-transparent areas would be too dark after resizing.
-    let mut result = RgbaImage::new(new_width, new_height);
-    for (x, y, pixel) in resized.enumerate_pixels() {
+/// Downscales an already premultiplied RGBA image "alpha-correctly", without
+/// a colored fringe appearing at transparent/semi-transparent edges: resize
+/// completely normally (the color channels have the alpha weighting baked
+/// in, so the resize behaves consistently across all four channels), then
+/// compute back ("un-premultiply") - divide every color channel by its (new,
+/// resized) alpha value again. Without that, all semi-transparent areas would
+/// be too dark after resizing.
+fn resize_premultiplied(src: &RgbaImage, new_width: u32, new_height: u32) -> RgbaImage {
+    let mut resized = image::imageops::resize(src, new_width, new_height, FilterType::Lanczos3);
+    for pixel in resized.pixels_mut() {
         let alpha = pixel[3];
         if alpha == 0 {
             // Fully transparent: color no longer matters, black is a safe,
             // neutral choice.
-            result.put_pixel(x, y, Rgba([0, 0, 0, 0]));
+            *pixel = Rgba([0, 0, 0, 0]);
         } else {
             let alpha_f = alpha as f32 / 255.0;
-            let r = ((pixel[0] as f32 / alpha_f).round()).clamp(0.0, 255.0) as u8;
-            let g = ((pixel[1] as f32 / alpha_f).round()).clamp(0.0, 255.0) as u8;
-            let b = ((pixel[2] as f32 / alpha_f).round()).clamp(0.0, 255.0) as u8;
-            result.put_pixel(x, y, Rgba([r, g, b, alpha]));
+            for channel in 0..3 {
+                pixel[channel] =
+                    ((pixel[channel] as f32 / alpha_f).round()).clamp(0.0, 255.0) as u8;
+            }
         }
     }
-    result
+    resized
 }
 
 /// Scales an image into a square icon of the desired edge length `size`,
@@ -241,7 +268,7 @@ pub fn make_square_icon(
     rgba: &RgbaImage,
     size: u32,
     padding_percent: u8,
-    has_alpha: bool,
+    alpha: impl Into<AlphaMode>,
 ) -> RgbaImage {
     let (orig_w, orig_h) = rgba.dimensions();
 
@@ -258,7 +285,7 @@ pub fn make_square_icon(
 
     // Alpha-correct resize (see comment on resize_rgba_premultiplied) -
     // but only pay for it when there's actually alpha to worry about.
-    let resized = resize_rgba(rgba, new_w, new_h, has_alpha);
+    let resized = resize_rgba(rgba, new_w, new_h, alpha);
 
     // Create the new target canvas, initialized fully transparent (0,0,0,0).
     let mut canvas = RgbaImage::new(size, size);
@@ -339,6 +366,39 @@ mod tests {
         let mut img = solid(3, 3, Rgba([12, 99, 201, 255]));
         apply_grayscale(&mut img);
         assert!(img.pixels().all(|p| p[0] == p[1] && p[1] == p[2]));
+    }
+
+    // --- premultiplying once for all sizes ------------------------------------------
+
+    #[test]
+    fn a_source_premultiplied_once_gives_exactly_the_same_icons() {
+        // An image with soft edges and a hidden color in transparent areas.
+        let src = RgbaImage::from_fn(37, 29, |x, y| match (x + y) % 5 {
+            0 => Rgba([200, 30, 90, 0]),
+            1 => Rgba([10, 240, 40, 77]),
+            2 => Rgba([255, 255, 255, 255]),
+            3 => Rgba([3, 90, 250, 128]),
+            _ => Rgba([0, 0, 0, 255]),
+        });
+        let mut premultiplied = src.clone();
+        premultiply(&mut premultiplied);
+        for size in [16, 32, 64] {
+            let straight = make_square_icon(&src, size, 7, true);
+            let once = make_square_icon(&premultiplied, size, 7, AlphaMode::Premultiplied);
+            assert_eq!(straight, once, "size {size}");
+        }
+    }
+
+    #[test]
+    fn premultiplying_scales_the_colors_by_alpha_and_hides_transparent_ones() {
+        let mut img = RgbaImage::new(3, 1);
+        img.put_pixel(0, 0, Rgba([200, 100, 50, 0]));
+        img.put_pixel(1, 0, Rgba([200, 100, 50, 255]));
+        img.put_pixel(2, 0, Rgba([200, 100, 50, 128]));
+        premultiply(&mut img);
+        assert_eq!(*img.get_pixel(0, 0), Rgba([0, 0, 0, 0]));
+        assert_eq!(*img.get_pixel(1, 0), Rgba([200, 100, 50, 255]));
+        assert_eq!(*img.get_pixel(2, 0), Rgba([100, 50, 25, 128]));
     }
 
     // --- make_square_icon ------------------------------------------------------

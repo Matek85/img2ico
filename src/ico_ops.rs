@@ -23,6 +23,16 @@ fn read_icon_dir(path: &Path) -> Result<ico::IconDir, String> {
         .map_err(|e| format!("Could not read '{}' as an ICO file: {e}", path.display()))
 }
 
+/// Writes an icon directory to `path` as one atomic step (see
+/// `util::write_atomic`): the file is complete or it is not there.
+fn write_icon_dir(dir: &ico::IconDir, path: &Path) -> Result<(), String> {
+    let mut bytes = Vec::new();
+    dir.write(&mut bytes)
+        .map_err(|e| format!("Error writing '{}': {e}", path.display()))?;
+    crate::util::write_atomic(path, &bytes)
+        .map_err(|e| format!("Could not write '{}': {e}", path.display()))
+}
+
 /// Merges the icon entries of two or more existing .ico files into one.
 ///
 /// Each entry is decoded back to raw RGBA pixels and then re-encoded as
@@ -86,11 +96,7 @@ pub fn merge_icons(
         return Err("No icons found to merge - the resulting file would be empty.".to_string());
     }
 
-    let out_file = std::fs::File::create(output_path)
-        .map_err(|e| format!("Could not create output file: {e}"))?;
-    merged
-        .write(out_file)
-        .map_err(|e| format!("Error writing merged ICO file: {e}"))?;
+    write_icon_dir(&merged, output_path)?;
 
     say!(
         "Done: '{}' created from {} source file(s), containing {} icon(s) total.",
@@ -131,7 +137,7 @@ pub fn inspect_icons(paths: &[PathBuf]) -> Result<(), String> {
                 // matched on directly) so it is dropped at the same point
                 // in every Rust edition - see the "tail-expr-drop-order"
                 // change in the 2024 edition guide.
-                let opened = crate::source::open_source(path);
+                let opened = crate::source::open_source(path, crate::source::DEFAULT_MAX_PIXELS);
                 match opened {
                     Ok(crate::source::Artwork::Raster(img)) => inspect_source_image(path, &img),
                     Ok(crate::source::Artwork::Vector(drawing)) => {
@@ -202,7 +208,7 @@ pub fn inspect_icons_json(paths: &[PathBuf]) -> Result<(), String> {
         let report = match read_icon_dir(path) {
             Ok(dir) => ico_report_json(path, &dir),
             Err(ico_error) => {
-                let opened = crate::source::open_source(path);
+                let opened = crate::source::open_source(path, crate::source::DEFAULT_MAX_PIXELS);
                 match opened {
                     Ok(crate::source::Artwork::Raster(img)) => image_report_json(path, &img),
                     Ok(crate::source::Artwork::Vector(drawing)) => {
@@ -502,7 +508,10 @@ pub fn extract_icons(input: &Path, output_dir: Option<&Path>, force: bool) -> Re
             .ok_or_else(|| format!("Unexpected pixel data size for the {w}x{h} icon"))?;
 
         let out_path = target_dir.join(name);
-        rgba.save(&out_path)
+        let mut png = std::io::Cursor::new(Vec::new());
+        rgba.write_to(&mut png, image::ImageFormat::Png)
+            .map_err(|e| format!("Could not encode '{}': {e}", out_path.display()))?;
+        crate::util::write_atomic(&out_path, png.get_ref())
             .map_err(|e| format!("Could not save '{}': {e}", out_path.display()))?;
         extracted_count += 1;
     }
@@ -651,11 +660,7 @@ fn select_into_one_file(
         out_dir.add_entry(reencode_as_png(&entries[i], i, input)?);
     }
 
-    let file = std::fs::File::create(output_path)
-        .map_err(|e| format!("Could not create output file: {e}"))?;
-    out_dir
-        .write(file)
-        .map_err(|e| format!("Error writing ICO file: {e}"))?;
+    write_icon_dir(&out_dir, output_path)?;
 
     say!(
         "Done: '{}' created with {} icon(s) selected from '{}'.",
@@ -700,11 +705,7 @@ fn select_into_directory(
         single.add_entry(reencode_as_png(&entries[i], i, input)?);
 
         let out_path = target_dir.join(name);
-        let out_file = std::fs::File::create(&out_path)
-            .map_err(|e| format!("Could not save '{}': {e}", out_path.display()))?;
-        single
-            .write(out_file)
-            .map_err(|e| format!("Error writing '{}': {e}", out_path.display()))?;
+        write_icon_dir(&single, &out_path)?;
     }
 
     say!(

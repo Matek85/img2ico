@@ -77,6 +77,17 @@ trim = false
 # 0 = square, about 20 = app-icon look, 50 = circle.
 corner-radius = 0
 
+# The largest source image to accept, in pixels (width x height). A bigger
+# one is refused before it is decoded - protection against files that claim
+# to be enormous. 100000000 is the default (10000 x 10000); 0 = no limit.
+max-pixels = 100000000
+
+# How many threads to work with: the files of a batch (and, for one large
+# image, the icon sizes) are converted at the same time. Left out or 0 =
+# one per processor; 1 = strictly one thing after the other. The icons are
+# the same either way.
+# jobs = 4
+
 # Which icon container format to write: "ico" (Windows) or "icns"
 # (macOS). If omitted, img2ico picks automatically based on the platform
 # it was built for.
