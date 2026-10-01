@@ -3269,6 +3269,474 @@ fn inspect_points_to_validate_for_a_damaged_icon() {
 }
 
 // =============================================================================
+// Speed and robustness: --max-pixels, atomic writing, --jobs
+// =============================================================================
+
+/// A PNG file that only CLAIMS to be `width` x `height` pixels: a valid
+/// signature and header, no usable image data - what a decompression bomb
+/// looks like to a program that reads the header first.
+fn write_png_claiming_size(dir: &Path, name: &str, width: u32, height: u32) -> PathBuf {
+    fn crc32(bytes: &[u8]) -> u32 {
+        let mut crc = 0xFFFF_FFFFu32;
+        for &byte in bytes {
+            crc ^= u32::from(byte);
+            for _ in 0..8 {
+                crc = if crc & 1 != 0 {
+                    (crc >> 1) ^ 0xEDB8_8320
+                } else {
+                    crc >> 1
+                };
+            }
+        }
+        !crc
+    }
+    let mut ihdr = Vec::new();
+    ihdr.extend_from_slice(&width.to_be_bytes());
+    ihdr.extend_from_slice(&height.to_be_bytes());
+    ihdr.extend_from_slice(&[8, 6, 0, 0, 0]);
+    let mut bytes = vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
+    let mut chunk = b"IHDR".to_vec();
+    chunk.extend_from_slice(&ihdr);
+    bytes.extend_from_slice(&(ihdr.len() as u32).to_be_bytes());
+    bytes.extend_from_slice(&chunk);
+    bytes.extend_from_slice(&crc32(&chunk).to_be_bytes());
+    // A first pixel-data chunk with nothing real in it: once a decoder has
+    // seen it, the header is complete.
+    let mut idat = b"IDAT".to_vec();
+    idat.push(0);
+    bytes.extend_from_slice(&1u32.to_be_bytes());
+    bytes.extend_from_slice(&idat);
+    bytes.extend_from_slice(&crc32(&idat).to_be_bytes());
+    let path = dir.join(name);
+    std::fs::write(&path, bytes).unwrap();
+    path
+}
+
+#[test]
+fn an_image_over_the_pixel_limit_is_refused_before_it_is_decoded() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "a.png", 64, RED);
+    let out = convert(dir.path(), &["a.png", "--max-pixels", "1000"]);
+    assert_failure_containing(&out, "the image is 64x64 pixels");
+    assert_failure_containing(&out, "--max-pixels");
+    assert!(!dir.path().join("a.ico").exists());
+
+    // At the limit it passes; 0 turns the limit off.
+    assert_success(&convert(
+        dir.path(),
+        &["a.png", "--max-pixels", "4096", "--sizes", "16"],
+    ));
+    assert_success(&convert(
+        dir.path(),
+        &["a.png", "--max-pixels", "0", "--sizes", "16", "--force"],
+    ));
+}
+
+#[test]
+fn the_default_limit_stops_a_file_that_claims_to_be_enormous() {
+    let dir = tempfile::tempdir().unwrap();
+    // 100000 x 100000 pixels: 10 gigapixels in a file of a few dozen bytes.
+    write_png_claiming_size(dir.path(), "bomb.png", 100_000, 100_000);
+    let out = convert(dir.path(), &["bomb.png"]);
+    assert_failure_containing(
+        &out,
+        "the image is 100000x100000 pixels (10000.0 megapixels)",
+    );
+    assert_failure_containing(&out, "limit of 100.0 megapixels");
+    assert!(!dir.path().join("bomb.ico").exists());
+}
+
+#[test]
+fn the_limit_takes_k_and_m_suffixes_and_refuses_nonsense() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "a.png", 100, RED); // 10000 pixels
+    assert_success(&convert(
+        dir.path(),
+        &["a.png", "--max-pixels", "10K", "--sizes", "16"],
+    ));
+    assert_success(&convert(
+        dir.path(),
+        &["a.png", "--max-pixels", "1m", "--sizes", "16", "--force"],
+    ));
+    assert_failure_containing(
+        &convert(dir.path(), &["a.png", "--max-pixels", "9k", "--force"]),
+        "the image is 100x100 pixels",
+    );
+    for bad in ["many", "-5", "1.5M", "M"] {
+        let out = convert(dir.path(), &["a.png", "--max-pixels", bad]);
+        assert!(!out.status.success(), "{bad}: {}", describe(&out));
+    }
+}
+
+#[test]
+fn the_limit_covers_standard_input_gif_and_a_batch() {
+    let dir = tempfile::tempdir().unwrap();
+    let png = std::fs::read(write_solid(dir.path(), "a.png", 64, RED)).unwrap();
+    let out = img2ico_with_stdin(
+        dir.path(),
+        &[
+            "-",
+            "-o",
+            "-",
+            "--output-format",
+            "ico",
+            "--max-pixels",
+            "100",
+        ],
+        &png,
+    );
+    assert_failure_containing(&out, "the image is 64x64 pixels");
+    assert!(out.stdout.is_empty());
+
+    // A GIF.
+    let gif = dir.path().join("a.gif");
+    RgbaImage::from_pixel(32, 32, Rgba(RED)).save(&gif).unwrap();
+    assert_failure_containing(
+        &convert(dir.path(), &["a.gif", "--max-pixels", "100"]),
+        "the image is 32x32 pixels",
+    );
+
+    // In a batch the limit is a failure of that file only, with --keep-going.
+    write_solid(dir.path(), "small.png", 8, RED);
+    let out = convert(
+        dir.path(),
+        &[
+            "a.png",
+            "small.png",
+            "--max-pixels",
+            "100",
+            "--keep-going",
+            "--sizes",
+            "16",
+        ],
+    );
+    assert!(!out.status.success());
+    assert!(dir.path().join("small.ico").is_file());
+    assert!(!dir.path().join("a.ico").exists());
+    assert!(
+        stderr(&out).contains("a.png: Could not read input file"),
+        "{}",
+        describe(&out)
+    );
+}
+
+#[test]
+fn the_limit_can_come_from_a_settings_file_and_the_command_line_wins() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "a.png", 64, RED);
+    std::fs::write(dir.path().join("img2ico.toml"), "max-pixels = 100\n").unwrap();
+    assert_failure_containing(
+        &convert(dir.path(), &["a.png"]),
+        "the image is 64x64 pixels",
+    );
+    assert_success(&convert(
+        dir.path(),
+        &["a.png", "--max-pixels", "0", "--sizes", "16"],
+    ));
+}
+
+#[test]
+fn no_temporary_files_are_left_behind_and_an_existing_output_is_replaced_whole() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "a.png", 64, RED);
+    write_solid(dir.path(), "b.png", 64, GREEN);
+    assert_success(&convert(
+        dir.path(),
+        &["a.png", "b.png", "-o", "out", "--sizes", "16,32"],
+    ));
+    let before = std::fs::read(dir.path().join("out").join("a.ico")).unwrap();
+    // Replace it with another picture's icon under the same name.
+    std::fs::copy(dir.path().join("b.png"), dir.path().join("a.png")).unwrap();
+    assert_success(&convert(
+        dir.path(),
+        &["a.png", "b.png", "-o", "out", "--sizes", "16,32", "--force"],
+    ));
+    let after = std::fs::read(dir.path().join("out").join("a.ico")).unwrap();
+    assert_ne!(before, after, "the file was replaced");
+    ico_in(&after);
+    assert_eq!(names_in(&dir.path().join("out")), vec!["a.ico", "b.ico"]);
+
+    // The other writers too: merge, select, extract, report, settings.
+    assert_success(&img2ico(
+        dir.path(),
+        &["--merge", "out/a.ico", "out/b.ico", "-o", "merged.ico"],
+    ));
+    assert_success(&img2ico(
+        dir.path(),
+        &["--extract", "merged.ico", "-o", "pngs"],
+    ));
+    assert_success(&img2ico(
+        dir.path(),
+        &["--select", "merged.ico", "-o", "one.ico"],
+    ));
+    assert_success(&convert(
+        dir.path(),
+        &[
+            "a.png",
+            "--report",
+            "r.csv",
+            "--out-toml",
+            "s.toml",
+            "--force",
+            "--sizes",
+            "16",
+        ],
+    ));
+    for folder in [
+        dir.path().to_path_buf(),
+        dir.path().join("pngs"),
+        dir.path().join("out"),
+    ] {
+        assert!(
+            names_in(&folder).iter().all(|name| !name.ends_with(".tmp")),
+            "{folder:?}: {:?}",
+            names_in(&folder)
+        );
+    }
+}
+
+#[test]
+fn a_failed_write_leaves_no_partial_file() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "a.png", 64, RED);
+    // The output path is a folder: it cannot be replaced by a file.
+    std::fs::create_dir(dir.path().join("taken.ico")).unwrap();
+    let out = convert(
+        dir.path(),
+        &["a.png", "-o", "taken.ico", "--force", "--sizes", "16"],
+    );
+    assert!(!out.status.success(), "{}", describe(&out));
+    assert!(dir.path().join("taken.ico").is_dir());
+    assert!(
+        names_in(dir.path())
+            .iter()
+            .all(|name| !name.ends_with(".tmp"))
+    );
+}
+
+/// Six pictures with soft transparent edges, big enough for the sizes of a
+/// single file to be made in parallel (over 250000 pixels).
+fn write_round_pictures(dir: &Path, count: usize, size: u32) {
+    for i in 0..count {
+        write_image(dir, &format!("p{i}.png"), size, size, |x, y| {
+            let c = size as f32 / 2.0;
+            let d = ((x as f32 - c).powi(2) + (y as f32 - c).powi(2)).sqrt() / c;
+            let alpha = ((1.0 - d) * 4.0).clamp(0.0, 1.0);
+            [
+                (x * 255 / size) as u8,
+                (y * 255 / size) as u8,
+                (i * 40) as u8,
+                (alpha * 255.0) as u8,
+            ]
+        });
+    }
+}
+
+#[test]
+fn the_number_of_threads_never_changes_the_icons() {
+    let dir = tempfile::tempdir().unwrap();
+    write_round_pictures(dir.path(), 6, 600);
+    let batch: Vec<String> = (0..6).map(|i| format!("p{i}.png")).collect();
+    for (jobs, folder) in [("1", "seq"), ("4", "par"), ("0", "auto")] {
+        let mut args: Vec<&str> = batch.iter().map(String::as_str).collect();
+        args.extend([
+            "-o",
+            folder,
+            "--jobs",
+            jobs,
+            "--sizes",
+            "16,32,48,256",
+            "--quiet",
+        ]);
+        assert_success(&convert(dir.path(), &args));
+    }
+    for name in names_in(&dir.path().join("seq")) {
+        let sequential = std::fs::read(dir.path().join("seq").join(&name)).unwrap();
+        for other in ["par", "auto"] {
+            assert_eq!(
+                sequential,
+                std::fs::read(dir.path().join(other).join(&name)).unwrap(),
+                "{name} differs in {other}"
+            );
+        }
+    }
+    // One large file on its own: its sizes are made in parallel, and for .icns too.
+    for (format, ext) in [("ico", "ico"), ("icns", "icns")] {
+        let outputs: Vec<Vec<u8>> = ["1", "8"]
+            .iter()
+            .map(|jobs| {
+                let name = format!("one{jobs}.{ext}");
+                assert_success(&img2ico(
+                    dir.path(),
+                    &[
+                        "p0.png",
+                        "-o",
+                        &name,
+                        "--output-format",
+                        format,
+                        "--jobs",
+                        jobs,
+                        "--quiet",
+                    ],
+                ));
+                std::fs::read(dir.path().join(&name)).unwrap()
+            })
+            .collect();
+        assert_eq!(outputs[0], outputs[1], "{format}");
+    }
+}
+
+#[test]
+fn a_batch_reports_in_input_order_whatever_the_threads_do() {
+    let dir = tempfile::tempdir().unwrap();
+    write_round_pictures(dir.path(), 12, 64);
+    let batch: Vec<String> = (0..12).map(|i| format!("p{i}.png")).collect();
+    let mut args: Vec<&str> = batch.iter().map(String::as_str).collect();
+    args.extend(["-o", "out", "--jobs", "6", "--sizes", "16"]);
+    let out = convert(dir.path(), &args);
+    assert_success(&out);
+    let text = stdout(&out);
+    let lines: Vec<&str> = text.lines().filter(|l| l.starts_with('[')).collect();
+    assert_eq!(lines.len(), 12, "{text}");
+    for (i, line) in lines.iter().enumerate() {
+        assert!(line.starts_with(&format!("[{}/12]", i + 1)), "{line}");
+        assert!(line.contains(&format!("p{i}.png")), "{line}");
+    }
+    assert!(text.contains("12 converted"), "{text}");
+}
+
+#[test]
+fn a_failure_in_a_parallel_batch_stops_new_files_names_the_file_and_fails() {
+    let dir = tempfile::tempdir().unwrap();
+    write_round_pictures(dir.path(), 60, 32);
+    write_junk(dir.path(), "p5.png"); // file number 6 of 60 is broken
+    let batch: Vec<String> = (0..60).map(|i| format!("p{i}.png")).collect();
+    let mut args: Vec<&str> = batch.iter().map(String::as_str).collect();
+    args.extend([
+        "-o", "out", "--jobs", "4", "--sizes", "16", "--report", "r.json",
+    ]);
+    let out = convert(dir.path(), &args);
+    assert_failure_containing(&out, "p5.png: Could not read input file");
+    assert!(
+        !stdout(&out).contains("Batch finished"),
+        "{}",
+        describe(&out)
+    );
+    // The files before it were converted and are in the report, in order;
+    // new files stop being started, so far from all 60 are in it.
+    let report: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(dir.path().join("r.json")).unwrap()).unwrap();
+    let files = report["files"].as_array().unwrap();
+    assert!(
+        files.len() >= 6 && files.len() < 60,
+        "{} files in the report",
+        files.len()
+    );
+    for (i, file) in files.iter().enumerate() {
+        let input = file["input"].as_str().unwrap();
+        assert!(input.ends_with(&format!("p{i}.png")), "{i}: {input}");
+        let expected = if i == 5 { "failed" } else { "converted" };
+        assert_eq!(file["status"], expected, "{input}");
+    }
+    assert_eq!(report["summary"]["failed"], 1);
+}
+
+#[test]
+fn keep_going_in_a_parallel_batch_converts_everything_else() {
+    let dir = tempfile::tempdir().unwrap();
+    write_round_pictures(dir.path(), 20, 32);
+    write_junk(dir.path(), "p3.png");
+    write_junk(dir.path(), "p11.png");
+    let batch: Vec<String> = (0..20).map(|i| format!("p{i}.png")).collect();
+    let mut args: Vec<&str> = batch.iter().map(String::as_str).collect();
+    args.extend(["-o", "out", "--jobs", "8", "--sizes", "16", "--keep-going"]);
+    let out = convert(dir.path(), &args);
+    assert_failure_containing(&out, "2 of 20 file(s) failed.");
+    assert_eq!(names_in(&dir.path().join("out")).len(), 18);
+    let err = stderr(&out);
+    assert!(
+        err.contains("p3.png: Could not read") && err.contains("p11.png: Could not read"),
+        "{err}"
+    );
+}
+
+#[test]
+fn verbose_and_find_previews_work_one_file_at_a_time_unless_jobs_is_given() {
+    let dir = tempfile::tempdir().unwrap();
+    write_round_pictures(dir.path(), 4, 32);
+    let batch: Vec<String> = (0..4).map(|i| format!("p{i}.png")).collect();
+    let run = |extra: &[&str]| {
+        let mut args: Vec<&str> = batch.iter().map(String::as_str).collect();
+        args.extend(["-o", "out", "--sizes", "16", "--force", "--verbose"]);
+        args.extend_from_slice(extra);
+        stderr(&convert(dir.path(), &args))
+    };
+    assert!(
+        run(&[]).contains("batch: 1 worker(s)"),
+        "verbose is sequential by default"
+    );
+    assert!(
+        run(&["--jobs", "3"]).contains("batch: 3 worker(s)"),
+        "unless asked for"
+    );
+    assert!(run(&["-j", "2"]).contains("batch: 2 worker(s)"));
+    assert!(run(&["--jobs", "1"]).contains("batch: 1 worker(s)"));
+    // Never more workers than files.
+    assert!(run(&["--jobs", "64"]).contains("batch: 4 worker(s)"));
+}
+
+#[test]
+fn jobs_can_be_set_in_a_settings_file_and_a_bad_value_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    write_round_pictures(dir.path(), 3, 32);
+    std::fs::write(dir.path().join("img2ico.toml"), "jobs = 2\n").unwrap();
+    let out = convert(
+        dir.path(),
+        &[
+            "p0.png",
+            "p1.png",
+            "p2.png",
+            "-o",
+            "out",
+            "--sizes",
+            "16",
+            "--verbose",
+        ],
+    );
+    assert_success(&out);
+    assert!(
+        stderr(&out).contains("batch: 2 worker(s)"),
+        "{}",
+        describe(&out)
+    );
+    let out = convert(dir.path(), &["p0.png", "--jobs", "many"]);
+    assert!(!out.status.success());
+    let out = convert(dir.path(), &["p0.png", "--jobs", "-1"]);
+    assert!(!out.status.success());
+}
+
+#[test]
+fn svg_sizes_in_parallel_equal_the_sequential_ones() {
+    let dir = tempfile::tempdir().unwrap();
+    let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="60"><circle cx="40" cy="30" r="25" fill="#ff0000" fill-opacity="0.6"/><rect x="50" y="20" width="40" height="30" fill="#0000ff"/></svg>"##;
+    std::fs::write(dir.path().join("logo.svg"), svg).unwrap();
+    let outputs: Vec<Vec<u8>> = ["1", "6"]
+        .iter()
+        .map(|jobs| {
+            let name = format!("s{jobs}.ico");
+            assert_success(&convert(
+                dir.path(),
+                &[
+                    "logo.svg", "-o", &name, "--jobs", jobs, "--preset", "windows", "--quiet",
+                ],
+            ));
+            std::fs::read(dir.path().join(&name)).unwrap()
+        })
+        .collect();
+    assert_eq!(outputs[0], outputs[1]);
+}
+
+// =============================================================================
 // Shell completions
 // =============================================================================
 
@@ -3585,7 +4053,12 @@ fn the_first_failure_stops_a_batch_and_names_the_file() {
     write_junk(dir.path(), "bad.png");
     write_solid(dir.path(), "c.png", 64, RED);
 
-    let out = convert(dir.path(), &["a.png", "bad.png", "c.png", "--sizes", "16"]);
+    // --jobs 1: strictly one file after the other, so "not reached" is exact
+    // (with several workers files already under way are finished).
+    let out = convert(
+        dir.path(),
+        &["a.png", "bad.png", "c.png", "--sizes", "16", "--jobs", "1"],
+    );
     assert_failure_containing(&out, "bad.png: Could not read input file");
     assert!(
         dir.path().join("a.ico").is_file(),
@@ -5079,6 +5552,8 @@ fn a_report_is_written_when_the_first_failure_stops_the_run() {
             "c.png",
             "--sizes",
             "16",
+            "--jobs",
+            "1",
             "--report",
             "report.json",
         ],

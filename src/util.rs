@@ -155,6 +155,209 @@ pub fn check_overwrite(path: &Path, force: bool) -> Result<(), String> {
     Ok(())
 }
 
+/// How many threads to use when the user did not say: one per processor
+/// (1 if that cannot be told).
+pub fn available_threads() -> usize {
+    std::thread::available_parallelism().map_or(1, |n| n.get())
+}
+
+/// Runs `work` for every item - on up to `threads` threads - and returns the
+/// results in the order of `items`, whatever order they finished in. With one
+/// thread (or one item) nothing is spawned and it is a plain loop.
+pub fn parallel_map<T: Sync, R: Send>(
+    items: &[T],
+    threads: usize,
+    work: impl Fn(&T) -> R + Sync,
+) -> Vec<R> {
+    use std::sync::Mutex;
+    use std::sync::atomic::AtomicUsize;
+
+    if threads <= 1 || items.len() <= 1 {
+        return items.iter().map(work).collect();
+    }
+    let next = AtomicUsize::new(0);
+    let slots: Vec<Mutex<Option<R>>> = items.iter().map(|_| Mutex::new(None)).collect();
+    std::thread::scope(|scope| {
+        for _ in 0..threads.min(items.len()) {
+            scope.spawn(|| {
+                loop {
+                    let index = next.fetch_add(1, Ordering::Relaxed);
+                    let Some(item) = items.get(index) else { break };
+                    let result = work(item);
+                    *slots[index]
+                        .lock()
+                        .expect("a result slot is never poisoned") = Some(result);
+                }
+            });
+        }
+    });
+    slots
+        .into_iter()
+        .map(|slot| {
+            slot.into_inner()
+                .expect("a result slot is never poisoned")
+                .expect("every item has been worked on")
+        })
+        .collect()
+}
+
+/// Runs `work` for the items on up to `threads` threads and hands the results
+/// to `handle` strictly in the order of `items` - on the calling thread, as
+/// soon as the next one in line is ready - so progress can be reported in a
+/// stable order while the work itself finishes in any order.
+///
+/// `handle` returns whether to go on. When it returns false no NEW item is
+/// started any more, but the ones already running are finished and handed
+/// over too (their work has been done; it must be accounted for). Items are
+/// started in order, so what was started is always a prefix of `items`. With
+/// one thread (or one item) it is a plain loop, and `false` ends it at once.
+pub fn for_each_ordered<T: Sync, R: Send>(
+    items: &[T],
+    threads: usize,
+    work: impl Fn(usize, &T) -> R + Sync,
+    mut handle: impl FnMut(usize, R) -> bool,
+) {
+    use std::collections::BTreeMap;
+    use std::sync::atomic::AtomicUsize;
+
+    if threads <= 1 || items.len() <= 1 {
+        for (index, item) in items.iter().enumerate() {
+            if !handle(index, work(index, item)) {
+                break;
+            }
+        }
+        return;
+    }
+
+    let next = AtomicUsize::new(0);
+    let stop = AtomicBool::new(false);
+    let (sender, receiver) = std::sync::mpsc::channel();
+    std::thread::scope(|scope| {
+        for _ in 0..threads.min(items.len()) {
+            let sender = sender.clone();
+            let (next, stop, work) = (&next, &stop, &work);
+            scope.spawn(move || {
+                while !stop.load(Ordering::Relaxed) {
+                    let index = next.fetch_add(1, Ordering::Relaxed);
+                    let Some(item) = items.get(index) else { break };
+                    // The receiver outlives the workers; a failed send only
+                    // means the run is over.
+                    let _ = sender.send((index, work(index, item)));
+                }
+            });
+        }
+        drop(sender);
+
+        let mut waiting: BTreeMap<usize, R> = BTreeMap::new();
+        let mut expected = 0;
+        for (index, result) in receiver {
+            waiting.insert(index, result);
+            while let Some(result) = waiting.remove(&expected) {
+                if !handle(expected, result) {
+                    stop.store(true, Ordering::Relaxed);
+                }
+                expected += 1;
+            }
+        }
+    });
+}
+
+/// A limit on how much work of one kind - here: pixels of decoded images -
+/// is under way at the same time across threads, so that many workers
+/// converting large photos together cannot use up the memory of the machine.
+pub struct Budget {
+    capacity: u64,
+    in_use: std::sync::Mutex<u64>,
+    freed: std::sync::Condvar,
+}
+
+/// What a thread holds of a `Budget` until it is dropped.
+#[must_use = "the share is given back as soon as this is dropped"]
+pub struct Share<'a> {
+    budget: &'a Budget,
+    amount: u64,
+}
+
+impl Budget {
+    pub fn new(capacity: u64) -> Self {
+        Self {
+            capacity,
+            in_use: std::sync::Mutex::new(0),
+            freed: std::sync::Condvar::new(),
+        }
+    }
+
+    /// Waits until `amount` fits next to what others hold, then holds it.
+    /// An amount larger than the whole budget is not turned away - it waits
+    /// until nobody else holds anything and then runs alone - so every job
+    /// gets its turn.
+    pub fn take(&self, amount: u64) -> Share<'_> {
+        let mut in_use = self.in_use.lock().expect("the budget is never poisoned");
+        while *in_use != 0 && *in_use + amount > self.capacity {
+            in_use = self
+                .freed
+                .wait(in_use)
+                .expect("the budget is never poisoned");
+        }
+        *in_use += amount;
+        Share {
+            budget: self,
+            amount,
+        }
+    }
+}
+
+impl Drop for Share<'_> {
+    fn drop(&mut self) {
+        let mut in_use = self
+            .budget
+            .in_use
+            .lock()
+            .expect("the budget is never poisoned");
+        *in_use -= self.amount;
+        self.budget.freed.notify_all();
+    }
+}
+
+/// Writes `bytes` to `path` so that the file is either the complete new
+/// content or - if anything goes wrong, or the program is killed half way -
+/// what it was before (or not there at all), never a half-written one. The
+/// bytes go to a temporary file in the same folder first and are renamed over
+/// `path` only when all of them are on disk; the rename is a single step for
+/// the file system. The temporary file is removed again if the write fails.
+pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    use std::sync::atomic::AtomicU64;
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    let folder = path
+        .parent()
+        .filter(|folder| !folder.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let name = path
+        .file_name()
+        .ok_or_else(|| std::io::Error::other("the path has no file name"))?
+        .to_string_lossy();
+    let temporary = folder.join(format!(
+        ".{name}.{}-{}.tmp",
+        std::process::id(),
+        COUNTER.fetch_add(1, Ordering::Relaxed)
+    ));
+
+    let written = (|| {
+        let mut file = std::fs::File::create(&temporary)?;
+        file.write_all(bytes)?;
+        // The data has to be on disk before the rename makes it the file.
+        file.sync_all()?;
+        drop(file);
+        std::fs::rename(&temporary, path)
+    })();
+    if written.is_err() {
+        let _ = std::fs::remove_file(&temporary);
+    }
+    written
+}
+
 /// Checks whether two paths point at the same file on disk, resolving
 /// symlinks/relative components first (`/a/./b.png` and `/a/b.png` should
 /// count as "the same file" even though they're different strings).
@@ -206,6 +409,172 @@ pub fn delete_source_files(paths: &[PathBuf], output_path: Option<&Path>, silent
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_budget_never_lets_more_than_its_capacity_run_together() {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        let budget = super::Budget::new(100);
+        let running = AtomicU64::new(0);
+        let highest = AtomicU64::new(0);
+        super::parallel_map(&[40u64; 12], 8, |&amount| {
+            let _share = budget.take(amount);
+            let now = running.fetch_add(amount, Ordering::SeqCst) + amount;
+            highest.fetch_max(now, Ordering::SeqCst);
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            running.fetch_sub(amount, Ordering::SeqCst);
+        });
+        assert!(highest.load(Ordering::SeqCst) <= 100, "{highest:?}");
+        assert!(highest.load(Ordering::SeqCst) >= 40);
+    }
+
+    #[test]
+    fn an_amount_beyond_the_budget_still_gets_its_turn_alone() {
+        let budget = super::Budget::new(10);
+        let results = super::parallel_map(&[5u64, 500, 5, 500], 4, |&amount| {
+            let _share = budget.take(amount);
+            amount
+        });
+        assert_eq!(results, vec![5, 500, 5, 500]);
+    }
+
+    #[test]
+    fn parallel_map_keeps_the_order_of_the_items() {
+        let items: Vec<u32> = (0..50).collect();
+        for threads in [1, 2, 8, 100] {
+            let squares = super::parallel_map(&items, threads, |&n| {
+                // Make the early items the slow ones, so they finish last.
+                std::thread::sleep(std::time::Duration::from_micros(u64::from(50 - n) * 20));
+                n * n
+            });
+            assert_eq!(
+                squares,
+                items.iter().map(|n| n * n).collect::<Vec<_>>(),
+                "{threads}"
+            );
+        }
+        assert!(super::parallel_map(&Vec::<u32>::new(), 4, |&n| n).is_empty());
+    }
+
+    #[test]
+    fn parallel_map_really_uses_several_threads() {
+        let ids = super::parallel_map(&[0; 8], 4, |_| {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            std::thread::current().id()
+        });
+        let distinct: std::collections::HashSet<_> = ids.into_iter().collect();
+        assert!(distinct.len() > 1, "all on one thread: {distinct:?}");
+    }
+
+    #[test]
+    fn for_each_ordered_hands_over_in_order_whatever_the_finishing_order() {
+        let items: Vec<u32> = (0..40).collect();
+        for threads in [1, 3, 16] {
+            let mut seen = Vec::new();
+            super::for_each_ordered(
+                &items,
+                threads,
+                |_, &n| {
+                    std::thread::sleep(std::time::Duration::from_micros(u64::from(40 - n) * 30));
+                    n * 2
+                },
+                |index, result| {
+                    seen.push((index, result));
+                    true
+                },
+            );
+            let expected: Vec<(usize, u32)> = items.iter().map(|&n| (n as usize, n * 2)).collect();
+            assert_eq!(seen, expected, "{threads} threads");
+        }
+    }
+
+    #[test]
+    fn for_each_ordered_stops_starting_new_items_but_hands_over_all_started_ones() {
+        let items: Vec<usize> = (0..200).collect();
+        // One thread: stops at once, exactly like a loop with a break.
+        let mut seen = Vec::new();
+        super::for_each_ordered(
+            &items,
+            1,
+            |i, _| i,
+            |i, _| {
+                seen.push(i);
+                i < 5
+            },
+        );
+        assert_eq!(seen, vec![0, 1, 2, 3, 4, 5]);
+
+        // Several threads: what was started is a prefix, all of it handed
+        // over in order, and far from everything was started.
+        let started = std::sync::atomic::AtomicUsize::new(0);
+        let mut seen = Vec::new();
+        super::for_each_ordered(
+            &items,
+            4,
+            |i, _| {
+                started.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                std::thread::sleep(std::time::Duration::from_millis(2));
+                i
+            },
+            |i, _| {
+                seen.push(i);
+                i < 3
+            },
+        );
+        let expected: Vec<usize> = (0..seen.len()).collect();
+        assert_eq!(seen, expected, "a prefix, in order");
+        assert_eq!(
+            seen.len(),
+            started.load(std::sync::atomic::Ordering::Relaxed)
+        );
+        assert!(
+            seen.len() >= 4 && seen.len() < 100,
+            "{} started",
+            seen.len()
+        );
+    }
+
+    #[test]
+    fn an_atomic_write_creates_and_replaces_a_file_and_leaves_nothing_behind() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("out.bin");
+        super::write_atomic(&path, b"first").unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"first");
+        super::write_atomic(&path, b"second, longer").unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"second, longer");
+        let names: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(
+            names,
+            vec![std::ffi::OsString::from("out.bin")],
+            "no temporary file"
+        );
+    }
+
+    #[test]
+    fn a_failed_atomic_write_keeps_the_old_file_and_cleans_up() {
+        let dir = tempfile::tempdir().unwrap();
+        // The target is a folder: the rename cannot replace it.
+        let target = dir.path().join("taken");
+        std::fs::create_dir(&target).unwrap();
+        std::fs::write(target.join("inside"), b"x").unwrap();
+        assert!(super::write_atomic(&target, b"data").is_err());
+        assert!(target.join("inside").exists());
+        let leftovers = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter(|e| {
+                e.as_ref()
+                    .unwrap()
+                    .file_name()
+                    .to_string_lossy()
+                    .ends_with(".tmp")
+            })
+            .count();
+        assert_eq!(leftovers, 0);
+        // And a missing folder is an error, not a panic.
+        assert!(super::write_atomic(&dir.path().join("nope").join("f"), b"x").is_err());
+    }
+
     use super::*;
     use proptest::prelude::*;
 

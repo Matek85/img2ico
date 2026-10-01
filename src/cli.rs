@@ -79,6 +79,25 @@ pub enum OutputFormat {
     Icns,
 }
 
+/// Parses a pixel count: digits, optionally followed by K (thousand) or M
+/// (million), in either case.
+fn parse_pixel_count(text: &str) -> Result<u64, String> {
+    let text = text.trim();
+    let (digits, factor) = match text.chars().last() {
+        Some('k' | 'K') => (&text[..text.len() - 1], 1_000u64),
+        Some('m' | 'M') => (&text[..text.len() - 1], 1_000_000u64),
+        _ => (text, 1),
+    };
+    digits
+        .trim()
+        .parse::<u64>()
+        .ok()
+        .and_then(|n| n.checked_mul(factor))
+        .ok_or_else(|| {
+            format!("'{text}' is not a pixel count (digits, optionally with K or M, e.g. 50M)")
+        })
+}
+
 /// What `img2ico --version` prints (after the program name): the version,
 /// and the facts a bug report needs - the platform and the compiler the
 /// binary was built with. Both come from build.rs. `-V` prints just the
@@ -388,6 +407,31 @@ pub struct Args {
     #[arg(long = "corner-radius", value_name = "PERCENT", value_parser = clap::value_parser!(u8).range(0..=50))]
     pub corner_radius: Option<u8>,
 
+    /// The largest source image to accept, in pixels (width x height). A
+    /// bigger one is refused - with a message - before it is decoded, so a
+    /// small file that claims to be enormous (a "decompression bomb") cannot
+    /// eat all the memory of a pipeline. Plain digits or a K / M suffix:
+    /// `--max-pixels 50M` is 50 million, a 7000 x 7000 picture. Defaults to
+    /// 100M (a 10000 x 10000 picture, about 400 MB decoded); 0 turns the
+    /// limit off. Applies to raster images, not to an SVG, which is drawn at
+    /// the icon sizes only.
+    #[arg(long = "max-pixels", value_name = "COUNT", value_parser = parse_pixel_count)]
+    pub max_pixels: Option<u64>,
+
+    /// How many threads to work with: img2ico converts the files of a batch
+    /// at the same time, and for a single large image the icon sizes at the
+    /// same time. Without this it uses one thread per processor; --jobs 1
+    /// turns all of it off and works strictly one thing after the other. The
+    /// icons are byte for byte the same either way - what changes is the
+    /// speed and the order of the diagnostics: the progress lines of a batch
+    /// still come out in input order, but warnings and --verbose notes of
+    /// different files can interleave (every line names its file). A
+    /// --verbose run, and a --find preview, work one file at a time unless
+    /// --jobs is given explicitly. 0 means "one per processor", like
+    /// leaving it out.
+    #[arg(short = 'j', long = "jobs", value_name = "N")]
+    pub jobs: Option<usize>,
+
     /// Which frame to use as the source image, if the input is an
     /// animated GIF (has no effect on any other format). Frames are
     /// numbered starting at 1 (the first frame), matching how you'd
@@ -610,7 +654,8 @@ pub struct Args {
     /// Loads default values for the "tuning" settings above (--sizes,
     /// --preset, --chroma-key, --tolerance, --seed, --find,
     /// --find-min-size, --auto-apply, --replace-color, --grayscale,
-    /// --feather, --padding, --fit, --crop, --trim, --corner-radius, --gif-frame,
+    /// --feather, --padding, --fit, --crop, --trim, --corner-radius, --max-pixels, --jobs,
+    /// --gif-frame,
     /// --output-format, --delete-source, --force,
     /// --skip-existing, --keep-going, --recursive, --include, --exclude,
     /// --combine, --index, --silent) from a TOML file. An explicit

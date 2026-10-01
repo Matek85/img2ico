@@ -12,6 +12,25 @@ when cutting a release.
 
 ### Added
 
+- Parallel work: with `--jobs N` (`-j`, or `jobs` in a settings file) - by
+  default one thread per processor - the files of a batch are converted at
+  the same time, and the icon sizes of a single large image (or an SVG) are
+  scaled and encoded at the same time. The icons are byte for byte the same as
+  with `--jobs 1`, which turns it all off. The progress lines of a batch still
+  come out in input order; with several threads the first failure stops new
+  files from being started but files already under way are finished, and the
+  workers together hold at most about 150 megapixels of decoded images. A
+  `--verbose` run and a `--find` preview work one file at a time unless
+  `--jobs` is given. Measured on 32 threads: 60 files of 512x512 in 0.09 s
+  instead of 0.76 s, one 6000x6000 image in 0.33 s instead of 1.0 s.
+- `--max-pixels` (and `max-pixels` in settings files) refuses a source image
+  with more pixels than allowed - 100 million by default, `0` for no limit,
+  `K` / `M` suffixes accepted - before it is decoded, as protection against
+  decompression bombs. It covers files, standard input and GIFs.
+- Every written file (icons, merged/selected `.ico`, extracted PNGs, reports,
+  settings files) is written atomically: to a temporary file in the same
+  folder first, then renamed over the target, so a crash or Ctrl+C never
+  leaves a half-written file.
 - `--validate`: checks the structure of existing `.ico` files (files, or
   folders of them, with `--recursive` below them as well) and says exactly
   what is wrong with a damaged one - the header, the number of images, every
@@ -39,6 +58,16 @@ when cutting a release.
   of them gets one icon at its own size. An SVG gets all the default sizes.
 - `examples/app-icon-layout.toml`: a rounded, trimmed app icon from a logo on
   a white background.
+
+### Changed
+
+- A source larger than 100 million pixels is now refused unless
+  `--max-pixels` raises the limit (see above).
+- Less memory for large images: the decoded source is converted in place
+  instead of duplicated, and a source with transparency is multiplied with its
+  alpha once instead of once per icon size - which is also faster. A 6000x6000
+  image peaks at 166 MB instead of 280 MB (212 MB instead of 304 MB with a
+  background removal); the icons are unchanged byte for byte.
 
 ## [1.7.0] - 2026-10-01
 

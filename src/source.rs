@@ -13,6 +13,49 @@ use std::path::Path;
 /// What img2ico can read as a source image, as shown in messages.
 pub const SUPPORTED_FORMATS: &str = "PNG, JPG, BMP, GIF, WebP, TIFF, TGA, ICNS, SVG";
 
+/// How many pixels a raster source may have unless --max-pixels says
+/// otherwise: 100 million, a 10000 x 10000 picture. A decoded image takes four
+/// bytes a pixel, so this is roughly 400 MB - and a small file can claim far
+/// more than that (a "decompression bomb"), which this stops before anything
+/// is allocated.
+pub const DEFAULT_MAX_PIXELS: u64 = 100_000_000;
+
+/// The pixel count of the raster image at `path`, read from its header alone,
+/// or 0 if it cannot be told (not a raster image, unreadable). For deciding
+/// how much memory a conversion is about to need.
+pub fn peek_pixels(path: &Path) -> u64 {
+    image::ImageReader::open(path)
+        .and_then(|reader| reader.with_guessed_format())
+        .ok()
+        .and_then(|reader| reader.into_dimensions().ok())
+        .map_or(0, |(width, height)| u64::from(width) * u64::from(height))
+}
+
+/// Refuses an image of `width` x `height` pixels that has more than
+/// `max_pixels` (0 means no limit).
+pub fn check_pixel_limit(width: u32, height: u32, max_pixels: u64) -> Result<(), String> {
+    let pixels = u64::from(width) * u64::from(height);
+    if max_pixels != 0 && pixels > max_pixels {
+        return Err(format!(
+            "the image is {width}x{height} pixels ({:.1} megapixels), more than the limit of {:.1} megapixels. Raise the limit with --max-pixels N (0 for no limit) if you trust the file.",
+            pixels as f64 / 1e6,
+            max_pixels as f64 / 1e6
+        ));
+    }
+    Ok(())
+}
+
+/// The decoder limits that go with `max_pixels`: memory for a decoder is
+/// capped at eight bytes a pixel (the decoded image plus working copies).
+fn decoder_limits(max_pixels: u64) -> image::Limits {
+    if max_pixels == 0 {
+        return image::Limits::no_limits();
+    }
+    let mut limits = image::Limits::default();
+    limits.max_alloc = Some(max_pixels.saturating_mul(8));
+    limits
+}
+
 /// A source: a picture of pixels, or a drawing that can be rendered at any
 /// size.
 pub enum Artwork {
@@ -22,7 +65,7 @@ pub enum Artwork {
 
 /// Opens the file at `path` as a source of either kind. SVG is recognized
 /// from the content, like the raster formats.
-pub fn open_source(path: &Path) -> Result<Artwork, String> {
+pub fn open_source(path: &Path, max_pixels: u64) -> Result<Artwork, String> {
     let mut file = std::fs::File::open(path).map_err(|e| e.to_string())?;
     let mut header = [0u8; 4096];
     let mut filled = 0;
@@ -38,22 +81,22 @@ pub fn open_source(path: &Path) -> Result<Artwork, String> {
         let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
         return VectorImage::parse(&bytes, &path.display().to_string()).map(Artwork::Vector);
     }
-    open_image(path).map(Artwork::Raster)
+    open_image_limited(path, max_pixels).map(Artwork::Raster)
 }
 
 /// The same for a source already in memory (read from standard input).
-pub fn decode_source_bytes(bytes: &[u8]) -> Result<Artwork, String> {
+pub fn decode_source_bytes(bytes: &[u8], max_pixels: u64) -> Result<Artwork, String> {
     if is_svg(bytes) {
         return VectorImage::parse(bytes, "standard input").map(Artwork::Vector);
     }
-    decode_image_bytes(bytes).map(Artwork::Raster)
+    decode_image_bytes_limited(bytes, max_pixels).map(Artwork::Raster)
 }
 
 /// Opens the image file at `path`. The format is recognized from the file's
 /// CONTENT where the format has a recognizable header; only for a format
 /// without one (TGA) the file extension decides. The error is the plain
 /// reason; the caller says what it was trying to do.
-pub fn open_image(path: &Path) -> Result<DynamicImage, String> {
+fn open_image_limited(path: &Path, max_pixels: u64) -> Result<DynamicImage, String> {
     let mut file = std::fs::File::open(path).map_err(|e| e.to_string())?;
     let mut header = [0u8; 4];
     let read = file.read(&mut header).map_err(|e| e.to_string())?;
@@ -65,21 +108,52 @@ pub fn open_image(path: &Path) -> Result<DynamicImage, String> {
 
     // ImageReader starts from the format the extension suggests and lets the
     // content override it when the content is recognizable.
-    image::ImageReader::open(path)
-        .and_then(|reader| reader.with_guessed_format())
-        .map_err(|e| e.to_string())?
-        .decode()
-        .map_err(|e| e.to_string())
+    let reader = || {
+        image::ImageReader::open(path)
+            .and_then(|reader| reader.with_guessed_format())
+            .map_err(|e| e.to_string())
+    };
+    // The size comes from the header alone, before a single pixel is decoded.
+    if max_pixels != 0 {
+        let (width, height) = reader()?.into_dimensions().map_err(|e| e.to_string())?;
+        check_pixel_limit(width, height, max_pixels)?;
+    }
+    let mut reader = reader()?;
+    reader.limits(decoder_limits(max_pixels));
+    reader.decode().map_err(|e| e.to_string())
+}
+
+/// `open_image_limited` with the default limit.
+#[cfg(test)]
+pub fn open_image(path: &Path) -> Result<DynamicImage, String> {
+    open_image_limited(path, DEFAULT_MAX_PIXELS)
 }
 
 /// Decodes an image already in memory (read from standard input). The format
 /// can only come from the content here, so TGA - which has no recognizable
 /// header - is not possible this way.
-pub fn decode_image_bytes(bytes: &[u8]) -> Result<DynamicImage, String> {
+fn decode_image_bytes_limited(bytes: &[u8], max_pixels: u64) -> Result<DynamicImage, String> {
     if is_icns(bytes) {
         return decode_icns(bytes, "standard input").map(DynamicImage::ImageRgba8);
     }
-    image::load_from_memory(bytes).map_err(|e| e.to_string())
+    let reader = || {
+        image::ImageReader::new(std::io::Cursor::new(bytes))
+            .with_guessed_format()
+            .map_err(|e| e.to_string())
+    };
+    if max_pixels != 0 {
+        let (width, height) = reader()?.into_dimensions().map_err(|e| e.to_string())?;
+        check_pixel_limit(width, height, max_pixels)?;
+    }
+    let mut reader = reader()?;
+    reader.limits(decoder_limits(max_pixels));
+    reader.decode().map_err(|e| e.to_string())
+}
+
+/// `decode_image_bytes_limited` with the default limit.
+#[cfg(test)]
+pub fn decode_image_bytes(bytes: &[u8]) -> Result<DynamicImage, String> {
+    decode_image_bytes_limited(bytes, DEFAULT_MAX_PIXELS)
 }
 
 #[cfg(test)]
@@ -179,9 +253,10 @@ mod tests {
     #[test]
     fn an_icns_file_opens_as_its_largest_image() {
         let dir = tempfile::tempdir().unwrap();
-        let bytes = crate::icns::encode_icns(&|size| {
-            crate::resize::make_square_icon(&sample(), size, 0, false)
-        })
+        let bytes = crate::icns::encode_icns(
+            &|size| crate::resize::make_square_icon(&sample(), size, 0, false),
+            1,
+        )
         .unwrap();
         let path = dir.path().join("a.icns");
         std::fs::write(&path, &bytes).unwrap();

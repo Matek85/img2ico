@@ -7,6 +7,7 @@ use crate::chroma_key::{DEFAULT_FEATHER, DEFAULT_FIND_MIN_SIZE};
 use crate::cli::{Args, OutputFormat, SizePreset};
 use crate::config::{Settings, settings_to_toml, write_config};
 use crate::layout::{FitMode, MAX_CORNER_RADIUS};
+use crate::source::DEFAULT_MAX_PIXELS;
 use crate::util::delete_source_files;
 use std::path::{Path, PathBuf};
 
@@ -44,6 +45,11 @@ pub struct ResolvedSettings<'a> {
     pub crop: Option<&'a str>,
     pub trim: bool,
     pub corner_radius: u8,
+    /// 0 means no limit.
+    pub max_pixels: u64,
+    /// The threads asked for (command line or settings file); `None` and 0
+    /// leave it to img2ico - see `convert::worker_count`.
+    pub jobs: Option<usize>,
     pub gif_frame: usize,
     pub silent: bool,
     pub output_format: Option<OutputFormat>,
@@ -108,6 +114,11 @@ impl<'a> ResolvedSettings<'a> {
                 .or(settings.corner_radius)
                 .unwrap_or(0)
                 .min(MAX_CORNER_RADIUS),
+            max_pixels: args
+                .max_pixels
+                .or(settings.max_pixels)
+                .unwrap_or(DEFAULT_MAX_PIXELS),
+            jobs: args.jobs.or(settings.jobs),
             gif_frame: args.gif_frame.or(settings.gif_frame).unwrap_or(1),
             silent: args.silent || settings.silent,
             output_format: args.output_format.or(settings.output_format),
@@ -179,6 +190,8 @@ impl<'a> ResolvedSettings<'a> {
             crop: self.crop.map(str::to_owned),
             trim: self.trim,
             corner_radius: Some(self.corner_radius),
+            max_pixels: Some(self.max_pixels),
+            jobs: self.jobs,
             gif_frame: Some(self.gif_frame),
             output_format: self.output_format,
             delete_source: self.delete_source,
