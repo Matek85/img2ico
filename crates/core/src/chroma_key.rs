@@ -4,7 +4,7 @@
 // discovery of additional same-colored regions the border-based flood
 // fill can't reach on its own.
 
-use crate::util::{file_prefix, warn};
+use crate::diag::{file_prefix, warn};
 use image::{Rgba, RgbaImage};
 use std::collections::{BTreeMap, VecDeque};
 
@@ -1170,9 +1170,9 @@ mod tests {
     }
 
     fn warnings_raised(affected: usize, total: usize) -> usize {
-        let before = crate::util::warnings_so_far();
+        let before = crate::diag::warnings_so_far();
         warn_about_removal_extent(affected, total, "#00FF00", true);
-        crate::util::warnings_so_far() - before
+        crate::diag::warnings_so_far() - before
     }
 
     #[test]

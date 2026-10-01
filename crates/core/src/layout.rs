@@ -14,18 +14,12 @@ use image::RgbaImage;
 pub const MAX_CORNER_RADIUS: u8 = 50;
 
 /// How the picture meets the square canvas, selectable via --fit.
-#[derive(
-    Debug,
-    Default,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    clap::ValueEnum,
-    serde::Serialize,
-    serde::Deserialize,
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "cli",
+    derive(clap::ValueEnum, serde::Serialize, serde::Deserialize),
+    serde(rename_all = "lowercase")
 )]
-#[serde(rename_all = "lowercase")]
 pub enum FitMode {
     /// The whole picture fits inside the square; a picture that is not
     /// square leaves transparent bars. The default.

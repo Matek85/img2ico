@@ -48,11 +48,10 @@ npm run build                     # the finished static page in web/dist
 | `config.rs`, `settings.rs` | Settings files, and how command line, files and defaults combine into the settings of a run |
 | `convert.rs` | The conversion of one image or a batch: loading, background removal, layout, encoding, writing, the thread-per-file work |
 | `plan.rs`, `select.rs`, `report.rs` | Which inputs become which outputs, folder expansion and filters, the batch report |
-| `source.rs`, `vector.rs`, `gif.rs`, `icns.rs` | Reading source images (raster, SVG, animated GIF, `.icns`) and writing `.icns` |
-| `layout.rs`, `resize.rs`, `chroma_key.rs` | Fitting, cropping, trimming and scaling; background detection and removal |
+| `source.rs`, `gif.rs` | Opening source files (raster, animated GIF) and deciding what they are |
 | `ico_ops.rs`, `ico_validate.rs` | `--inspect`, `--merge`, `--extract`, `--select`, and the `--validate` parser |
 | `util.rs` | Shared helpers: atomic file writing, thread helpers, the file context for messages |
-| `crates/core` | Code that needs neither files nor threads, shared with the web version (so far the `.ico` validator's parser) |
+| `crates/core` | Code that needs neither files nor threads, shared with the web version: the `.ico` validator's parser, fitting, cropping, trimming and scaling (`layout`, `resize`), background detection and removal (`chroma_key`), SVG rendering (`vector`), `.icns` reading and writing (`icns`), warnings and the file context (`diag`), thread helpers (`par`) |
 | `crates/wasm` | The WebAssembly bindings the web page calls |
 | `web/` | The web page |
 

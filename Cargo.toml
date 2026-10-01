@@ -12,7 +12,7 @@ members = ["crates/core", "crates/wasm"]
 
 [dependencies]
 # The parts shared with the web version (see crates/core/src/lib.rs).
-img2ico-core = { path = "crates/core" }
+img2ico-core = { path = "crates/core", features = ["system-fonts", "cli"] }
 
 # The "image" crate can read a wide range of image formats (PNG, JPG, BMP,
 # GIF, ...) and also handles resizing with high-quality filters.
@@ -58,11 +58,6 @@ globset = "0.4"
 # --json`. (The CSV report is plain text and needs no crate.)
 serde_json = "1"
 
-# Reading macOS .icns files as a source image (the largest icon in them),
-# including the old RLE-compressed formats. Writing .icns is done by hand in
-# icns.rs; this crate is only for reading.
-icns = "0.5"
-resvg = { version = "0.48.1", default-features = false, features = ["text", "system-fonts", "svgz", "raster-images"] }
 
 [dev-dependencies]
 flate2 = "1.1.10"

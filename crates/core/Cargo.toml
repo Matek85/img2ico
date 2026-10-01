@@ -6,9 +6,23 @@ rust-version = "1.88"
 description = "The parts of img2ico that do not touch files or threads, shared by the command line and the web version."
 publish = false
 
+[features]
+# What the command line needs on top: its argument parser and settings files
+# read and write the fit mode, so that type gets clap and serde support. The web
+# version does not use either.
+cli = ["dep:clap", "dep:serde"]
+# Lets SVG text use the fonts installed on the machine. The command line turns
+# this on; a browser has no such fonts to read, so the web version leaves it off.
+system-fonts = ["resvg/system-fonts"]
+
 [dependencies]
+clap = { version = "4", features = ["derive"], optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp", "gif", "ico", "webp", "tiff", "tga"] }
+icns = "0.5"
+resvg = { version = "0.48.1", default-features = false, features = ["text", "svgz", "raster-images"] }
 
 [dev-dependencies]
-image = { version = "0.25", default-features = false, features = ["png"] }
 ico = "0.5"
 proptest = "1"
+tempfile = "3"

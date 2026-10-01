@@ -61,7 +61,7 @@ pub fn encode_icns(
 ) -> Result<Vec<u8>, String> {
     // Every size is rendered and PNG-encoded on its own - several at a time
     // if `threads` allows - and the entries are put together in order.
-    let pngs = crate::util::parallel_map(ICNS_SIZES, threads, |&(size, _)| {
+    let pngs = crate::par::parallel_map(ICNS_SIZES, threads, |&(size, _)| {
         let square = render(size);
 
         // Encode this size as a standalone PNG in memory (not a file on
