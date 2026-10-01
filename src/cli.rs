@@ -407,21 +407,54 @@ pub struct Args {
     #[arg(short = 'r', long = "recursive")]
     pub recursive: bool,
 
-    /// Batch mode: only convert the images found in a folder whose name (or,
-    /// for a pattern containing a "/", whose path below that folder) matches
-    /// this glob pattern, e.g. --include "*.png" or --include "icons/*".
-    /// Can be given several times: a file needs to match any one of them.
-    /// Matching ignores upper/lower case. Applies to what a folder
-    /// contributes - a file named directly on the command line is always
-    /// converted. Command-line only.
-    #[arg(long = "include", value_name = "GLOB")]
+    /// Only convert folder files matching this pattern (repeatable).
+    ///
+    /// A pattern without a "/" is matched against the file NAME, wherever
+    /// in the folder tree the file sits. A pattern with a "/" is matched
+    /// against the PATH below the input folder, always written with forward
+    /// slashes (also on Windows). Upper/lower case does not matter.
+    ///
+    /// Wildcards:
+    ///   *        any characters, but not across folders
+    ///   ?        exactly one character
+    ///   [abc]    one of these characters ([0-9]: one digit)
+    ///   {a,b}    either alternative
+    ///   **       any number of folders (only as a whole folder part)
+    ///
+    /// Give --include several times to take files matching ANY of the
+    /// patterns. Only supported image types (PNG, JPG, BMP, GIF) are ever
+    /// converted - a pattern narrows them down, it cannot add others. It
+    /// applies to what a FOLDER contributes; a file named directly on the
+    /// command line is always converted. Put the pattern in quotes, or your
+    /// shell may expand it before img2ico sees it. Use --exclude to leave
+    /// files out. Command-line only.
+    ///
+    /// Examples:
+    ///   --include "*.png"           only PNG files
+    ///   --include "icon-??.png"     icon-16.png, icon-32.png, ...
+    ///   --include "*.{png,gif}"     PNG and GIF files
+    ///   --include "ui/*.png"        PNG files directly inside the ui folder
+    #[arg(long = "include", value_name = "GLOB", verbatim_doc_comment)]
     pub include: Vec<String>,
 
-    /// Batch mode: skip the images found in a folder whose name (or path
-    /// below the folder, for a pattern containing a "/") matches this glob
-    /// pattern, e.g. --exclude "*_old*" or --exclude "backup/**". Can be
-    /// given several times; wins over --include. Command-line only.
-    #[arg(long = "exclude", value_name = "GLOB")]
+    /// Leave out folder files matching this pattern (repeatable).
+    ///
+    /// Same patterns as --include ("*", "?", "[abc]", "{a,b}", "**"; a
+    /// pattern with a "/" matches the path below the input folder, one
+    /// without it the file name). A file matching ANY --exclude pattern is
+    /// skipped, even if it also matches an --include pattern. Like
+    /// --include it applies to what a FOLDER contributes only, and the
+    /// pattern should be put in quotes. Command-line only.
+    ///
+    /// Examples:
+    ///   --exclude "*_old*"          every file with "_old" in its name
+    ///   --exclude "ui/*"            files directly inside ui (not deeper)
+    ///   --exclude "backup/**"       everything below the top-level backup
+    ///   --exclude "**/old/**"       everything in any folder called old
+    ///
+    /// Combined: --include "*.png" --exclude "backup/**" takes all PNG
+    /// files except those below backup.
+    #[arg(long = "exclude", value_name = "GLOB", verbatim_doc_comment)]
     pub exclude: Vec<String>,
 
     /// Batch mode with -o: rebuild the input folder's subfolder structure

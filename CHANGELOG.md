@@ -15,6 +15,12 @@ when cutting a release.
 - `--dry-run` is now called `--what-if`, and its closing line starts with
   "What if:". The old name keeps working as an alias.
 
+### Documentation
+
+- `--include` and `--exclude` are explained in the README and in `--help`:
+  what a pattern is matched against, the wildcards (`*`, `?`, `[abc]`,
+  `{a,b}`, `**`) and worked examples.
+
 ## [1.5.0] - 2026-10-01
 
 The batch release: several files or whole folder trees in one run, with file

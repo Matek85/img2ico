@@ -219,14 +219,50 @@ img2ico assets/ -r -o icons/ --keep-structure   # the whole tree, folders preser
 
 **What gets converted.** A file stands for itself. A folder stands for the PNG, JPG, BMP and GIF files directly inside it, in name order; other files are ignored. Add `--recursive` (`-r`) to take the subfolders too, all the way down — folder by folder, each in name order, so a run is reproducible. A folder with no images is an error rather than a silent no-op (and if the images are in subfolders, the error says to add `--recursive`). Files and folders can be mixed; files are converted in the order you give them.
 
-**Choosing files.** `--include` and `--exclude` narrow down what a *folder* contributes; both can be repeated, use the usual glob patterns (`*`, `?`, `[abc]`, and `**` for any number of folders) and ignore upper/lower case:
+**Choosing files.** `--include` and `--exclude` narrow down what a *folder* contributes. Both take a *pattern* and can be given several times:
 
 ```
-img2ico assets/ -r --include "*.png" --exclude "*_old*"
-img2ico assets/ -r --exclude "backup/**"        # a pattern with a / matches the path below the folder
+img2ico assets/ -r --include "*.png"                     # only PNG files
+img2ico assets/ -r --exclude "*_old*"                    # everything except files with _old in the name
+img2ico assets/ -r --include "*.png" --exclude "backup/**"
 ```
 
-A pattern without a `/` is matched against the file name wherever the file sits; a pattern with a `/` against its path below the input folder (always written with forward slashes, on Windows too). A file is taken if it matches at least one `--include` (when there are any) and no `--exclude`. The filters only ever narrow down the supported image types, they cannot add others. A file you name directly on the command line is never filtered away — you asked for it by name. If the filters leave nothing, that is an error.
+A file is taken if it matches **at least one `--include`** (when there are any) **and no `--exclude`** — so `--exclude` always wins. Without any pattern, every supported image (PNG, JPG, BMP, GIF) is taken; a pattern can narrow that down but cannot add other file types. A file you name directly on the command line is never filtered away — you asked for it by name — and if the filters leave a folder with nothing, that is an error.
+
+*What a pattern is matched against.* A pattern **without** a `/` is matched against the file name alone, wherever in the folder tree the file sits. A pattern **with** a `/` is matched against the file's path *below the input folder*, always written with forward slashes (also on Windows). Upper and lower case never matter, so `*.png` also finds `LOGO.PNG`.
+
+*What you can write in a pattern.*
+
+| Pattern | Matches | Example |
+|---|---|---|
+| `*` | any characters, but not across a folder boundary | `*.png`, `logo*` |
+| `?` | exactly one character | `icon-??.png` finds `icon-16.png`, not `icon-8.png` |
+| `[abc]`, `[0-9]` | one character out of the list or range | `icon-[0-9]*` |
+| `{a,b}` | either of the alternatives | `*.{png,gif}` |
+| `**` | any number of folders (use it as a whole path part) | `backup/**`, `**/old/**` |
+
+*Examples,* for a tree like this (`-r` assumed):
+
+```
+assets/logo.png        assets/ui/save.png      assets/ui/old/x.png
+assets/logo_old.png    assets/ui/open.gif      assets/backup/logo.png
+assets/photo.JPG       assets/backup/deep/y.png
+```
+
+| Option(s) | Takes |
+|---|---|
+| `--include "*.png"` | every `.png` in any folder (not `open.gif`, not `photo.JPG`) |
+| `--include "*.{png,gif}"` | `.png` and `.gif` files, in any folder |
+| `--include "*.jpg"` | `photo.JPG` (case does not matter) |
+| `--include "logo*"` | `logo.png`, `logo_old.png`, `backup/logo.png` |
+| `--include "ui/*.png"` | `ui/save.png` only (a `/` makes it a path pattern; `*` stays inside `ui`) |
+| `--exclude "*_old*"` | everything except `logo_old.png` |
+| `--exclude "ui/*"` | everything except `ui/save.png` and `ui/open.gif` — but `ui/old/x.png` stays, since `*` does not reach into subfolders |
+| `--exclude "ui/**"` | everything except all of `ui/`, including `ui/old/x.png` |
+| `--exclude "**/old/**"` | everything except `ui/old/x.png` (and any other folder called `old`, at any depth) |
+| `--include "logo*" --exclude "backup/**"` | `logo.png` and `logo_old.png` |
+
+*Two practical notes.* **Put patterns in quotes.** Without them, `bash` and `zsh` expand `*.png` to the matching files in the *current* folder before img2ico even starts, which is almost never what you mean. **Check with `--what-if`** (see below) to see exactly which files a combination selects before converting anything.
 
 **Where the icons go.** In a batch, `-o` names a **folder** (created if it doesn't exist), and each icon is called after its input: `logo.png` becomes `icons/logo.ico` (or `.icns` with `--output-format icns`). Without `-o`, each icon is written next to its input. If `-o` names an existing file, or looks like a file name such as `out.ico`, img2ico says so instead of quietly creating a folder with that name. To convert one file to a specific file name, give just that one input as before.
 
