@@ -52,7 +52,7 @@ img2ico --version
 ```
 
 ```
-img2ico 1.6.0
+img2ico 1.7.0
 target:   x86_64-pc-windows-msvc
 compiler: rustc 1.97.1 (8bab26f4f 2026-07-14)
 ```

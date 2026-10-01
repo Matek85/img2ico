@@ -10,6 +10,11 @@ when cutting a release.
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-10-01
+
+SVG as a source, rendered anew at every icon size, and WebP, TIFF, TGA and
+macOS `.icns` files as further source formats.
+
 ### Added
 
 - SVG as a source (`.svg`, compressed `.svgz`, also from standard input): the
@@ -33,6 +38,8 @@ when cutting a release.
 - The release binary grows by about 2.9 MB (2.81 MB to 5.7 MB on Windows):
   about 0.9 MB for the new image decoders (WebP, TIFF, TGA) and the `.icns`
   reader, about 2 MB for the SVG renderer.
+- The GitHub repository is now called `img2ico`, like the program (it was
+  `pic2ico`); links to the old name are redirected.
 
 ### Fixed
 
