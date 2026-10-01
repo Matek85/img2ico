@@ -63,9 +63,8 @@ pub enum Artwork {
     Vector(VectorImage),
 }
 
-/// Opens the file at `path` as a source of either kind. SVG is recognized
-/// from the content, like the raster formats.
-pub fn open_source(path: &Path, max_pixels: u64) -> Result<Artwork, String> {
+/// The first bytes of the file at `path` - enough to tell an SVG.
+fn read_header(path: &Path) -> Result<Vec<u8>, String> {
     let mut file = std::fs::File::open(path).map_err(|e| e.to_string())?;
     let mut header = [0u8; 4096];
     let mut filled = 0;
@@ -76,12 +75,55 @@ pub fn open_source(path: &Path, max_pixels: u64) -> Result<Artwork, String> {
             Err(e) => return Err(e.to_string()),
         }
     }
-    drop(file);
-    if is_svg(&header[..filled]) {
+    Ok(header[..filled].to_vec())
+}
+
+/// Opens the file at `path` as a source of either kind. SVG is recognized
+/// from the content, like the raster formats.
+pub fn open_source(path: &Path, max_pixels: u64) -> Result<Artwork, String> {
+    if is_svg(&read_header(path)?) {
         let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
         return VectorImage::parse(&bytes, &path.display().to_string()).map(Artwork::Vector);
     }
     open_image_limited(path, max_pixels).map(Artwork::Raster)
+}
+
+/// What --inspect needs to know about a source: the size of a raster image,
+/// read from its header without decoding a single pixel - so it works for a
+/// picture of any size - or the parsed drawing of an SVG.
+pub enum Probe {
+    Raster { width: u32, height: u32 },
+    Vector(VectorImage),
+}
+
+/// Looks at the file at `path` the way `open_source` would, but only as far
+/// as its size.
+pub fn probe_source(path: &Path) -> Result<Probe, String> {
+    let header = read_header(path)?;
+    if is_svg(&header) {
+        let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+        return VectorImage::parse(&bytes, &path.display().to_string()).map(Probe::Vector);
+    }
+    if is_icns(&header) {
+        // Small by nature (at most 1024 x 1024), and its size is that of
+        // its largest icon, which takes decoding to find.
+        let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+        let image = decode_icns(&bytes, &path.display().to_string())?;
+        return Ok(Probe::Raster {
+            width: image.width(),
+            height: image.height(),
+        });
+    }
+    let reader = image::ImageReader::open(path)
+        .and_then(|reader| reader.with_guessed_format())
+        .map_err(|e| e.to_string())?;
+    // An .ico is something --inspect reads as an icon file; when that has
+    // failed it is a damaged one, not a picture with a size to report.
+    if reader.format() == Some(image::ImageFormat::Ico) {
+        return Err("it is an .ico file, not a source image".to_string());
+    }
+    let (width, height) = reader.into_dimensions().map_err(|e| e.to_string())?;
+    Ok(Probe::Raster { width, height })
 }
 
 /// The same for a source already in memory (read from standard input).
