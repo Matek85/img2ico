@@ -16,9 +16,10 @@ when cutting a release.
   drawing is rendered anew at every icon size instead of being scaled down
   from one picture, which gives the sharpest small icons. Works for `.ico` and
   `.icns` output, in folders and batches, with `--padding` and `--grayscale`;
-  `--inspect` reports it as a vector image. The background options
-  (`--chroma-key`, `--find`, `--seed`, `--replace-color`) do not apply to an
-  SVG and are refused with a message. Text in an SVG is drawn with the fonts
+  `--inspect` reports it as a vector image. A background color can be removed
+  or replaced (`--chroma-key`, `--replace-color`, also `auto`) - applied to
+  every rendered size; `--seed` and `--find` name pixel positions and are
+  refused for an SVG with a message. Text in an SVG is drawn with the fonts
   installed on the computer, so it can look different elsewhere; links to
   other files or the web are never followed.
 - More source formats: WebP, TIFF (`.tif`, `.tiff`), TGA and macOS `.icns`

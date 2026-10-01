@@ -2479,13 +2479,93 @@ fn a_folder_takes_svg_files_along_with_the_rest() {
     assert_eq!(names_in(&dir.path().join("out")), vec!["a.ico", "b.ico"]);
 }
 
+/// A 64x64 drawing with a white background and a red square in the middle.
+const WHITE_BACKGROUND_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="#ffffff"/><rect x="16" y="16" width="32" height="32" fill="#ff0000"/></svg>"##;
+
 #[test]
-fn background_removal_options_are_refused_for_an_svg() {
+fn a_background_color_is_removed_from_every_rendered_size_of_an_svg() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("logo.svg"), WHITE_BACKGROUND_SVG).unwrap();
+    for color in ["ffffff", "auto"] {
+        let out = convert(
+            dir.path(),
+            &[
+                "logo.svg",
+                "-c",
+                color,
+                "-o",
+                "out.ico",
+                "--sizes",
+                "16,64,256",
+                "--force",
+            ],
+        );
+        assert_success(&out);
+        let ico = dir.path().join("out.ico");
+        for size in [16, 64, 256] {
+            assert_eq!(
+                icon_pixel(&ico, size, 1, 1)[3],
+                0,
+                "{color} {size}: corner is clear"
+            );
+            assert_eq!(
+                icon_pixel(&ico, size, size / 2, size / 2),
+                RED,
+                "{color} {size}"
+            );
+        }
+        if color == "auto" {
+            assert!(
+                stdout(&out).contains("Detected background color #FFFFFF"),
+                "{}",
+                describe(&out)
+            );
+        }
+    }
+}
+
+#[test]
+fn the_background_of_an_svg_can_be_replaced_and_is_checked_once() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("logo.svg"), WHITE_BACKGROUND_SVG).unwrap();
+    let out = convert(
+        dir.path(),
+        &[
+            "logo.svg",
+            "-c",
+            "ffffff",
+            "--replace-color",
+            "0000ff",
+            "--sizes",
+            "16,32,64",
+        ],
+    );
+    assert_success(&out);
+    assert_eq!(
+        icon_pixel(&dir.path().join("logo.ico"), 32, 1, 1),
+        [0, 0, 255, 255]
+    );
+
+    // A color that is not there: one warning, not one per size.
+    let out = convert(
+        dir.path(),
+        &["logo.svg", "-c", "00ff00", "--sizes", "16,32,64", "--force"],
+    );
+    assert_success(&out);
+    assert_eq!(
+        stderr(&out).matches("nothing was removed").count(),
+        1,
+        "{}",
+        describe(&out)
+    );
+}
+
+#[test]
+fn pixel_position_options_are_refused_for_an_svg() {
     let dir = tempfile::tempdir().unwrap();
     write_svg(dir.path(), "logo.svg");
     for args in [
-        &["--chroma-key", "ffffff"][..],
-        &["--find", "auto"],
+        &["--find", "auto"][..],
         &["--chroma-key", "ffffff", "--seed", "0,0"],
     ] {
         let mut all = vec!["logo.svg", "--sizes", "16"];

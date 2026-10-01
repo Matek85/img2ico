@@ -758,11 +758,14 @@ fn prepare_output(
     Ok(sizes)
 }
 
+/// The size an SVG is rendered at to detect and check the background color
+/// once for all sizes.
+const VECTOR_REFERENCE_SIZE: u32 = 256;
+
 /// Converts an SVG: instead of loading one picture and scaling it down, the
-/// drawing is rendered anew at every size of the icon. Everything that works
-/// on the pixels of a raster image (background removal) has no meaning here -
-/// an SVG has its own transparent background - and is refused rather than
-/// silently ignored.
+/// drawing is rendered anew at every size of the icon. A background color can
+/// still be removed (from every rendered size); the options that name pixel
+/// positions are refused rather than silently ignored.
 fn convert_vector(
     job: &Job,
     resolved: &ResolvedSettings,
@@ -781,27 +784,55 @@ fn convert_vector(
         load_started.elapsed()
     ));
 
-    let unsupported = if resolved.chroma_key.is_some() {
-        Some("--chroma-key")
-    } else if resolved.find.is_some() {
+    // --seed and --find work with pixel positions, which mean something
+    // different at every size - they are for raster images.
+    let unsupported = if resolved.find.is_some() {
         Some("--find")
     } else if !resolved.seeds.is_empty() {
         Some("--seed")
-    } else if replacement.is_some() {
-        Some("--replace-color")
     } else {
         None
     };
     if let Some(option) = unsupported {
         return Err(format!(
-            "{option} does not apply to an SVG: it is drawn directly with a transparent background, there is no background color to remove. Use it for raster images only."
+            "{option} does not apply to an SVG: it names pixel positions, and an SVG is drawn anew at every size. Use --chroma-key to remove a background color, or convert to a raster image first."
         ));
     }
 
     let sizes = prepare_output(job, resolved, use_icns, to_stdout)?;
 
+    // A background color (--chroma-key, also "auto") is removed from every
+    // rendered size. The color is settled - and the removal checked and
+    // reported - once, on a reference rendering; the sizes then each get
+    // the same color without repeating the messages.
+    let background = if resolved.chroma_key.is_some() {
+        let mut reference = drawing.render_square(VECTOR_REFERENCE_SIZE, resolved.padding);
+        let target = resolve_background(&reference, resolved)?;
+        remove_background(
+            &mut reference,
+            resolved,
+            replacement,
+            Vec::new(),
+            target.as_ref(),
+        )?;
+        target
+    } else {
+        None
+    };
+
     let render = |size: u32| {
         let mut square = drawing.render_square(size, resolved.padding);
+        if let Some(target) = &background {
+            apply_chroma_key_feathered(
+                &mut square,
+                target.color,
+                resolved.tolerance,
+                resolved.feather,
+                &[],
+                replacement,
+                true,
+            );
+        }
         if resolved.grayscale {
             apply_grayscale(&mut square);
         }
