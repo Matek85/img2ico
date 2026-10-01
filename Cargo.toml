@@ -53,8 +53,10 @@ serde_json = "1"
 # including the old RLE-compressed formats. Writing .icns is done by hand in
 # icns.rs; this crate is only for reading.
 icns = "0.3"
+resvg = { version = "0.48.1", default-features = false, features = ["text", "system-fonts", "svgz", "raster-images"] }
 
 [dev-dependencies]
+flate2 = "1.1.10"
 # Property-based testing: instead of writing individual test cases by
 # hand, we describe a PROPERTY that should hold for every possible input
 # (e.g. "this function never panics"), and proptest generates hundreds of

@@ -2,7 +2,6 @@
 // mapping Apple's own tools use, the container writer itself, and reading an
 // .icns file as a source image (the largest icon in it).
 
-use crate::resize::make_square_icon;
 use image::{ImageEncoder, RgbaImage};
 use std::io::Cursor;
 
@@ -56,15 +55,11 @@ pub fn icns_sizes() -> Vec<u32> {
 /// the environment this was written in only has Linux available. A
 /// real-world test on macOS is still worth doing before relying on this
 /// for anything important.
-pub fn encode_icns(
-    rgba_source: &RgbaImage,
-    padding: u8,
-    has_alpha: bool,
-) -> Result<Vec<u8>, String> {
+pub fn encode_icns(render: &dyn Fn(u32) -> RgbaImage) -> Result<Vec<u8>, String> {
     let mut body: Vec<u8> = Vec::new();
 
     for &(size, type_codes) in ICNS_SIZES {
-        let square = make_square_icon(rgba_source, size, padding, has_alpha);
+        let square = render(size);
 
         // Encode this size as a standalone PNG in memory (not a file on
         // disk) - image::codecs::png::PngEncoder can write directly into
@@ -133,6 +128,7 @@ pub fn decode_icns(bytes: &[u8], name: &str) -> Result<RgbaImage, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::resize::make_square_icon;
     use image::Rgba;
 
     const PNG_SIGNATURE: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
@@ -178,7 +174,7 @@ mod tests {
 
     fn sample(source: &RgbaImage, padding: u8) -> Vec<u8> {
         let has_alpha = crate::resize::has_transparency(source);
-        encode_icns(source, padding, has_alpha).unwrap()
+        encode_icns(&|size| make_square_icon(source, size, padding, has_alpha)).unwrap()
     }
 
     // --- reading ------------------------------------------------------------------
@@ -194,7 +190,7 @@ mod tests {
     #[test]
     fn decoding_gives_back_the_largest_icon_of_a_written_file() {
         let source = RgbaImage::from_fn(64, 64, |x, _| Rgba([x as u8 * 3, 10, 200, 255]));
-        let bytes = encode_icns(&source, 0, false).unwrap();
+        let bytes = encode_icns(&|size| make_square_icon(&source, size, 0, false)).unwrap();
         let decoded = decode_icns(&bytes, "test.icns").unwrap();
         assert_eq!(decoded.dimensions(), (1024, 1024));
         // The picture is the source, scaled up: same colors in the same places.

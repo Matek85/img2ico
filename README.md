@@ -8,7 +8,7 @@ Built in Rust: a single, dependency-free binary — no runtime to install, nothi
 
 ## Features
 
-- **Convert** PNG, JPG, BMP, GIF, WebP, TIFF, TGA and macOS `.icns` files to `.ico` with full 32-bit color and a clean alpha channel — never a reduced-color legacy format. Size presets, padding, grayscale, and frame selection for animated GIFs.
+- **Convert** PNG, JPG, BMP, GIF, WebP, TIFF, TGA, macOS `.icns` and SVG files to `.ico` with full 32-bit color and a clean alpha channel — never a reduced-color legacy format. Size presets, padding, grayscale, and frame selection for animated GIFs.
 - **Batch conversion:** several files, or a whole folder tree, in one run with the same settings — with file filters, name patterns, a progress line per file, a rehearsal mode (`--what-if`), a CSV or JSON report, and a choice of stopping at the first failure or carrying on.
 - **Remove or replace a background color** ("chroma key") with a soft, anti-aliased edge instead of a hard cutout (adjustable with `--feather`), including background areas enclosed by the artwork — found automatically with `--find`. The background color itself can be detected from the image border with `--chroma-key auto`, and img2ico warns when a removal took nothing, or nearly everything.
 - **macOS `.icns`** from the same source image (chosen automatically as the default when running on macOS).
@@ -155,6 +155,7 @@ Usage: img2ico [OPTIONS] <INPUT>...
 | TIFF | `.tif`, `.tiff` | The first page of a multi-page file |
 | TGA | `.tga` | Recognized by its extension only (it has no recognizable header), so not from standard input |
 | macOS icon | `.icns` | The **largest** icon in the file is the source (see below) |
+| SVG | `.svg`, `.svgz` | Drawn anew at every icon size, not scaled down (see [SVG](#svg-vector-graphics)) |
 
 The format is recognized from a file's **content**, not its extension, wherever the format allows it — so a PNG saved as `.jpg`, or a file without any extension, is read correctly. The extension matters for `--recursive`/folder input (which files a folder contributes) and for TGA.
 
@@ -167,7 +168,26 @@ img2ico photo.webp --preset windows
 
 An icon is never written over the image it is made from: if the output would be the input file itself (`AppIcon.icns` converted to `.icns` next to itself — the default on a Mac — or `-o` naming the input), img2ico refuses, even with `--force`. In a batch, an output that is one of the inputs refuses the whole run before anything is written.
 
-**Not supported:** PSD, JPEG XL, AVIF, HEIC and vector graphics (SVG). Files of those types are ignored in a folder and give a "could not read" error when named directly.
+**Not supported:** PSD, JPEG XL, AVIF, HEIC and other vector formats than SVG (EPS, PDF, AI). Files of those types are ignored in a folder and give a "could not read" error when named directly.
+
+### SVG (vector graphics)
+
+An SVG is not scaled down from one big picture like a raster image. img2ico **draws it anew at every size** of the icon, so the 16×16 icon has strokes drawn as 16×16 pixels, not averaged out of a 1024×1024 bitmap — the sharpest small icons you can get. For the same reason there is no "source is too small" warning: a drawing has no resolution of its own.
+
+```
+img2ico logo.svg                          # logo.ico, default sizes
+img2ico logo.svg --preset windows         # all common Windows sizes
+img2ico logo.svg --output-format icns     # a macOS icon
+```
+
+What to know:
+
+- **Size and shape.** The drawing is fitted into the square icon as large as it goes and centered, on a transparent background — like a non-square raster image. `--padding` and `--grayscale` work as for any source.
+- **Background options do not apply.** `--chroma-key`, `--find`, `--seed` and `--replace-color` are for raster images; an SVG has its own (usually transparent) background. Used with an SVG they are refused with a message instead of being silently ignored. In a batch with `--keep-going`, only the SVG files fail.
+- **Text depends on your fonts.** Text in an SVG is drawn with the fonts installed on the computer img2ico runs on, so the same file can look different on another machine. For logos, convert the text to paths in your drawing program ("outline text" / "convert to curves") — then the result is the same everywhere. Shapes, paths and gradients are always drawn identically.
+- **Nothing is fetched.** Images embedded in the SVG itself (`data:` URIs) are drawn; links to other files or to the web are not followed, so an SVG cannot make img2ico read your files or open a connection.
+- **Compressed `.svgz`** files work, and the format is recognized from the content, also from standard input.
+- `--inspect` reports an SVG as a vector image with its own size in SVG units.
 
 ### Output path and sizes
 
@@ -771,7 +791,7 @@ img2ico logo.png -o - > icon.ico                      # image from a file, icon 
 curl -s https://example.com/logo.png | img2ico - -o - --output-format ico | next-tool
 ```
 
-**`-` as the input** reads the whole of standard input into memory and converts it. The format (PNG, JPG, BMP, GIF, WebP, TIFF, ICNS) is recognized from the content — only a TGA, which has no recognizable header, cannot be read this way — and an animated GIF works with `--gif-frame` like a file does. Because there is no file name to derive the icon's name from, `-o` is required — except for a `--find` preview, which writes no icon.
+**`-` as the input** reads the whole of standard input into memory and converts it. The format (PNG, JPG, BMP, GIF, WebP, TIFF, ICNS, SVG) is recognized from the content — only a TGA, which has no recognizable header, cannot be read this way — and an animated GIF works with `--gif-frame` like a file does. Because there is no file name to derive the icon's name from, `-o` is required — except for a `--find` preview, which writes no icon.
 
 **`-o -` as the output** writes the finished icon — an `.ico`, or an `.icns` with `--output-format icns` — to standard output. To keep that stream clean, **all text goes to standard error** while it is in use: the `Done: …` line, warnings, the "Using settings from …" notice, a detected background color, a `--find --auto-apply` report. Standard output then holds the icon and nothing else, and `--quiet` can switch the commentary off altogether. If standard output is a terminal, img2ico refuses to print binary data there and says how to redirect it.
 

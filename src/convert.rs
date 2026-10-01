@@ -28,10 +28,11 @@ use crate::select::{Filter, NamePattern, Source, expand_inputs};
 use crate::settings::{
     ResolvedSettings, delete_sources_if_requested, finish_run, maybe_write_out_toml,
 };
-use crate::source::{decode_image_bytes, open_image};
+use crate::source::{Artwork, decode_source_bytes, open_source};
 use crate::util::{
     check_overwrite, enter_file_context, file_prefix, parse_seed, same_file, warn, warnings_so_far,
 };
+use crate::vector::VectorImage;
 use image::RgbaImage;
 use std::io::{IsTerminal, Read, Write};
 use std::path::{Path, PathBuf};
@@ -619,7 +620,12 @@ fn convert_one(
     // it doesn't write a file, so it shouldn't need to know or care where
     // one WOULD have gone.
     let load_started = Instant::now();
-    let mut source = load_source_image(input_path, resolved)?;
+    let mut source = match load_source_image(input_path, resolved)? {
+        Loaded::Raster(image) => image,
+        Loaded::Vector(drawing) => {
+            return convert_vector(job, resolved, replacement, &drawing, started, load_started);
+        }
+    };
     let (width, height) = source.dimensions();
     resolved.note(format_args!(
         "source: {} ({width}x{height} pixels), loaded in {:.1?}",
@@ -655,6 +661,67 @@ fn convert_one(
         discovered_seeds = regions.into_iter().map(|r| r.seed).collect();
     }
 
+    let sizes = prepare_output(job, resolved, use_icns, to_stdout)?;
+
+    remove_background(
+        &mut source,
+        resolved,
+        replacement,
+        discovered_seeds,
+        background.as_ref(),
+    )?;
+
+    // --grayscale runs LAST, after any --chroma-key/--replace-color
+    // processing above - so it uniformly affects the final colors,
+    // including a --replace-color color if both were combined, rather
+    // than leaving a confusing "everything except the replaced background
+    // is grayscale" exception.
+    if resolved.grayscale {
+        apply_grayscale(&mut source);
+    }
+
+    // Computed ONCE here and passed down to every make_square_icon call
+    // (for every single icon size) instead of re-checking per size - see
+    // has_transparency()'s doc comment for why this matters.
+    let has_alpha = has_transparency(&source);
+
+    warn_about_small_source(&source, use_icns, &sizes, resolved);
+
+    // .icns branches off here (whether from an explicit --output-format
+    // icns or from the platform-based default): it has its own container
+    // format (see write_icns) and doesn't use the ICO-specific --sizes
+    // list at all.
+    let render = |size: u32| make_square_icon(&source, size, resolved.padding, has_alpha);
+    let (icon_bytes, written_sizes) = if use_icns {
+        (encode_icns(&render)?, icns_sizes())
+    } else {
+        encode_ico(&render, &sizes, resolved)?
+    };
+    write_output(output_path, &icon_bytes, use_icns)?;
+    let bytes = icon_bytes.len() as u64;
+
+    resolved.note(format_args!(
+        "{}finished in {:.1?}",
+        file_prefix(),
+        started.elapsed()
+    ));
+    Ok(Outcome::Converted {
+        bytes,
+        sizes: written_sizes,
+    })
+}
+
+/// The output side of a conversion, shared by raster and vector sources:
+/// refuses to overwrite an existing output (before any real work is done),
+/// creates the output folder if the job asks for it, and works out the sizes
+/// of an .ico. Returns them (unused, and harmless, for .icns).
+fn prepare_output(
+    job: &Job,
+    resolved: &ResolvedSettings,
+    use_icns: bool,
+    to_stdout: bool,
+) -> Result<Vec<u32>, String> {
+    let output_path = job.output.as_path();
     resolved.note(format_args!(
         "output: {} ({})",
         output_path.display(),
@@ -688,45 +755,64 @@ fn convert_one(
             resolved.padding
         ));
     }
+    Ok(sizes)
+}
 
-    remove_background(
-        &mut source,
-        resolved,
-        replacement,
-        discovered_seeds,
-        background.as_ref(),
-    )?;
+/// Converts an SVG: instead of loading one picture and scaling it down, the
+/// drawing is rendered anew at every size of the icon. Everything that works
+/// on the pixels of a raster image (background removal) has no meaning here -
+/// an SVG has its own transparent background - and is refused rather than
+/// silently ignored.
+fn convert_vector(
+    job: &Job,
+    resolved: &ResolvedSettings,
+    replacement: Option<[u8; 3]>,
+    drawing: &VectorImage,
+    started: Instant,
+    load_started: Instant,
+) -> Result<Outcome, String> {
+    let output_path = job.output.as_path();
+    let use_icns = wants_icns(resolved.output_format);
+    let to_stdout = is_stdio(output_path);
+    let (width, height) = drawing.size();
+    resolved.note(format_args!(
+        "source: {} (SVG, {width}x{height} units - rendered at every size), loaded in {:.1?}",
+        job.input.display(),
+        load_started.elapsed()
+    ));
 
-    // --grayscale runs LAST, after any --chroma-key/--replace-color
-    // processing above - so it uniformly affects the final colors,
-    // including a --replace-color color if both were combined, rather
-    // than leaving a confusing "everything except the replaced background
-    // is grayscale" exception.
-    if resolved.grayscale {
-        apply_grayscale(&mut source);
+    let unsupported = if resolved.chroma_key.is_some() {
+        Some("--chroma-key")
+    } else if resolved.find.is_some() {
+        Some("--find")
+    } else if !resolved.seeds.is_empty() {
+        Some("--seed")
+    } else if replacement.is_some() {
+        Some("--replace-color")
+    } else {
+        None
+    };
+    if let Some(option) = unsupported {
+        return Err(format!(
+            "{option} does not apply to an SVG: it is drawn directly with a transparent background, there is no background color to remove. Use it for raster images only."
+        ));
     }
 
-    // Computed ONCE here and passed down to every make_square_icon call
-    // (for every single icon size) instead of re-checking per size - see
-    // has_transparency()'s doc comment for why this matters.
-    let has_alpha = has_transparency(&source);
+    let sizes = prepare_output(job, resolved, use_icns, to_stdout)?;
 
-    warn_about_small_source(&source, use_icns, &sizes, resolved);
-
-    // .icns branches off here (whether from an explicit --output-format
-    // icns or from the platform-based default): it has its own container
-    // format (see write_icns) and doesn't use the ICO-specific --sizes
-    // list at all.
+    let render = |size: u32| {
+        let mut square = drawing.render_square(size, resolved.padding);
+        if resolved.grayscale {
+            apply_grayscale(&mut square);
+        }
+        square
+    };
     let (icon_bytes, written_sizes) = if use_icns {
-        (
-            encode_icns(&source, resolved.padding, has_alpha)?,
-            icns_sizes(),
-        )
+        (encode_icns(&render)?, icns_sizes())
     } else {
-        encode_ico(&source, &sizes, has_alpha, resolved)?
+        encode_ico(&render, &sizes, resolved)?
     };
     write_output(output_path, &icon_bytes, use_icns)?;
-    let bytes = icon_bytes.len() as u64;
 
     resolved.note(format_args!(
         "{}finished in {:.1?}",
@@ -734,7 +820,7 @@ fn convert_one(
         started.elapsed()
     ));
     Ok(Outcome::Converted {
-        bytes,
+        bytes: icon_bytes.len() as u64,
         sizes: written_sizes,
     })
 }
@@ -790,7 +876,7 @@ fn check_color_options(resolved: &ResolvedSettings) -> Result<(), String> {
 /// for everything else, --gif-frame has no meaning and image::open()
 /// (which detects the format from the file header, not just its
 /// extension) is used exactly as before.
-fn load_source_image(input_path: &Path, resolved: &ResolvedSettings) -> Result<RgbaImage, String> {
+fn load_source_image(input_path: &Path, resolved: &ResolvedSettings) -> Result<Loaded, String> {
     // Standard input arrives as bytes; a file is read by the decoders
     // themselves. Everything below is the same either way.
     let stdin_bytes = if is_stdio(input_path) {
@@ -807,7 +893,8 @@ fn load_source_image(input_path: &Path, resolved: &ResolvedSettings) -> Result<R
         return match &stdin_bytes {
             Some(bytes) => extract_gif_frame_from_bytes(bytes, resolved.gif_frame),
             None => extract_gif_frame(input_path, resolved.gif_frame),
-        };
+        }
+        .map(Loaded::Raster);
     }
 
     if resolved.gif_frame != 1 {
@@ -831,19 +918,27 @@ fn load_source_image(input_path: &Path, resolved: &ResolvedSettings) -> Result<R
     // input - image::open() would go by the file extension, and fail on a
     // file without one or with a wrong one. (See source.rs.)
     let decoded = match &stdin_bytes {
-        Some(bytes) => decode_image_bytes(bytes),
-        None => open_image(input_path),
+        Some(bytes) => decode_source_bytes(bytes),
+        None => open_source(input_path),
     };
-    Ok(decoded
-        .map_err(|e| {
-            let hint = if stdin_bytes.is_some() {
-                STDIN_DECODE_HINT
-            } else {
-                ""
-            };
-            format!("Could not read input file: {e}{hint}")
-        })?
-        .to_rgba8())
+    let source = decoded.map_err(|e| {
+        let hint = if stdin_bytes.is_some() {
+            STDIN_DECODE_HINT
+        } else {
+            ""
+        };
+        format!("Could not read input file: {e}{hint}")
+    })?;
+    Ok(match source {
+        Artwork::Raster(image) => Loaded::Raster(image.to_rgba8()),
+        Artwork::Vector(drawing) => Loaded::Vector(drawing),
+    })
+}
+
+/// What was loaded as the source of a conversion.
+enum Loaded {
+    Raster(RgbaImage),
+    Vector(VectorImage),
 }
 
 /// The background color of a run and how to refer to it.
@@ -1089,9 +1184,8 @@ fn warn_about_small_source(
 /// Builds the .ico: one square icon per requested size, all PNG-encoded, all
 /// together in one file's bytes - and the sizes that went into it.
 fn encode_ico(
-    source: &RgbaImage,
+    render: &dyn Fn(u32) -> RgbaImage,
     sizes: &[u32],
-    has_alpha: bool,
     resolved: &ResolvedSettings,
 ) -> Result<(Vec<u8>, Vec<u32>), String> {
     // An IconDir collects all the resolutions that will be written
@@ -1111,7 +1205,7 @@ fn encode_ico(
             continue;
         }
 
-        let square = make_square_icon(source, size, resolved.padding, has_alpha);
+        let square = render(size);
         let (w, h) = square.dimensions();
 
         // into_raw() gives us the raw pixel bytes in RGBA order (red,

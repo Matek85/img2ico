@@ -12,8 +12,8 @@ use walkdir::WalkDir;
 
 /// The file extensions (compared case-insensitively) that a folder given as
 /// input contributes - the formats the normal conversion accepts.
-const IMAGE_EXTENSIONS: [&str; 10] = [
-    "png", "jpg", "jpeg", "bmp", "gif", "webp", "tif", "tiff", "tga", "icns",
+const IMAGE_EXTENSIONS: [&str; 12] = [
+    "png", "jpg", "jpeg", "bmp", "gif", "webp", "tif", "tiff", "tga", "icns", "svg", "svgz",
 ];
 
 /// Whether `path` has one of the extensions in `IMAGE_EXTENSIONS`.
