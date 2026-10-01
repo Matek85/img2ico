@@ -4,11 +4,12 @@ A command-line tool that converts any image into a Windows `.ico` file (or a mac
 
 Built in Rust: a single, dependency-free binary — no runtime to install, nothing to configure.
 
-**Contents:** [Features](#features) · [Installation](#installation) · [Quick start](#quick-start) · [Command reference](#command-reference) · [Converting an image](#converting-an-image) · [Background color](#removing-or-replacing-a-background-color) · [macOS icons](#macos-icons) · [Existing .ico files](#working-with-existing-ico-files) · [Overwrite protection](#overwrite-protection-and-cleanup) · [Settings files](#settings-files) · [Scripting and CI](#scripting-and-ci) · [Recipes](#recipes) · [Quality and safety](#quality-and-safety) · [Development](#development)
+**Contents:** [Features](#features) · [Installation](#installation) · [Quick start](#quick-start) · [Command reference](#command-reference) · [Converting an image](#converting-an-image) · [Several files at once](#converting-several-files-at-once) · [Background color](#removing-or-replacing-a-background-color) · [macOS icons](#macos-icons) · [Existing .ico files](#working-with-existing-ico-files) · [Overwrite protection](#overwrite-protection-and-cleanup) · [Settings files](#settings-files) · [Scripting and CI](#scripting-and-ci) · [Recipes](#recipes) · [Quality and safety](#quality-and-safety) · [Development](#development)
 
 ## Features
 
 - **Convert** PNG, JPG, BMP and GIF to `.ico` with full 32-bit color and a clean alpha channel — never a reduced-color legacy format. Size presets, padding, grayscale, and frame selection for animated GIFs.
+- **Batch conversion:** several files, or a whole folder, in one run with the same settings — with a choice of stopping at the first failure or carrying on, and a way to skip what is already done.
 - **Remove or replace a background color** ("chroma key") with a soft, anti-aliased edge instead of a hard cutout, including background areas enclosed by the artwork — found automatically with `--find`.
 - **macOS `.icns`** from the same source image (chosen automatically as the default when running on macOS).
 - **Work with existing `.ico` files:** inspect them, merge several into one, extract every size as PNG, or pull out specific sizes as standalone `.ico` files.
@@ -93,7 +94,7 @@ Usage: img2ico [OPTIONS] <INPUT>...
 
 | Flag | Short | Value | Purpose |
 |---|---|---|---|
-| `--output` | `-o` | path | Where to write the result (a file, or a directory for some modes); `-o -` (standard output) is not supported |
+| `--output` | `-o` | path | Where to write the result: a file, or a folder for a batch, `--extract` and `--select` into several files; `-o -` (standard output) is not supported |
 | `--sizes` | `-s` | comma list | Icon sizes to generate (default `16,32,48,64,128,256`) |
 | `--preset` | | `windows` / `favicon` / `minimal` | A predefined size set, instead of `--sizes` |
 | `--padding` | | 0–100 (default 0) | Transparent margin around the artwork, in percent |
@@ -114,6 +115,8 @@ Usage: img2ico [OPTIONS] <INPUT>...
 | `--combine` | | | With `--select` and several indices: one file instead of several |
 | `--inspect` | | | Print a report about `.ico` file(s) or source image(s) |
 | `--force` | `-f` | | Allow overwriting existing output |
+| `--skip-existing` | | | Leave an input alone whose output already exists (contradicts `--force`) |
+| `--keep-going` | | | In a batch, carry on after a file fails instead of stopping |
 | `--delete-source` | | | Delete the input file(s) after a successful run |
 | `--config` | | path | Load default settings from a TOML file |
 | `--no-config` | | | Ignore every settings file (cannot be combined with `--config`) |
@@ -193,6 +196,51 @@ Warning: at these sizes, only a thin sliver of the actual artwork will be visibl
 ```
 
 To check a source image before converting it, use `--inspect` (see [Inspect](#inspect)).
+
+## Converting several files at once
+
+Give more than one input — or a folder — and img2ico converts them all in one run, with the same settings for every file:
+
+```
+img2ico a.png b.png c.png                 # icons next to each input
+img2ico a.png b.png c.png -o icons/       # icons collected in a folder
+img2ico assets/ -o icons/                 # every image in a folder
+img2ico --preset windows --padding 8 assets/ -o icons/
+```
+
+**What gets converted.** A file stands for itself. A folder stands for the PNG, JPG, BMP and GIF files directly inside it, in name order; subfolders are not searched, and other files are ignored. A folder with no images is an error rather than a silent no-op. Files and folders can be mixed; files are converted in the order you give them.
+
+**Where the icons go.** In a batch, `-o` names a **folder** (created if it doesn't exist), and each icon is called after its input: `logo.png` becomes `icons/logo.ico` (or `.icns` with `--output-format icns`). Without `-o`, each icon is written next to its input. If `-o` names an existing file, or looks like a file name such as `out.ico`, img2ico says so instead of quietly creating a folder with that name. To convert one file to a specific file name, give just that one input as before.
+
+**Name clashes are caught first.** If two inputs would produce the same output file — say `logo.png` and `logo.jpg` — the whole run is refused before anything is written, naming both.
+
+**When a file fails.** By default the run stops at the first failure, names the file and exits with code 1. With `--keep-going` the other files are still converted, each failure is reported as it happens, and the run ends with exit code 1 and a count of what failed:
+
+```
+img2ico assets/ -o icons/ --keep-going
+```
+
+```
+Done: 'icons/app.ico' created with sizes [16, 32, 48, 64, 128, 256].
+Error: assets/broken.png: Could not read input file: Format error decoding Png: Invalid PNG signature.
+Done: 'icons/logo.ico' created with sizes [16, 32, 48, 64, 128, 256].
+Batch finished: 2 converted, 0 skipped, 1 failed (3 file(s) in total).
+1 of 3 file(s) failed.
+```
+
+**Repeating a run.** `--skip-existing` leaves an input alone whose output already exists, so a batch can be run again and only converts what is missing. Existing outputs are never touched, and the skip is reported (silenced by `--silent`). It also works for a single file, and it contradicts `--force`, which overwrites instead — using both is an error, wherever each comes from.
+
+```
+img2ico assets/ -o icons/ --skip-existing
+```
+
+**Good to know**
+
+- **Settings apply to every file.** That includes `--seed`, which holds pixel coordinates of one particular image and so only fits a batch of images that share a layout.
+- **Warnings say which file they are about** (`Warning: logo.png: the source image is …`). For a single file the messages are unchanged.
+- **`--delete-source` and `--out-toml` act only after a fully successful batch.** If any file failed, no source is deleted — even those that were converted — and no settings snapshot is written. A skipped input is never deleted.
+- **`--find` without `--auto-apply`** prints a report for one image and is refused for a batch; add `--auto-apply` (each file then gets its own discovery), or run it per file.
+- **`--merge`, `--extract` and `--select`** keep their own rules for their inputs.
 
 ## Removing or replacing a background color
 
@@ -343,7 +391,7 @@ img2ico --select icon.ico --index 0,3,5 -o chosen/
 
 ## Overwrite protection and cleanup
 
-Two opt-in flags that work the same way in every mode.
+Opt-in flags that work the same way in every mode.
 
 ```
 img2ico logo.png -o icon.ico            # first run: fine
@@ -351,18 +399,18 @@ img2ico logo.png -o icon.ico            # second run: refused
 img2ico logo.png -o icon.ico --force    # explicitly allowed
 ```
 
-The refusal is an error (`'icon.ico' already exists. Use --force to overwrite it.`), so the first result is never silently destroyed. For `--extract` and `--select` into a directory, *every* target file is checked before anything is written, so a conflict never leaves a half-written folder behind.
+The refusal is an error (`'icon.ico' already exists. Use --force to overwrite it.`), so the first result is never silently destroyed. For `--extract` and `--select` into a directory, *every* target file is checked before anything is written, so a conflict never leaves a half-written folder behind. If you would rather leave an existing result alone than fail, use `--skip-existing` instead (see [Several files at once](#converting-several-files-at-once)).
 
 ```
 img2ico logo.png -o icon.ico --delete-source
 img2ico --merge small.ico large.ico -o combined.ico --delete-source
 ```
 
-`--delete-source` removes the input file(s) only **after** the output has been written completely — if anything fails first, nothing is deleted. If a source resolves to the same file as the output, that file is kept (with a warning), since deleting it would destroy the very result just created.
+`--delete-source` removes the input file(s) only **after** the output has been written completely — if anything fails first, nothing is deleted (in a batch: if any file fails). If a source resolves to the same file as the output, that file is kept (with a warning), since deleting it would destroy the very result just created.
 
 ## Settings files
 
-With more than twenty flags, typing the same combination each time gets old. A TOML settings file sets defaults for the "tuning" options: sizes or preset, the chroma-key/`--find` options, padding, grayscale, GIF frame, `--output-format`, `--force`, `--delete-source`, `--silent`, and `--select`'s `--combine`/`--index`. **Not** covered: the input file(s), `-o`, and the mode (`--merge`/`--inspect`/`--extract`/`--select`) — those change with every run. An explicit command-line flag always wins over a file; a file only fills in what you didn't type. Where the files sit, and how they layer, is described under [Which settings files apply](#which-settings-files-apply).
+With more than twenty flags, typing the same combination each time gets old. A TOML settings file sets defaults for the "tuning" options: sizes or preset, the chroma-key/`--find` options, padding, grayscale, GIF frame, `--output-format`, `--force`, `--skip-existing`, `--keep-going`, `--delete-source`, `--silent`, and `--select`'s `--combine`/`--index`. **Not** covered: the input file(s), `-o`, and the mode (`--merge`/`--inspect`/`--extract`/`--select`) — those change with every run. An explicit command-line flag always wins over a file; a file only fills in what you didn't type. Where the files sit, and how they layer, is described under [Which settings files apply](#which-settings-files-apply).
 
 ### TOML in brief
 
@@ -495,6 +543,11 @@ img2ico logo.png -c FFFFFF --output-format icns -o dist/app.icns
 ```
 img2ico --inspect vendor-icon.ico
 img2ico --select vendor-icon.ico --index 8,9 --combine -o our-icon.ico --delete-source
+```
+
+**Convert a whole folder of logos, keeping what is already done and carrying on past a broken file:**
+```
+img2ico assets/ -o icons/ --preset windows --skip-existing --keep-going
 ```
 
 **Combine two teams' icons into one shared file:**

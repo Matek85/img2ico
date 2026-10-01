@@ -12,6 +12,23 @@ when cutting a release.
 
 ### Added
 
+- Batch conversion: give several input files, or a folder, and they are
+  all converted in one run with the same settings. `-o` then names an
+  output folder (created if missing); without it each icon is written next
+  to its input. A folder contributes the PNG, JPG, BMP and GIF files
+  directly inside it, in name order (subfolders are not searched). Inputs
+  that would produce the same output file are refused before anything is
+  written.
+- `--keep-going`: in a batch, carry on after a file fails. Without it the
+  first failure stops the run and names the file. A batch with any failure
+  exits with code 1 and a count; `--delete-source` and `--out-toml` then do
+  nothing.
+- `--skip-existing`: leave an input alone whose output already exists, so
+  a batch can be repeated and only converts what is missing. Works for a
+  single file too and contradicts `--force`.
+- Both new options can also be set in a settings file (`keep-going`,
+  `skip-existing`).
+- In a batch, warnings and `--verbose` lines name the file they are about.
 - `--version` prints the version together with the platform and the
   compiler the binary was built with - what a bug report needs. `-V`
   prints just the version.
@@ -37,6 +54,9 @@ when cutting a release.
 
 ### Changed
 
+- Several input files without `--merge` are no longer an error: they are
+  now converted as a batch (see above). `--merge`, `--extract` and
+  `--select` keep their own rules for their inputs.
 - The release binary grows by about 120 KB (1.57 MB to 1.69 MB on
   Windows) because of the completion generator and the additional help
   text.
