@@ -4,7 +4,16 @@ version = "1.8.0"
 edition = "2024"
 rust-version = "1.88"
 
+# The command line is the package at the root; the pieces it shares with the
+# web version live in crates/. `cargo build` and `cargo test` without
+# --workspace still mean just the command line.
+[workspace]
+members = ["crates/core", "crates/wasm"]
+
 [dependencies]
+# The parts shared with the web version (see crates/core/src/lib.rs).
+img2ico-core = { path = "crates/core" }
+
 # The "image" crate can read a wide range of image formats (PNG, JPG, BMP,
 # GIF, ...) and also handles resizing with high-quality filters.
 # - default-features = false + specific "features": only enable the

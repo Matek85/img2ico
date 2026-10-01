@@ -1,0 +1,14 @@
+[package]
+name = "img2ico-core"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.88"
+description = "The parts of img2ico that do not touch files or threads, shared by the command line and the web version."
+publish = false
+
+[dependencies]
+
+[dev-dependencies]
+image = { version = "0.25", default-features = false, features = ["png"] }
+ico = "0.5"
+proptest = "1"
