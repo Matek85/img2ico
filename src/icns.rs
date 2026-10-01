@@ -3,7 +3,6 @@
 
 use crate::resize::make_square_icon;
 use image::{ImageEncoder, RgbaImage};
-use std::path::Path;
 
 /// Standard Apple icon sizes (in pixels) mapped to their corresponding
 /// ICNS "OSType" codes, matching what Apple's own `iconutil` produces from
@@ -55,12 +54,11 @@ pub fn icns_sizes() -> Vec<u32> {
 /// the environment this was written in only has Linux available. A
 /// real-world test on macOS is still worth doing before relying on this
 /// for anything important.
-pub fn write_icns(
+pub fn encode_icns(
     rgba_source: &RgbaImage,
     padding: u8,
     has_alpha: bool,
-    output_path: &Path,
-) -> Result<(), String> {
+) -> Result<Vec<u8>, String> {
     let mut body: Vec<u8> = Vec::new();
 
     for &(size, type_codes) in ICNS_SIZES {
@@ -88,10 +86,7 @@ pub fn write_icns(
     file_bytes.extend_from_slice(&total_len.to_be_bytes());
     file_bytes.extend_from_slice(&body);
 
-    std::fs::write(output_path, &file_bytes)
-        .map_err(|e| format!("Could not write ICNS file: {e}"))?;
-
-    Ok(())
+    Ok(file_bytes)
 }
 
 #[cfg(test)]
@@ -140,11 +135,9 @@ mod tests {
         entries
     }
 
-    fn write_sample(dir: &Path, source: &RgbaImage, padding: u8) -> Vec<u8> {
-        let path = dir.join("out.icns");
+    fn sample(source: &RgbaImage, padding: u8) -> Vec<u8> {
         let has_alpha = crate::resize::has_transparency(source);
-        write_icns(source, padding, has_alpha, &path).unwrap();
-        std::fs::read(path).unwrap()
+        encode_icns(source, padding, has_alpha).unwrap()
     }
 
     #[test]
@@ -167,9 +160,8 @@ mod tests {
 
     #[test]
     fn file_has_a_valid_icns_container() {
-        let dir = tempfile::tempdir().unwrap();
         let source = RgbaImage::from_pixel(64, 64, Rgba([200, 30, 30, 255]));
-        let bytes = write_sample(dir.path(), &source, 0);
+        let bytes = sample(&source, 0);
         // parse_icns asserts magic, total length and entry framing.
         let entries = parse_icns(&bytes);
         assert_eq!(entries.len(), 11);
@@ -177,9 +169,8 @@ mod tests {
 
     #[test]
     fn all_expected_os_types_are_present() {
-        let dir = tempfile::tempdir().unwrap();
         let source = RgbaImage::from_pixel(32, 32, Rgba([0, 0, 0, 255]));
-        let entries = parse_icns(&write_sample(dir.path(), &source, 0));
+        let entries = parse_icns(&sample(&source, 0));
         let written: Vec<[u8; 4]> = entries.iter().map(|e| e.os_type).collect();
         for &(_, codes) in ICNS_SIZES {
             for code in codes {
@@ -194,9 +185,8 @@ mod tests {
 
     #[test]
     fn every_payload_is_a_png_with_the_matching_dimensions() {
-        let dir = tempfile::tempdir().unwrap();
         let source = RgbaImage::from_pixel(50, 50, Rgba([10, 200, 90, 255]));
-        let entries = parse_icns(&write_sample(dir.path(), &source, 0));
+        let entries = parse_icns(&sample(&source, 0));
 
         for &(size, codes) in ICNS_SIZES {
             for code in codes {
@@ -210,9 +200,8 @@ mod tests {
 
     #[test]
     fn retina_variants_share_the_same_pixels_as_their_native_size() {
-        let dir = tempfile::tempdir().unwrap();
         let source = RgbaImage::from_pixel(64, 64, Rgba([1, 2, 3, 255]));
-        let entries = parse_icns(&write_sample(dir.path(), &source, 0));
+        let entries = parse_icns(&sample(&source, 0));
         let payload = |code: &[u8; 4]| {
             entries
                 .iter()
@@ -227,9 +216,8 @@ mod tests {
 
     #[test]
     fn non_square_sources_are_letterboxed_inside_every_size() {
-        let dir = tempfile::tempdir().unwrap();
         let source = RgbaImage::from_pixel(200, 50, Rgba([255, 0, 0, 255]));
-        let entries = parse_icns(&write_sample(dir.path(), &source, 0));
+        let entries = parse_icns(&sample(&source, 0));
         let entry = entries.iter().find(|e| e.os_type == *b"ic07").unwrap(); // 128x128
         let decoded = image::load_from_memory(&entry.payload).unwrap().to_rgba8();
         assert_eq!(decoded.get_pixel(64, 64)[3], 255, "centre is content");
@@ -238,24 +226,11 @@ mod tests {
 
     #[test]
     fn padding_is_applied_to_every_size() {
-        let dir = tempfile::tempdir().unwrap();
         let source = RgbaImage::from_pixel(64, 64, Rgba([255, 0, 0, 255]));
-        let entries = parse_icns(&write_sample(dir.path(), &source, 50));
+        let entries = parse_icns(&sample(&source, 50));
         let entry = entries.iter().find(|e| e.os_type == *b"ic08").unwrap(); // 256x256
         let decoded = image::load_from_memory(&entry.payload).unwrap().to_rgba8();
         assert_eq!(decoded.get_pixel(5, 128)[3], 0);
         assert_eq!(decoded.get_pixel(128, 128)[3], 255);
-    }
-
-    #[test]
-    fn writing_to_a_missing_directory_is_an_error() {
-        let dir = tempfile::tempdir().unwrap();
-        let source = RgbaImage::from_pixel(8, 8, Rgba([0, 0, 0, 255]));
-        let path = dir.path().join("no-such-dir").join("out.icns");
-        let err = write_icns(&source, 0, false, &path).unwrap_err();
-        assert!(
-            err.contains("Could not write ICNS file"),
-            "unexpected message: {err}"
-        );
     }
 }

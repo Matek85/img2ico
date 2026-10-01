@@ -13,7 +13,7 @@ Built in Rust: a single, dependency-free binary — no runtime to install, nothi
 - **Remove or replace a background color** ("chroma key") with a soft, anti-aliased edge instead of a hard cutout (adjustable with `--feather`), including background areas enclosed by the artwork — found automatically with `--find`. The background color itself can be detected from the image border with `--chroma-key auto`, and img2ico warns when a removal took nothing, or nearly everything.
 - **macOS `.icns`** from the same source image (chosen automatically as the default when running on macOS).
 - **Work with existing `.ico` files:** inspect them, merge several into one, extract every size as PNG, or pull out specific sizes as standalone `.ico` files.
-- **Safe and scriptable:** overwrite protection and source-file cleanup (both opt-in), reusable settings files, quiet mode, and clear exit codes.
+- **Safe and scriptable:** overwrite protection and source-file cleanup (both opt-in), reusable settings files, quiet modes, clear exit codes — and a place in pipelines: read an image from standard input, write the icon to standard output.
 - **Helpful warnings** when a source image is too small for the requested sizes or would leave only a sliver of visible artwork.
 
 ## Installation
@@ -92,9 +92,11 @@ That's all. This creates `logo.ico` next to `logo.png`, with the default sizes 1
 Usage: img2ico [OPTIONS] <INPUT>...
 ```
 
+`<INPUT>` is one or more image files or folders — or a single `-`, which reads the image from standard input (see [Pipelines](#pipelines)).
+
 | Flag | Short | Value | Purpose |
 |---|---|---|---|
-| `--output` | `-o` | path | Where to write the result: a file, or a folder for a batch, `--extract` and `--select` into several files; `-o -` (standard output) is not supported |
+| `--output` | `-o` | path, or `-` | Where to write the result: a file, or a folder for a batch, `--extract` and `--select` into several files; `-o -` writes the icon to standard output |
 | `--sizes` | `-s` | comma list | Icon sizes to generate (default `16,32,48,64,128,256`) |
 | `--preset` | | `windows` / `favicon` / `minimal` | A predefined size set, instead of `--sizes` |
 | `--padding` | | 0–100 (default 0) | Transparent margin around the artwork, in percent |
@@ -131,6 +133,7 @@ Usage: img2ico [OPTIONS] <INPUT>...
 | `--no-config` | | | Ignore every settings file (cannot be combined with `--config`) |
 | `--out-toml` | | path | Save the settings used for this run as a TOML file |
 | `--silent` | | | Suppress warnings and notices |
+| `--quiet` | `-q` | | Suppress the normal output (the `Done: …` line, progress, summary) |
 | `--verbose` | `-v` | | Print diagnostic details to stderr (cannot be combined with `--silent`) |
 | `--completions` | | shell | Print a tab-completion script and exit |
 | `--version` | `-V` | | Print the version, platform and compiler (`-V`: just the version) |
@@ -704,10 +707,17 @@ The [`examples/`](examples/) folder has ready-to-use settings files for a Window
 
 - **Errors** — something going wrong always reaches you, and the exit code.
 - **`--inspect` and `--find` reports** — they are the requested output of those modes.
-- **The final "Done: … created" line** of a single conversion.
+- **The final "Done: … created" line** of a single conversion — that is what `--quiet` is for (below).
 - **A batch's failure summary** — in a batch, `--silent` hides the per-file progress lines and the summary of a clean run, but if anything failed, the summary and the errors are printed.
 
-`--silent` can also be set in a settings file, with one nuance: it only takes effect once that file has been loaded, so it can never hide a warning about the file itself.
+**`--quiet` / `-q`** is the other half: it hides the normal output of a run — the `Done: …` line, the progress lines and summary of a batch, the "Using settings from …" and "Settings written to …" notices, the "Deleted source file …" lines. It leaves **errors and warnings** alone (use `--silent` for those), and it leaves the output a mode exists to produce alone: an `--inspect` or `--find` report, a `--what-if` rehearsal. The two combine: with `--quiet --silent` only errors remain. The exit code tells a script whether it worked.
+
+```
+img2ico logo.png -o icon.ico --quiet            # prints nothing unless something is wrong
+img2ico assets/ -o icons/ --quiet --silent      # nothing at all, except errors
+```
+
+`--quiet` is command-line only. `--silent` can also be set in a settings file, with one nuance: it only takes effect once that file has been loaded, so it can never hide a warning about the file itself.
 
 **Machine-readable output.** `--report report.json` (or `.csv`) records a conversion run file by file, and `--inspect --json` prints an inspection as JSON; see [Several files at once](#converting-several-files-at-once) and [Inspect](#inspect). Both leave standard output free of anything else you did not ask for. `--what-if` lets a script check what a run would do before doing it.
 
@@ -725,7 +735,31 @@ The [`examples/`](examples/) folder has ready-to-use settings files for a Window
 
 **Pipes.** Piping output into a program that closes early (for example `img2ico --inspect big.ico | head`) exits cleanly instead of showing a panic. The reports of `--inspect` and `--find` go to standard output and warnings and errors to standard error, so `grep` and friends see only the report.
 
-img2ico reads and writes files only: it does not read an image from standard input, and `-o -` (write to standard output) is rejected with an error rather than creating a file called `-`. To really write a file named `-`, use `-o ./-`.
+### Pipelines
+
+img2ico can be a link in a pipeline: it reads an image from **standard input** and writes the icon to **standard output**, each with a single dash.
+
+```
+cat logo.png | img2ico - -o icon.ico                  # image from a pipe, icon to a file
+img2ico logo.png -o - > icon.ico                      # image from a file, icon to standard output
+curl -s https://example.com/logo.png | img2ico - -o - --output-format ico | next-tool
+```
+
+**`-` as the input** reads the whole of standard input into memory and converts it. The format (PNG, JPG, BMP, GIF) is recognized from the content, and an animated GIF works with `--gif-frame` like a file does. Because there is no file name to derive the icon's name from, `-o` is required — except for a `--find` preview, which writes no icon.
+
+**`-o -` as the output** writes the finished icon — an `.ico`, or an `.icns` with `--output-format icns` — to standard output. To keep that stream clean, **all text goes to standard error** while it is in use: the `Done: …` line, warnings, the "Using settings from …" notice, a detected background color, a `--find --auto-apply` report. Standard output then holds the icon and nothing else, and `--quiet` can switch the commentary off altogether. If standard output is a terminal, img2ico refuses to print binary data there and says how to redirect it.
+
+What the dash stands for, and what it doesn't:
+
+- It converts **one image into one icon**. `-` can't be combined with other inputs, and `-o -` doesn't work for several inputs or a folder (one stream holds one icon), and neither works with `--merge`, `--inspect`, `--extract` or `--select`.
+- `--delete-source` is refused with `-` (there is no file to delete) and with `-o -` (it can't be known where the icon ended up). `--skip-existing`/`--force` have nothing to check when the output is a stream.
+- A file that really is called `-` is written `./-`, as an input or as `-o ./-`.
+- `--what-if` works with both and neither reads nor writes anything. `--out-toml` and `--report` still write their files.
+- If the program reading the pipe stops early, img2ico ends quietly.
+
+**A note for Windows PowerShell.** Windows PowerShell (5.1) re-encodes what it redirects with `>`, which **corrupts binary data** — an icon written with `img2ico … -o - > icon.ico` there is broken. Use `-o icon.ico` directly, or let `cmd` do the redirect: `cmd /c "img2ico logo.png -o - > icon.ico"`. From PowerShell 7.4 on, `|` and `>` pass the bytes between native programs unchanged; and in `bash`, `zsh`, `cmd` and `fish` there is no issue at all.
+
+img2ico never opens a network connection: in the `curl` example above, it is `curl` that fetches the image.
 
 `examples/automated-pipeline.toml` is a ready-made starting point for build scripts.
 
@@ -766,6 +800,11 @@ img2ico assets/ -r -o icons/ --keep-structure --what-if
 **A folder of logos on different plain backgrounds — each background found automatically:**
 ```
 img2ico logos/ -c auto --preset windows -o icons/ --keep-going
+```
+
+**An icon from a pipe — convert whatever a program prints, without a temporary file:**
+```
+some-generator --png | img2ico - -o dist/app.ico --preset windows --quiet
 ```
 
 **Combine two teams' icons into one shared file:**

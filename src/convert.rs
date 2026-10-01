@@ -14,8 +14,8 @@ use crate::chroma_key::{
     format_hex, parse_hex_color, warn_about_removal_extent,
 };
 use crate::cli::{Args, OutputFormat};
-use crate::gif::{extract_gif_frame, is_gif};
-use crate::icns::{icns_sizes, write_icns};
+use crate::gif::{extract_gif_frame, extract_gif_frame_from_bytes, is_gif, is_gif_bytes};
+use crate::icns::{encode_icns, icns_sizes};
 use crate::plan::{Job, Naming, check_batch_options, check_folder_options, plan_jobs, single_job};
 use crate::report::{
     FileRecord, ReportFormat, Status, Summary, human_duration, human_size, write_report,
@@ -32,6 +32,7 @@ use crate::util::{
     check_overwrite, enter_file_context, file_prefix, parse_seed, warn, warnings_so_far,
 };
 use image::RgbaImage;
+use std::io::{IsTerminal, Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -69,6 +70,7 @@ pub fn run(args: &Args, resolved: &ResolvedSettings) -> Result<(), String> {
         ReportFormat::of(path)?;
     }
     check_folder_options(args)?;
+    check_stdio(args, resolved)?;
     let plan = plan_inputs(&args.input, resolved.recursive, &filter)?;
 
     check_options(resolved)?;
@@ -103,6 +105,122 @@ pub fn run(args: &Args, resolved: &ResolvedSettings) -> Result<(), String> {
     }
 }
 
+/// Whether `path` is the single dash, which stands for standard input (as an
+/// input) or standard output (as `-o`). A file really called "-" is written
+/// `./-`, which is a different path.
+fn is_stdio(path: &Path) -> bool {
+    path == Path::new("-")
+}
+
+/// Checks the use of standard input (`-` as the input) and standard output
+/// (`-o -`), which are for converting ONE image into ONE icon:
+///   - standard input is the single input, so it can't be mixed with others;
+///   - it has no file name to derive an output name from, so -o is needed -
+///     except for a --find preview, which writes no icon at all;
+///   - --delete-source has nothing to delete for a stream, and cannot know
+///     where an icon sent to standard output ended up;
+///   - standard output takes one icon, not a folder's worth;
+///   - a --find preview writes no icon, so there is nothing to send.
+fn check_stdio(args: &Args, resolved: &ResolvedSettings) -> Result<(), String> {
+    let from_stdin = args.input.iter().any(|input| is_stdio(input));
+    let to_stdout = args.output.as_deref().is_some_and(is_stdio);
+    let find_preview = resolved.find.is_some() && !resolved.auto_apply;
+
+    if from_stdin {
+        if args.input.len() != 1 {
+            return Err(
+                "'-' (standard input) is one image and can't be combined with other inputs. A file really called '-' can be written as './-'."
+                    .to_string(),
+            );
+        }
+        if resolved.delete_source {
+            return Err(
+                "--delete-source can't be used with standard input: there is no file to delete."
+                    .to_string(),
+            );
+        }
+        if args.output.is_none() && !find_preview {
+            return Err(
+                "Reading from standard input needs -o: there is no input file name to derive the output name from. (Use -o - to write to standard output.)"
+                    .to_string(),
+            );
+        }
+    }
+    if to_stdout {
+        if args.input.len() != 1 || args.input.iter().any(|input| input.is_dir()) {
+            return Err(
+                "'-o -' (standard output) takes one icon, so it works for one input image - not for several inputs or a folder."
+                    .to_string(),
+            );
+        }
+        if resolved.delete_source {
+            return Err(
+                "--delete-source can't be used with '-o -': it can't be known where the icon ended up."
+                    .to_string(),
+            );
+        }
+        if find_preview {
+            return Err(
+                "--find without --auto-apply writes no icon, so there is nothing to send to standard output. Add --auto-apply, or leave out '-o -'."
+                    .to_string(),
+            );
+        }
+    }
+    Ok(())
+}
+
+/// Reads the whole of standard input - the image to convert.
+fn read_stdin() -> Result<Vec<u8>, String> {
+    let stdin = std::io::stdin();
+    if stdin.is_terminal() {
+        return Err(
+            "'-' reads an image from standard input, but standard input is a terminal. Pipe or redirect an image in, for example: cat logo.png | img2ico - -o icon.ico"
+                .to_string(),
+        );
+    }
+    let mut bytes = Vec::new();
+    stdin
+        .lock()
+        .read_to_end(&mut bytes)
+        .map_err(|e| format!("Could not read standard input: {e}"))?;
+    if bytes.is_empty() {
+        return Err("Standard input is empty - there is no image to convert.".to_string());
+    }
+    Ok(bytes)
+}
+
+/// Writes the finished icon: to the file `output`, or - for `-o -` - to
+/// standard output. (The messages for a file keep their long-standing
+/// wording.)
+fn write_output(output: &Path, bytes: &[u8], use_icns: bool) -> Result<(), String> {
+    if is_stdio(output) {
+        let mut stdout = std::io::stdout();
+        if stdout.is_terminal() {
+            return Err(
+                "Refusing to write binary icon data to a terminal. Redirect or pipe the output, for example: img2ico logo.png -o - > icon.ico"
+                    .to_string(),
+            );
+        }
+        // A reader that stops early (`... | head -c 10`) is an ordinary,
+        // quiet end - not an error of ours.
+        return match stdout.write_all(bytes).and_then(|()| stdout.flush()) {
+            Err(e) if e.kind() != std::io::ErrorKind::BrokenPipe => {
+                Err(format!("Could not write to standard output: {e}"))
+            }
+            _ => Ok(()),
+        };
+    }
+
+    if use_icns {
+        std::fs::write(output, bytes).map_err(|e| format!("Could not write ICNS file: {e}"))
+    } else {
+        let mut file = std::fs::File::create(output)
+            .map_err(|e| format!("Could not create output file: {e}"))?;
+        file.write_all(bytes)
+            .map_err(|e| format!("Error writing ICO file: {e}"))
+    }
+}
+
 /// Decides whether the inputs are one file or a batch. One input that is
 /// not a folder is a single conversion - including a path that doesn't
 /// exist, which `convert_one` then reports as unreadable, as ever. Anything
@@ -133,7 +251,7 @@ fn run_single(
 
     let ran = match result {
         Ok(Outcome::Converted { sizes, .. }) => {
-            println!(
+            say!(
                 "{}",
                 done_line(&job.output, &sizes, wants_icns(resolved.output_format))
             );
@@ -196,7 +314,7 @@ fn run_batch(
         match result {
             Ok(Outcome::Converted { bytes, sizes }) => {
                 if !resolved.silent {
-                    println!(
+                    say!(
                         "{count}{}",
                         converted_line(job, bytes, &sizes, total, use_icns)
                     );
@@ -277,10 +395,10 @@ fn what_if(jobs: &[Job], resolved: &ResolvedSettings) -> Result<(), String> {
     let total = jobs.len();
     let (mut convert, mut skip, mut fail) = (0usize, 0usize, 0usize);
     for (index, job) in jobs.iter().enumerate() {
-        let verdict = if !job.input.is_file() {
+        let verdict = if !is_stdio(&job.input) && !job.input.is_file() {
             fail += 1;
             "would fail: input file not found".to_string()
-        } else if job.output.exists() {
+        } else if !is_stdio(&job.output) && job.output.exists() {
             if resolved.skip_existing {
                 skip += 1;
                 "would skip: the output already exists".to_string()
@@ -323,7 +441,9 @@ fn progress_prefix(position: usize, total: usize) -> String {
 
 /// The line after a single file was converted.
 fn done_line(output: &Path, sizes: &[u32], use_icns: bool) -> String {
-    if use_icns {
+    if is_stdio(output) {
+        format!("Done: icon written to standard output, with sizes {sizes:?}.")
+    } else if use_icns {
         format!(
             "Done: '{}' created with {} icon size(s) (icns format).",
             output.display(),
@@ -365,12 +485,15 @@ fn print_summary(summary: &Summary) {
     } else {
         String::new()
     };
-    println!(
+    say!(
         "Batch finished: {} converted, {} skipped, {} failed{warnings} ({} file(s) in total).",
-        summary.converted, summary.skipped, summary.failed, summary.total
+        summary.converted,
+        summary.skipped,
+        summary.failed,
+        summary.total
     );
     if summary.converted > 0 {
-        println!(
+        say!(
             "Wrote {} icon file(s), {} in all, in {}.",
             summary.converted,
             human_size(summary.output_bytes),
@@ -435,7 +558,7 @@ fn finish_report(
     match (write_report(path, records, &summary), ran) {
         (Ok(()), ran) => {
             if !args.silent {
-                println!("Report written to '{}'.", path.display());
+                say!("Report written to '{}'.", path.display());
             }
             ran
         }
@@ -458,12 +581,14 @@ fn convert_one(
     let input_path = job.input.as_path();
     let output_path = job.output.as_path();
     let use_icns = wants_icns(resolved.output_format);
+    // Standard output is never "already there" - and `-` is not a file name.
+    let to_stdout = is_stdio(output_path);
 
     // --skip-existing: with the output already there there is nothing to do
     // - and nothing worth loading, so this comes before anything else. (A
     // --find preview writes no file, so it is never skipped.)
     let find_preview = resolved.find.is_some() && !resolved.auto_apply;
-    if resolved.skip_existing && !find_preview && output_path.exists() {
+    if resolved.skip_existing && !find_preview && !to_stdout && output_path.exists() {
         return Ok(Outcome::Skipped);
     }
 
@@ -495,7 +620,7 @@ fn convert_one(
     let mut discovered_seeds: Vec<(u32, u32)> = Vec::new();
     if let Some(target) = background.as_ref().filter(|target| target.flag == "--find") {
         let regions = find_regions(&source, target, resolved);
-        print_found_regions(&target.label, &regions);
+        print_found_regions(&target.label, &regions, !resolved.auto_apply);
 
         if !resolved.auto_apply {
             if !regions.is_empty() {
@@ -519,7 +644,9 @@ fn convert_one(
     // the resolved output already exists and --force wasn't given. This
     // one check covers both the normal ICO path and --icns, since they
     // share this same output_path.
-    check_overwrite(output_path, resolved.force)?;
+    if !to_stdout {
+        check_overwrite(output_path, resolved.force)?;
+    }
     if job.make_dirs
         && let Some(folder) = output_path.parent().filter(|p| !p.as_os_str().is_empty())
     {
@@ -569,15 +696,16 @@ fn convert_one(
     // icns or from the platform-based default): it has its own container
     // format (see write_icns) and doesn't use the ICO-specific --sizes
     // list at all.
-    let written_sizes = if use_icns {
-        write_icns(&source, resolved.padding, has_alpha, output_path)?;
-        icns_sizes()
+    let (icon_bytes, written_sizes) = if use_icns {
+        (
+            encode_icns(&source, resolved.padding, has_alpha)?,
+            icns_sizes(),
+        )
     } else {
-        write_ico(&source, &sizes, has_alpha, resolved, output_path)?
+        encode_ico(&source, &sizes, has_alpha, resolved)?
     };
-    let bytes = std::fs::metadata(output_path)
-        .map(|meta| meta.len())
-        .unwrap_or(0);
+    write_output(output_path, &icon_bytes, use_icns)?;
+    let bytes = icon_bytes.len() as u64;
 
     resolved.note(format_args!(
         "{}finished in {:.1?}",
@@ -642,8 +770,23 @@ fn check_color_options(resolved: &ResolvedSettings) -> Result<(), String> {
 /// (which detects the format from the file header, not just its
 /// extension) is used exactly as before.
 fn load_source_image(input_path: &Path, resolved: &ResolvedSettings) -> Result<RgbaImage, String> {
-    if is_gif(input_path)? {
-        return extract_gif_frame(input_path, resolved.gif_frame);
+    // Standard input arrives as bytes; a file is read by the decoders
+    // themselves. Everything below is the same either way.
+    let stdin_bytes = if is_stdio(input_path) {
+        Some(read_stdin()?)
+    } else {
+        None
+    };
+
+    let is_gif = match &stdin_bytes {
+        Some(bytes) => is_gif_bytes(bytes),
+        None => is_gif(input_path)?,
+    };
+    if is_gif {
+        return match &stdin_bytes {
+            Some(bytes) => extract_gif_frame_from_bytes(bytes, resolved.gif_frame),
+            None => extract_gif_frame(input_path, resolved.gif_frame),
+        };
     }
 
     if resolved.gif_frame != 1 {
@@ -662,7 +805,18 @@ fn load_source_image(input_path: &Path, resolved: &ResolvedSettings) -> Result<R
     // source image and the 6 default sizes, that would otherwise have
     // been 6 full copies of the source image, even though the source
     // image doesn't change between sizes.
-    Ok(image::open(input_path)
+    //
+    // The format is guessed from the content, for a file as for standard
+    // input - image::open() would go by the file extension, and fail on a
+    // file without one or with a wrong one.
+    let decoded = match &stdin_bytes {
+        Some(bytes) => image::load_from_memory(bytes),
+        None => image::ImageReader::open(input_path)
+            .and_then(|reader| reader.with_guessed_format())
+            .map_err(image::ImageError::IoError)
+            .and_then(|reader| reader.decode()),
+    };
+    Ok(decoded
         .map_err(|e| format!("Could not read input file: {e}"))?
         .to_rgba8())
 }
@@ -707,7 +861,7 @@ fn resolve_background(
     let found = detect_background_color(source, resolved.tolerance)?;
     let label = format_hex(found.color);
     if !resolved.silent {
-        println!(
+        say!(
             "{}Detected background color {label} ({:.0}% of the image border). To use it explicitly: {flag} {}",
             file_prefix(),
             found.coverage * 100.0,
@@ -743,25 +897,37 @@ fn find_regions(
 
 /// Prints --find's report: how many regions were found and, for each, a
 /// ready-to-use --seed value.
-fn print_found_regions(find_hex: &str, regions: &[FoundRegion]) {
+///
+/// The report is the output of a plain preview, so it goes to standard output
+/// then. With --auto-apply the run converts as well, and the report is only
+/// commentary on it (`say!`): --quiet hides it, and with `-o -` it keeps
+/// off the standard output the icon goes to.
+fn print_found_regions(find_hex: &str, regions: &[FoundRegion], is_preview: bool) {
+    let say = |line: String| {
+        if is_preview {
+            println!("{line}");
+        } else {
+            say!("{line}");
+        }
+    };
     let prefix = file_prefix();
     if regions.is_empty() {
-        println!(
+        say(format!(
             "{prefix}No additional regions matching {find_hex} found - the border-based flood fill should already reach everything."
-        );
+        ));
         return;
     }
 
-    println!(
+    say(format!(
         "{prefix}Found {} additional region(s) matching {find_hex} that the border-based flood fill can't reach on its own:",
         regions.len()
-    );
+    ));
     for region in regions {
         let (x, y) = region.seed;
-        println!(
+        say(format!(
             "  ~{} pixel(s) near ({x}, {y}) -> --seed {x},{y}",
             region.pixel_count
-        );
+        ));
     }
 }
 
@@ -895,15 +1061,14 @@ fn warn_about_small_source(
     warn_about_thin_content(width, height, resolved.padding, sizes, resolved.silent);
 }
 
-/// Builds the .ico: one square icon per requested size, all PNG-encoded,
-/// written together into `output_path`.
-fn write_ico(
+/// Builds the .ico: one square icon per requested size, all PNG-encoded, all
+/// together in one file's bytes - and the sizes that went into it.
+fn encode_ico(
     source: &RgbaImage,
     sizes: &[u32],
     has_alpha: bool,
     resolved: &ResolvedSettings,
-    output_path: &Path,
-) -> Result<Vec<u32>, String> {
+) -> Result<(Vec<u8>, Vec<u32>), String> {
     // An IconDir collects all the resolutions that will be written
     // together into ONE .ico file at the end.
     let mut icon_dir = ico::IconDir::new(ico::ResourceType::Icon);
@@ -955,14 +1120,13 @@ fn write_ico(
         written.push(size);
     }
 
-    // Create the target file and write all the collected resolutions into it.
-    let file = std::fs::File::create(output_path)
-        .map_err(|e| format!("Could not create output file: {e}"))?;
+    // Write all the collected resolutions into one buffer.
+    let mut buffer = Vec::new();
     icon_dir
-        .write(file)
+        .write(&mut buffer)
         .map_err(|e| format!("Error writing ICO file: {e}"))?;
 
-    Ok(written)
+    Ok((buffer, written))
 }
 
 #[cfg(test)]

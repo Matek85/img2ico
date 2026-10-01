@@ -98,7 +98,9 @@ const LONG_VERSION: &str = concat!(
     long_version = LONG_VERSION,
 )]
 pub struct Args {
-    /// Input file(s) or folder(s).
+    /// Input file(s) or folder(s). A single "-" reads the image from standard
+    /// input instead (for pipelines: `cat logo.png | img2ico - -o icon.ico`);
+    /// that needs -o, and works for converting one image only.
     /// - Normal mode: one image file (PNG, JPG, BMP, GIF) to convert - or
     ///   several files, or a folder, to convert them all in one go (batch
     ///   mode; see --output, --keep-going and --skip-existing). A folder
@@ -109,7 +111,10 @@ pub struct Args {
     #[arg(required_unless_present = "completions")]
     pub input: Vec<PathBuf>,
 
-    /// Path to the output file. If not given, the input file's name is
+    /// Path to the output file; "-" writes the icon to standard output
+    /// (`img2ico logo.png -o - > icon.ico`), for converting one image. All
+    /// messages then go to standard error, so standard output holds nothing
+    /// but the icon. If not given, the input file's name is
     /// used, just with the ".ico" extension instead. In batch mode (several
     /// inputs, or a folder) this is instead a FOLDER that receives one icon
     /// per input, named after the input file; it is created if it doesn't
@@ -340,6 +345,17 @@ pub struct Args {
     /// config file itself.
     #[arg(long = "silent")]
     pub silent: bool,
+
+    /// Suppresses the normal output of a run: the "Done: ..." line, the
+    /// progress lines and summary of a batch, and the notices about settings
+    /// files and written files. Errors, warnings (see --silent for those),
+    /// and the output a mode exists to produce - an --inspect or --find
+    /// report, a --what-if rehearsal - are not affected. Command-line only.
+    ///
+    /// --quiet and --silent are separate: --silent hides warnings and hints,
+    /// --quiet hides the success output. Together, only errors remain.
+    #[arg(short = 'q', long = "quiet")]
+    pub quiet: bool,
 
     /// Prints diagnostic details to standard error while working: the
     /// settings actually in effect (command line, settings files and

@@ -5,6 +5,7 @@
 
 use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 thread_local! {
     /// The input file this thread is converting right now - set only while
@@ -30,6 +31,58 @@ pub struct FileContext(());
 impl Drop for FileContext {
     fn drop(&mut self) {
         CURRENT_FILE.with(|current| *current.borrow_mut() = None);
+    }
+}
+
+/// Whether --quiet is on: the normal progress and success output is off.
+static QUIET: AtomicBool = AtomicBool::new(false);
+
+/// Whether standard output is reserved for the icon itself (`-o -`), so that
+/// no text may be written to it.
+static STDOUT_RESERVED: AtomicBool = AtomicBool::new(false);
+
+/// Where a line of the run's own commentary goes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Sink {
+    Stdout,
+    Stderr,
+    Nowhere,
+}
+
+/// Where commentary goes for the given settings: nowhere with --quiet,
+/// standard error when standard output carries the icon, else standard
+/// output.
+pub fn sink_for(quiet: bool, stdout_reserved: bool) -> Sink {
+    if quiet {
+        Sink::Nowhere
+    } else if stdout_reserved {
+        Sink::Stderr
+    } else {
+        Sink::Stdout
+    }
+}
+
+/// Sets how `say` behaves for the rest of the run. Called once, right after
+/// the command line is parsed.
+pub fn set_output_mode(quiet: bool, stdout_reserved: bool) {
+    QUIET.store(quiet, Ordering::Relaxed);
+    STDOUT_RESERVED.store(stdout_reserved, Ordering::Relaxed);
+}
+
+/// Prints one line of the run's own commentary - "Done: ...", progress, the
+/// batch summary, notices about settings files. This is what --quiet turns
+/// off, and what moves to standard error when standard output is reserved for
+/// the icon (`-o -`). The requested output of a mode - an --inspect or
+/// --find report, a --what-if rehearsal - is printed with `println!` instead:
+/// it is the point of the run, not commentary on it.
+pub fn say(line: std::fmt::Arguments) {
+    match sink_for(
+        QUIET.load(Ordering::Relaxed),
+        STDOUT_RESERVED.load(Ordering::Relaxed),
+    ) {
+        Sink::Stdout => println!("{line}"),
+        Sink::Stderr => eprintln!("{line}"),
+        Sink::Nowhere => {}
     }
 }
 
@@ -141,7 +194,7 @@ pub fn delete_source_files(paths: &[PathBuf], output_path: Option<&Path>, silent
             continue;
         }
         match std::fs::remove_file(path) {
-            Ok(()) => println!("Deleted source file '{}'.", path.display()),
+            Ok(()) => say!("Deleted source file '{}'.", path.display()),
             Err(e) => {
                 if !silent {
                     eprintln!("Warning: could not delete '{}': {e}", path.display());
@@ -155,6 +208,18 @@ pub fn delete_source_files(paths: &[PathBuf], output_path: Option<&Path>, silent
 mod tests {
     use super::*;
     use proptest::prelude::*;
+
+    #[test]
+    fn commentary_goes_to_stdout_to_stderr_or_nowhere() {
+        assert_eq!(sink_for(false, false), Sink::Stdout);
+        assert_eq!(
+            sink_for(false, true),
+            Sink::Stderr,
+            "stdout carries the icon"
+        );
+        assert_eq!(sink_for(true, false), Sink::Nowhere);
+        assert_eq!(sink_for(true, true), Sink::Nowhere, "--quiet wins");
+    }
 
     // --- file context ----------------------------------------------------------
 

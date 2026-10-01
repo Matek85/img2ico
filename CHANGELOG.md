@@ -12,6 +12,19 @@ when cutting a release.
 
 ### Added
 
+- Pipelines: `-` as the input reads the image from standard input
+  (`cat logo.png | img2ico - -o icon.ico`), and `-o -` writes the icon to
+  standard output (`img2ico logo.png -o - > icon.ico`), for `.ico` and
+  `.icns`. With `-o -` all text - the `Done` line, warnings, notices - goes
+  to standard error, so standard output holds only the icon; img2ico
+  refuses to write binary data to a terminal. Both are for converting one
+  image: they cannot be combined with several inputs, a folder, `--merge`,
+  `--inspect`, `--extract` or `--select`, and `--delete-source` is refused.
+  Reading standard input needs `-o`, except for a `--find` preview.
+- `--quiet` / `-q`: hides the normal output of a run (the `Done` line, batch
+  progress and summary, notices about settings files and written files).
+  Errors, warnings, and the reports of `--inspect`, `--find` and `--what-if`
+  stay. Together with `--silent` only errors remain.
 - `--chroma-key auto` (and `--find auto`): img2ico takes the most common
   color along the image border as the background color. It prints the color
   it found, so it can be passed explicitly next time, and stops with a clear
@@ -36,8 +49,18 @@ when cutting a release.
 
 ### Changed
 
+- `-o -` is no longer an error: it writes the icon to standard output (see
+  Pipelines above). `-` as an input file name now means standard input; a file
+  really called `-` is written `./-`.
 - `--dry-run` is now called `--what-if`, and its closing line starts with
   "What if:". The old name keeps working as an alias.
+
+### Fixed
+
+- A source image is recognized by its content, not by its file extension: a PNG
+  without an extension, or saved as `.jpg`, is now read correctly instead of
+  failing with "The image format could not be determined" (or being decoded
+  with the wrong decoder).
 
 ### Documentation
 

@@ -27,6 +27,16 @@
 //                     overwrite protection, --delete-source)
 // ============================================================================
 
+/// Prints one line of the run's own commentary (see `util::say`): to standard
+/// output normally, to standard error when standard output carries an icon
+/// (`-o -`), and nowhere with --quiet. Defined before the modules so that
+/// all of them can use it.
+macro_rules! say {
+    ($($arg:tt)*) => {
+        $crate::util::say(format_args!($($arg)*))
+    };
+}
+
 mod chroma_key;
 mod cli;
 mod config;
@@ -130,6 +140,11 @@ fn run() -> Result<(), String> {
     // the input file is missing.
     let args = Args::parse();
 
+    // Decide where the run's commentary goes before anything can print:
+    // nowhere with --quiet, and away from standard output when that is
+    // reserved for the icon itself.
+    util::set_output_mode(args.quiet, args.output.as_deref() == Some(Path::new("-")));
+
     // --completions only prints a script; it needs none of the rest (and, by
     // the way it's declared in cli.rs, can't be combined with anything).
     if let Some(shell) = args.completions {
@@ -138,7 +153,7 @@ fn run() -> Result<(), String> {
 
     check_single_mode(&args)?;
     reject_conversion_options_in_other_modes(&args)?;
-    reject_stdout_output(&args)?;
+    reject_stdio_in_other_modes(&args)?;
 
     if args.inspect {
         // --inspect never writes anything to disk (that's the whole
@@ -226,15 +241,16 @@ fn reject_conversion_options_in_other_modes(args: &Args) -> Result<(), String> {
     ))
 }
 
-/// `-o -` is the usual Unix spelling for "write to standard output", which
-/// img2ico doesn't support (yet). Without this check the run would quietly
-/// create a file literally named "-" and report success - exactly what
-/// nobody who types `-o -` wants. Saying so up front is safer; a file that
-/// really is called "-" can still be written as `-o ./-`.
-fn reject_stdout_output(args: &Args) -> Result<(), String> {
-    if args.output.as_deref() == Some(Path::new("-")) {
+/// "-" as the input (standard input) or as `-o -` (standard output) is for
+/// converting ONE image. The modes that work on existing .ico files take
+/// several files or write several files, which a stream cannot be.
+fn reject_stdio_in_other_modes(args: &Args) -> Result<(), String> {
+    let stdio = Path::new("-");
+    let uses_stdio = args.output.as_deref() == Some(stdio)
+        || args.input.iter().any(|input| input.as_path() == stdio);
+    if uses_stdio && (args.merge || args.inspect || args.extract || args.select) {
         return Err(
-            "'-o -' (writing to standard output) is not supported. Give a file name instead - or use './-' for a file that is really called '-'."
+            "'-' (standard input, or '-o -' for standard output) only works when converting one image, not with --merge, --inspect, --extract or --select. A file that is really called '-' can be written as './-'."
                 .to_string(),
         );
     }
@@ -259,7 +275,7 @@ fn load_settings(args: &Args) -> Result<Settings, String> {
     )?;
     if !args.silent {
         for path in &loaded.sources {
-            println!("Using settings from '{}'.", path.display());
+            say!("Using settings from '{}'.", path.display());
         }
     }
     Ok(loaded.settings)

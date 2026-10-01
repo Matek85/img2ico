@@ -14,8 +14,9 @@
 //   (.icns on macOS) and CI runs on all three platforms.
 
 use image::{Rgba, RgbaImage};
+use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
 
 const GREEN: [u8; 4] = [0, 255, 0, 255];
 const RED: [u8; 4] = [255, 0, 0, 255];
@@ -36,6 +37,38 @@ fn img2ico(dir: &Path, args: &[&str]) -> Output {
         .args(args)
         .output()
         .expect("failed to start img2ico")
+}
+
+/// Like `img2ico`, but with `input` piped into standard input.
+fn img2ico_with_stdin(dir: &Path, args: &[&str], input: &[u8]) -> Output {
+    let home = fake_home(dir);
+    let mut child = Command::new(env!("CARGO_BIN_EXE_img2ico"))
+        .current_dir(dir)
+        .env("APPDATA", &home)
+        .env("XDG_CONFIG_HOME", &home)
+        .env("HOME", &home)
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("failed to start img2ico");
+    // Feed the input from a thread, so a large input can't deadlock against
+    // the output being read.
+    let mut stdin = child.stdin.take().unwrap();
+    let data = input.to_vec();
+    let writer = std::thread::spawn(move || {
+        let _ = stdin.write_all(&data);
+    });
+    let out = child.wait_with_output().unwrap();
+    writer.join().unwrap();
+    out
+}
+
+/// The icon directory in the bytes an icon run wrote to standard output.
+fn ico_in(bytes: &[u8]) -> ico::IconDir {
+    ico::IconDir::read(std::io::Cursor::new(bytes))
+        .unwrap_or_else(|e| panic!("standard output is not a valid ICO file: {e}"))
 }
 
 /// The fake home directory used for runs in `dir` (it doesn't exist until a
@@ -1609,29 +1642,26 @@ fn unknown_settings_in_the_user_file_are_reported_unless_silent() {
 }
 
 // =============================================================================
-// Writing to standard output is not supported (yet)
+// Standard input and output ("-") only work for converting one image
 // =============================================================================
 
 #[test]
-fn output_to_stdout_is_refused_instead_of_creating_a_file_named_dash() {
+fn dash_is_refused_in_the_modes_that_work_on_existing_ico_files() {
     let dir = tempfile::tempdir().unwrap();
     write_solid(dir.path(), "logo.png", 64, RED);
     make_icos(dir.path());
 
-    let attempts: [&[&str]; 4] = [
-        &["logo.png", "--output-format", "ico", "-o", "-"],
+    let attempts: [&[&str]; 6] = [
         &["--merge", "a.ico", "b.ico", "-o", "-"],
         &["--extract", "a.ico", "-o", "-"],
         &["--select", "b.ico", "-o", "-"],
+        &["--inspect", "-"],
+        &["--merge", "-", "b.ico", "-o", "m.ico"],
+        &["--extract", "-", "-o", "dir"],
     ];
     for args in attempts {
         let out = img2ico(dir.path(), args);
-        assert_failure_containing(&out, "'-o -'");
-        assert!(
-            stderr(&out).contains("not supported"),
-            "{args:?}: {}",
-            describe(&out)
-        );
+        assert_failure_containing(&out, "only works when converting one image");
     }
     assert!(
         !dir.path().join("-").exists(),
@@ -1646,6 +1676,492 @@ fn a_file_that_really_is_called_dash_can_still_be_written() {
     let out = convert(dir.path(), &["logo.png", "--sizes", "16", "-o", "./-"]);
     assert_success(&out);
     assert_eq!(ico_sizes(&dir.path().join("-")), vec![16]);
+}
+
+// =============================================================================
+// Pipelines: standard input, standard output and --quiet
+// =============================================================================
+
+#[test]
+fn an_image_from_standard_input_becomes_an_icon_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let png = std::fs::read(write_solid(dir.path(), "logo.png", 64, RED)).unwrap();
+    let out = img2ico_with_stdin(
+        dir.path(),
+        &[
+            "-",
+            "-o",
+            "icon.ico",
+            "--output-format",
+            "ico",
+            "--sizes",
+            "16,32",
+        ],
+        &png,
+    );
+    assert_success(&out);
+    assert_eq!(ico_sizes(&dir.path().join("icon.ico")), vec![16, 32]);
+    assert!(
+        stdout(&out).contains("Done: 'icon.ico' created"),
+        "{}",
+        describe(&out)
+    );
+}
+
+#[test]
+fn an_icon_can_be_written_to_standard_output() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "logo.png", 64, RED);
+    let out = img2ico(
+        dir.path(),
+        &[
+            "logo.png",
+            "-o",
+            "-",
+            "--output-format",
+            "ico",
+            "--sizes",
+            "16,32",
+        ],
+    );
+    assert_success(&out);
+    let icons = ico_in(&out.stdout);
+    let sizes: Vec<u32> = icons.entries().iter().map(|e| e.width()).collect();
+    assert_eq!(sizes, vec![16, 32]);
+    assert_eq!(
+        &out.stdout[..4],
+        &[0, 0, 1, 0],
+        "an ICO header, and nothing before it"
+    );
+    assert!(
+        stderr(&out).contains("Done: icon written to standard output"),
+        "the Done line goes to standard error: {}",
+        describe(&out)
+    );
+    assert!(!dir.path().join("-").exists(), "no file called '-'");
+}
+
+#[test]
+fn a_whole_pipeline_works_from_standard_input_to_standard_output() {
+    let dir = tempfile::tempdir().unwrap();
+    let png = std::fs::read(write_solid(dir.path(), "logo.png", 64, GREEN)).unwrap();
+    let out = img2ico_with_stdin(
+        dir.path(),
+        &["-", "-o", "-", "--output-format", "ico", "--sizes", "32"],
+        &png,
+    );
+    assert_success(&out);
+    let icons = ico_in(&out.stdout);
+    assert_eq!(icons.entries().len(), 1);
+    let image = icons.entries()[0].decode().unwrap();
+    assert_eq!(&image.rgba_data()[..4], &[0, 255, 0, 255]);
+}
+
+#[test]
+fn standard_output_holds_nothing_but_the_icon_even_with_warnings_and_notices() {
+    let dir = tempfile::tempdir().unwrap();
+    // Too small for 16 px (a warning), plus a detected background (a notice),
+    // plus a settings file (a notice).
+    write_solid(dir.path(), "tiny.png", 8, GREEN);
+    std::fs::write(dir.path().join("img2ico.toml"), "padding = 0\n").unwrap();
+    let out = img2ico(
+        dir.path(),
+        &[
+            "tiny.png",
+            "-o",
+            "-",
+            "--output-format",
+            "ico",
+            "--sizes",
+            "16",
+            "-c",
+            "auto",
+        ],
+    );
+    assert_success(&out);
+    let icons = ico_in(&out.stdout);
+    assert_eq!(icons.entries().len(), 1, "exactly the icon");
+    let errors = stderr(&out);
+    assert!(errors.contains("Using settings from"), "{}", describe(&out));
+    assert!(
+        errors.contains("Detected background color"),
+        "{}",
+        describe(&out)
+    );
+    assert!(errors.contains("Warning:"), "{}", describe(&out));
+}
+
+#[test]
+fn settings_and_reports_can_still_be_written_when_the_icon_goes_to_standard_output() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "logo.png", 64, RED);
+    let out = img2ico(
+        dir.path(),
+        &[
+            "logo.png",
+            "-o",
+            "-",
+            "--output-format",
+            "ico",
+            "--sizes",
+            "16",
+            "--out-toml",
+            "snap.toml",
+            "--report",
+            "r.csv",
+        ],
+    );
+    assert_success(&out);
+    ico_in(&out.stdout);
+    assert!(dir.path().join("snap.toml").is_file());
+    assert!(dir.path().join("r.csv").is_file());
+    assert!(
+        stderr(&out).contains("Settings written to"),
+        "{}",
+        describe(&out)
+    );
+}
+
+#[test]
+fn an_icns_file_can_go_to_standard_output_too() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "logo.png", 64, RED);
+    let out = img2ico(
+        dir.path(),
+        &["logo.png", "-o", "-", "--output-format", "icns"],
+    );
+    assert_success(&out);
+    assert_eq!(&out.stdout[..4], b"icns");
+    let declared = u32::from_be_bytes(out.stdout[4..8].try_into().unwrap()) as usize;
+    assert_eq!(
+        declared,
+        out.stdout.len(),
+        "the declared length is the real length"
+    );
+}
+
+#[test]
+fn a_gif_frame_can_be_picked_from_standard_input() {
+    let dir = tempfile::tempdir().unwrap();
+    let gif = std::fs::read(write_gif(dir.path(), "a.gif", &[[255, 0, 0], [0, 255, 0]])).unwrap();
+    let out = img2ico_with_stdin(
+        dir.path(),
+        &[
+            "-",
+            "-o",
+            "-",
+            "--output-format",
+            "ico",
+            "--sizes",
+            "16",
+            "--gif-frame",
+            "2",
+        ],
+        &gif,
+    );
+    assert_success(&out);
+    let image = ico_in(&out.stdout).entries()[0].decode().unwrap();
+    assert_eq!(
+        &image.rgba_data()[..4],
+        &[0, 255, 0, 255],
+        "frame 2 is green"
+    );
+
+    let too_far = img2ico_with_stdin(dir.path(), &["-", "-o", "-", "--gif-frame", "9"], &gif);
+    assert_failure_containing(&too_far, "out of range");
+    assert!(too_far.stdout.is_empty());
+}
+
+#[test]
+fn the_format_of_standard_input_is_detected_from_its_content() {
+    let dir = tempfile::tempdir().unwrap();
+    write_jpeg(dir.path(), "photo.jpg");
+    let jpeg = std::fs::read(dir.path().join("photo.jpg")).unwrap();
+    let out = img2ico_with_stdin(
+        dir.path(),
+        &["-", "-o", "-", "--output-format", "ico", "--sizes", "16"],
+        &jpeg,
+    );
+    assert_success(&out);
+    ico_in(&out.stdout);
+}
+
+#[test]
+fn bad_standard_input_is_an_error_and_standard_output_stays_empty() {
+    let dir = tempfile::tempdir().unwrap();
+    let junk = img2ico_with_stdin(dir.path(), &["-", "-o", "-"], b"this is not an image");
+    assert_failure_containing(&junk, "Could not read input file");
+    assert!(junk.stdout.is_empty(), "{}", describe(&junk));
+
+    let empty = img2ico_with_stdin(dir.path(), &["-", "-o", "-"], b"");
+    assert_failure_containing(&empty, "Standard input is empty");
+    assert!(empty.stdout.is_empty());
+}
+
+#[test]
+fn standard_input_needs_an_output_and_cannot_be_mixed_or_deleted() {
+    let dir = tempfile::tempdir().unwrap();
+    let png = std::fs::read(write_solid(dir.path(), "logo.png", 64, RED)).unwrap();
+
+    let no_output = img2ico_with_stdin(dir.path(), &["-"], &png);
+    assert_failure_containing(&no_output, "needs -o");
+
+    let mixed = img2ico_with_stdin(dir.path(), &["-", "logo.png", "-o", "out"], &png);
+    assert_failure_containing(&mixed, "can't be combined with other inputs");
+
+    let delete = img2ico_with_stdin(dir.path(), &["-", "-o", "x.ico", "--delete-source"], &png);
+    assert_failure_containing(&delete, "--delete-source can't be used with standard input");
+    assert!(!dir.path().join("x.ico").exists());
+}
+
+#[test]
+fn standard_output_takes_one_image_and_no_deletion() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "a.png", 64, RED);
+    write_solid(dir.path(), "b.png", 64, RED);
+    std::fs::create_dir(dir.path().join("folder")).unwrap();
+    write_solid(&dir.path().join("folder"), "c.png", 64, RED);
+
+    let several = img2ico(dir.path(), &["a.png", "b.png", "-o", "-"]);
+    assert_failure_containing(&several, "takes one icon");
+    assert!(several.stdout.is_empty());
+    let folder = img2ico(dir.path(), &["folder", "-o", "-"]);
+    assert_failure_containing(&folder, "takes one icon");
+
+    let delete = img2ico(dir.path(), &["a.png", "-o", "-", "--delete-source"]);
+    assert_failure_containing(&delete, "--delete-source can't be used with '-o -'");
+    assert!(dir.path().join("a.png").is_file());
+
+    let find = img2ico(dir.path(), &["a.png", "-o", "-", "--find", "FF0000"]);
+    assert_failure_containing(&find, "nothing to send to standard output");
+}
+
+#[test]
+fn a_file_called_dash_is_a_file_when_written_with_a_path() {
+    let dir = tempfile::tempdir().unwrap();
+    let gif = write_gif(dir.path(), "a.gif", &[[255, 0, 0]]);
+    std::fs::copy(&gif, dir.path().join("-")).unwrap();
+    // './-' is the file (its format is recognized by content, not by a file
+    // extension - there is none); a plain '-' would be standard input, which
+    // is empty here.
+    let out = convert(dir.path(), &["./-", "-o", "x.ico", "--sizes", "16"]);
+    assert_success(&out);
+    assert_eq!(ico_sizes(&dir.path().join("x.ico")), vec![16]);
+
+    let stdin = convert(dir.path(), &["-", "-o", "y.ico"]);
+    assert_failure_containing(&stdin, "Standard input is empty");
+}
+
+#[test]
+fn an_image_is_recognized_by_its_content_not_its_file_extension() {
+    let dir = tempfile::tempdir().unwrap();
+    let png = write_solid(dir.path(), "logo.png", 64, RED);
+    std::fs::copy(&png, dir.path().join("no-extension")).unwrap();
+    std::fs::copy(&png, dir.path().join("wrong.jpg")).unwrap();
+    for name in ["no-extension", "wrong.jpg"] {
+        let out = convert(
+            dir.path(),
+            &[name, "-o", "x.ico", "--sizes", "16", "--force"],
+        );
+        assert_success(&out);
+        assert_eq!(ico_sizes(&dir.path().join("x.ico")), vec![16], "{name}");
+    }
+}
+
+#[test]
+fn skip_existing_and_force_do_not_look_for_a_file_called_dash_when_writing_to_standard_output() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "logo.png", 64, RED);
+    std::fs::write(dir.path().join("-"), b"in the way").unwrap();
+    let out = img2ico(
+        dir.path(),
+        &[
+            "logo.png",
+            "-o",
+            "-",
+            "--output-format",
+            "ico",
+            "--sizes",
+            "16",
+            "--skip-existing",
+        ],
+    );
+    assert_success(&out);
+    ico_in(&out.stdout);
+    let plain = img2ico(
+        dir.path(),
+        &[
+            "logo.png",
+            "-o",
+            "-",
+            "--output-format",
+            "ico",
+            "--sizes",
+            "16",
+        ],
+    );
+    assert_success(&plain);
+    assert_eq!(
+        std::fs::read(dir.path().join("-")).unwrap(),
+        b"in the way",
+        "the file called '-' is untouched"
+    );
+}
+
+#[test]
+fn what_if_works_with_standard_input_and_output_without_reading_or_writing() {
+    let dir = tempfile::tempdir().unwrap();
+    let out = img2ico(
+        dir.path(),
+        &[
+            "-",
+            "-o",
+            "out.ico",
+            "--what-if",
+            "--output-format",
+            "ico",
+            "--sizes",
+            "16",
+        ],
+    );
+    assert_success(&out);
+    assert!(
+        stdout(&out).contains("- -> out.ico (would convert, sizes [16])"),
+        "{}",
+        describe(&out)
+    );
+    let to_stdout = img2ico(dir.path(), &["-", "-o", "-", "--what-if"]);
+    assert_success(&to_stdout);
+    assert!(
+        stdout(&to_stdout).contains("- -> - (would convert"),
+        "{}",
+        describe(&to_stdout)
+    );
+}
+
+#[test]
+fn a_find_preview_can_read_standard_input() {
+    let dir = tempfile::tempdir().unwrap();
+    let png = std::fs::read(write_enclosed_patch(dir.path(), "patch.png")).unwrap();
+    let out = img2ico_with_stdin(dir.path(), &["-", "--find", "00FF00"], &png);
+    assert_success(&out);
+    assert!(stdout(&out).contains("--seed"), "{}", describe(&out));
+}
+
+#[test]
+fn a_report_names_standard_input_as_a_dash() {
+    let dir = tempfile::tempdir().unwrap();
+    let png = std::fs::read(write_solid(dir.path(), "logo.png", 64, RED)).unwrap();
+    let out = img2ico_with_stdin(
+        dir.path(),
+        &["-", "-o", "x.ico", "--sizes", "16", "--report", "r.csv"],
+        &png,
+    );
+    assert_success(&out);
+    let csv = std::fs::read_to_string(dir.path().join("r.csv")).unwrap();
+    assert!(
+        csv.lines()
+            .nth(1)
+            .unwrap()
+            .starts_with("-,x.ico,converted,"),
+        "{csv}"
+    );
+}
+
+#[test]
+fn quiet_hides_the_success_line_but_not_warnings_or_errors() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "tiny.png", 8, RED);
+    let out = convert(dir.path(), &["tiny.png", "--sizes", "16", "--quiet"]);
+    assert_success(&out);
+    assert_eq!(stdout(&out), "", "{}", describe(&out));
+    assert!(stderr(&out).contains("Warning:"), "{}", describe(&out));
+    assert!(dir.path().join("tiny.ico").is_file());
+
+    let failing = convert(dir.path(), &["nope.png", "-q"]);
+    assert_failure_containing(&failing, "Could not read");
+}
+
+#[test]
+fn quiet_and_silent_together_leave_only_errors() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "tiny.png", 8, RED);
+    let out = convert(
+        dir.path(),
+        &["tiny.png", "--sizes", "16", "--quiet", "--silent"],
+    );
+    assert_success(&out);
+    assert_eq!(stdout(&out), "");
+    assert_eq!(stderr(&out), "");
+}
+
+#[test]
+fn quiet_silences_a_batch_but_the_exit_code_and_errors_remain() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "a.png", 64, RED);
+    write_junk(dir.path(), "bad.png");
+    let out = convert(
+        dir.path(),
+        &[
+            "a.png",
+            "bad.png",
+            "--sizes",
+            "16",
+            "--keep-going",
+            "--quiet",
+        ],
+    );
+    assert_eq!(out.status.code(), Some(1), "{}", describe(&out));
+    assert_eq!(
+        stdout(&out),
+        "",
+        "no progress, no summary: {}",
+        describe(&out)
+    );
+    assert!(
+        stderr(&out).contains("Error: bad.png"),
+        "{}",
+        describe(&out)
+    );
+    assert!(dir.path().join("a.ico").is_file());
+}
+
+#[test]
+fn quiet_does_not_hide_what_a_mode_exists_to_report() {
+    let dir = tempfile::tempdir().unwrap();
+    write_solid(dir.path(), "logo.png", 64, RED);
+    let inspect = img2ico(dir.path(), &["--inspect", "logo.png", "--quiet"]);
+    assert_success(&inspect);
+    assert!(
+        stdout(&inspect).contains("source image"),
+        "{}",
+        describe(&inspect)
+    );
+
+    let find = img2ico(dir.path(), &["--find", "FF0000", "logo.png", "-q"]);
+    assert_success(&find);
+    assert!(!stdout(&find).is_empty(), "{}", describe(&find));
+
+    let what_if = convert(dir.path(), &["logo.png", "--what-if", "-q"]);
+    assert_success(&what_if);
+    assert!(
+        stdout(&what_if).contains("would convert"),
+        "{}",
+        describe(&what_if)
+    );
+}
+
+#[test]
+fn quiet_also_covers_the_other_modes_success_lines() {
+    let dir = tempfile::tempdir().unwrap();
+    make_icos(dir.path());
+    let out = img2ico(
+        dir.path(),
+        &["--merge", "a.ico", "b.ico", "-o", "m.ico", "-q"],
+    );
+    assert_success(&out);
+    assert_eq!(stdout(&out), "", "{}", describe(&out));
+    assert!(dir.path().join("m.ico").is_file());
 }
 
 // =============================================================================

@@ -190,7 +190,7 @@ pub fn maybe_write_out_toml(
     if let Some(path) = out_toml {
         write_config(&resolved.to_settings(), path)?;
         if !resolved.silent {
-            println!("Settings written to '{}'.", path.display());
+            say!("Settings written to '{}'.", path.display());
         }
     }
     Ok(())

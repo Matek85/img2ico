@@ -92,7 +92,7 @@ pub fn merge_icons(
         .write(out_file)
         .map_err(|e| format!("Error writing merged ICO file: {e}"))?;
 
-    println!(
+    say!(
         "Done: '{}' created from {} source file(s), containing {} icon(s) total.",
         output_path.display(),
         paths.len(),
@@ -439,7 +439,7 @@ pub fn extract_icons(input: &Path, output_dir: Option<&Path>, force: bool) -> Re
         extracted_count += 1;
     }
 
-    println!(
+    say!(
         "Done: extracted {extracted_count} icon(s) from '{}' into '{}'.",
         input.display(),
         target_dir.display()
@@ -589,7 +589,7 @@ fn select_into_one_file(
         .write(file)
         .map_err(|e| format!("Error writing ICO file: {e}"))?;
 
-    println!(
+    say!(
         "Done: '{}' created with {} icon(s) selected from '{}'.",
         output_path.display(),
         indices.len(),
@@ -639,7 +639,7 @@ fn select_into_directory(
             .map_err(|e| format!("Error writing '{}': {e}", out_path.display()))?;
     }
 
-    println!(
+    say!(
         "Done: {} icon(s) selected from '{}' into '{}'.",
         indices.len(),
         input.display(),
