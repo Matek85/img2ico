@@ -9,7 +9,7 @@ Built in Rust: a single, dependency-free binary — no runtime to install, nothi
 ## Features
 
 - **Convert** PNG, JPG, BMP and GIF to `.ico` with full 32-bit color and a clean alpha channel — never a reduced-color legacy format. Size presets, padding, grayscale, and frame selection for animated GIFs.
-- **Batch conversion:** several files, or a whole folder, in one run with the same settings — with a choice of stopping at the first failure or carrying on, and a way to skip what is already done.
+- **Batch conversion:** several files, or a whole folder tree, in one run with the same settings — with file filters, name patterns, a progress line per file, a rehearsal mode (`--dry-run`), a CSV or JSON report, and a choice of stopping at the first failure or carrying on.
 - **Remove or replace a background color** ("chroma key") with a soft, anti-aliased edge instead of a hard cutout, including background areas enclosed by the artwork — found automatically with `--find`.
 - **macOS `.icns`** from the same source image (chosen automatically as the default when running on macOS).
 - **Work with existing `.ico` files:** inspect them, merge several into one, extract every size as PNG, or pull out specific sizes as standalone `.ico` files.
@@ -52,7 +52,7 @@ img2ico --version
 ```
 
 ```
-img2ico 1.4.0
+img2ico 1.5.0
 target:   x86_64-pc-windows-msvc
 compiler: rustc 1.97.1 (8bab26f4f 2026-07-14)
 ```
@@ -117,6 +117,14 @@ Usage: img2ico [OPTIONS] <INPUT>...
 | `--force` | `-f` | | Allow overwriting existing output |
 | `--skip-existing` | | | Leave an input alone whose output already exists (contradicts `--force`) |
 | `--keep-going` | | | In a batch, carry on after a file fails instead of stopping |
+| `--recursive` | `-r` | | Also search the subfolders of an input folder |
+| `--include` | | glob (repeatable) | Only take folder files whose name (or path, with a `/`) matches |
+| `--exclude` | | glob (repeatable) | Leave out folder files whose name (or path) matches |
+| `--keep-structure` | | | With `-o`: rebuild the input folder's subfolders below it |
+| `--name` | | pattern | Name the icons by a pattern with `{stem}`, `{ext}`, `{format}` |
+| `--dry-run` | | | Show what would happen; write nothing (contradicts `--report`) |
+| `--report` | | `.csv` / `.json` file | Write a record of the run: one line per file, plus totals |
+| `--json` | | | With `--inspect`: print the report as JSON |
 | `--delete-source` | | | Delete the input file(s) after a successful run |
 | `--config` | | path | Load default settings from a TOML file |
 | `--no-config` | | | Ignore every settings file (cannot be combined with `--config`) |
@@ -206,13 +214,34 @@ img2ico a.png b.png c.png                 # icons next to each input
 img2ico a.png b.png c.png -o icons/       # icons collected in a folder
 img2ico assets/ -o icons/                 # every image in a folder
 img2ico --preset windows --padding 8 assets/ -o icons/
+img2ico assets/ -r -o icons/ --keep-structure   # the whole tree, folders preserved
 ```
 
-**What gets converted.** A file stands for itself. A folder stands for the PNG, JPG, BMP and GIF files directly inside it, in name order; subfolders are not searched, and other files are ignored. A folder with no images is an error rather than a silent no-op. Files and folders can be mixed; files are converted in the order you give them.
+**What gets converted.** A file stands for itself. A folder stands for the PNG, JPG, BMP and GIF files directly inside it, in name order; other files are ignored. Add `--recursive` (`-r`) to take the subfolders too, all the way down — folder by folder, each in name order, so a run is reproducible. A folder with no images is an error rather than a silent no-op (and if the images are in subfolders, the error says to add `--recursive`). Files and folders can be mixed; files are converted in the order you give them.
+
+**Choosing files.** `--include` and `--exclude` narrow down what a *folder* contributes; both can be repeated, use the usual glob patterns (`*`, `?`, `[abc]`, and `**` for any number of folders) and ignore upper/lower case:
+
+```
+img2ico assets/ -r --include "*.png" --exclude "*_old*"
+img2ico assets/ -r --exclude "backup/**"        # a pattern with a / matches the path below the folder
+```
+
+A pattern without a `/` is matched against the file name wherever the file sits; a pattern with a `/` against its path below the input folder (always written with forward slashes, on Windows too). A file is taken if it matches at least one `--include` (when there are any) and no `--exclude`. The filters only ever narrow down the supported image types, they cannot add others. A file you name directly on the command line is never filtered away — you asked for it by name. If the filters leave nothing, that is an error.
 
 **Where the icons go.** In a batch, `-o` names a **folder** (created if it doesn't exist), and each icon is called after its input: `logo.png` becomes `icons/logo.ico` (or `.icns` with `--output-format icns`). Without `-o`, each icon is written next to its input. If `-o` names an existing file, or looks like a file name such as `out.ico`, img2ico says so instead of quietly creating a folder with that name. To convert one file to a specific file name, give just that one input as before.
 
-**Name clashes are caught first.** If two inputs would produce the same output file — say `logo.png` and `logo.jpg` — the whole run is refused before anything is written, naming both.
+**Keeping the folder structure.** By default every icon goes straight into the output folder. `--keep-structure` rebuilds the subfolders instead: with `img2ico assets/ -r -o icons/ --keep-structure`, `assets/ui/save.png` becomes `icons/ui/save.ico`, and the subfolders are created as needed. It needs `-o` (without it, icons already sit next to their inputs, in whatever folder that is).
+
+**Naming the icons.** `--name` sets the icons' file names by a pattern. The variables are `{stem}` (the input's name without its extension), `{ext}` (its extension, in lowercase) and `{format}` (`ico` or `icns`); `{{` and `}}` give literal braces, and the icon's own extension is added after the pattern:
+
+```
+img2ico assets/ -o icons/ --name "{stem}-app"        # logo.png  ->  icons/logo-app.ico
+img2ico logo.png logo.jpg --name "{stem}-{ext}"      # logo-png.ico and logo-jpg.ico
+```
+
+The pattern is a file name, not a path (use `-o` and `--keep-structure` for folders), an unknown variable is an error, and it cannot be combined with `-o` naming a single output *file*. It also works for one input file.
+
+**Name clashes are caught first.** If two inputs would produce the same output file — say `logo.png` and `logo.jpg`, or `one/logo.png` and `two/logo.png` collected into one folder — the whole run is refused before anything is written, naming both and pointing at `--keep-structure` and `--name`, which are the two ways to tell them apart.
 
 **When a file fails.** By default the run stops at the first failure, names the file and exits with code 1. With `--keep-going` the other files are still converted, each failure is reported as it happens, and the run ends with exit code 1 and a count of what failed:
 
@@ -221,12 +250,15 @@ img2ico assets/ -o icons/ --keep-going
 ```
 
 ```
-Done: 'icons/app.ico' created with sizes [16, 32, 48, 64, 128, 256].
-Error: assets/broken.png: Could not read input file: Format error decoding Png: Invalid PNG signature.
-Done: 'icons/logo.ico' created with sizes [16, 32, 48, 64, 128, 256].
+[1/3] assets/app.png -> icons/app.ico (3 KB)
+[2/3] Error: assets/broken.png: Could not read input file: Format error decoding Png: Invalid PNG signature.
+[3/3] assets/logo.png -> icons/logo.ico (3 KB)
 Batch finished: 2 converted, 0 skipped, 1 failed (3 file(s) in total).
+Wrote 2 icon file(s), 6 KB in all, in 41 ms.
 1 of 3 file(s) failed.
 ```
+
+**Progress and summary.** With more than one file every line starts with a counter — `[3/20]` — and a converted file shows where its icon went and how large it is. At the end comes a summary: how many files were converted, skipped and failed, how many warnings there were (when there were any), the combined size of the icons and how long it took. (A single file just prints its `Done: …` line.) `--silent` hides the progress lines and the summary of a clean run; if anything failed, the summary and the errors are still printed.
 
 **Repeating a run.** `--skip-existing` leaves an input alone whose output already exists, so a batch can be run again and only converts what is missing. Existing outputs are never touched, and the skip is reported (silenced by `--silent`). It also works for a single file, and it contradicts `--force`, which overwrites instead — using both is an error, wherever each comes from.
 
@@ -234,13 +266,38 @@ Batch finished: 2 converted, 0 skipped, 1 failed (3 file(s) in total).
 img2ico assets/ -o icons/ --skip-existing
 ```
 
+**Rehearsal.** `--dry-run` shows what a run *would* do and writes nothing — no icons, no output folder, no `--report`, no `--out-toml`, and `--delete-source` deletes nothing. Every input gets one line with the icon it would produce, the sizes, and what an already existing output would mean:
+
+```
+img2ico assets/ -r -o icons/ --keep-structure --dry-run --skip-existing
+```
+
+```
+[1/3] assets/logo.png -> icons/logo.ico (would convert, sizes [16, 32, 48, 64, 128, 256])
+[2/3] assets/ui/old.png -> icons/ui/old.ico (would skip: the output already exists)
+[3/3] assets/ui/save.png -> icons/ui/save.ico (would convert, sizes [16, 32, 48, 64, 128, 256])
+Dry run: 2 would be converted, 1 skipped, 0 would fail. Nothing was written.
+```
+
+The options are checked and name clashes are looked for exactly as in a real run, so a rehearsal that passes is a good sign. It does not open the images, so it cannot know about a damaged file; a missing input file, and an existing output that would be refused (without `--force` or `--skip-existing`), are reported as `would fail`, and the exit code is then 1. A `--find` preview is not part of a rehearsal. It also works for a single file.
+
+**Reports.** `--report FILE` writes a record of the run, in the format the file name's extension names — `.csv` or `.json` (anything else is refused, so a typo can never overwrite an image):
+
+```
+img2ico assets/ -r -o icons/ --keep-going --report report.csv
+img2ico assets/ -r -o icons/ --keep-going --report report.json
+```
+
+Each input has a line with its output, `status` (`converted`, `skipped` or `failed`), `size_bytes` of the icon, the `sizes` inside it, the number of `warnings` it raised, `duration_ms` and, for a failure or a skip, a `message`. The CSV has a header line, with the sizes separated by spaces; the JSON is `{"summary": {…totals…}, "files": [ … ]}`. The report is written even when files failed — that is when it is most useful — and an existing report file is replaced. With the default stop at the first failure the report holds the files up to and including the failed one. Warnings are counted in the report even with `--silent`.
+
 **Good to know**
 
 - **Settings apply to every file.** That includes `--seed`, which holds pixel coordinates of one particular image and so only fits a batch of images that share a layout.
 - **Warnings say which file they are about** (`Warning: logo.png: the source image is …`). For a single file the messages are unchanged.
 - **`--delete-source` and `--out-toml` act only after a fully successful batch.** If any file failed, no source is deleted — even those that were converted — and no settings snapshot is written. A skipped input is never deleted.
 - **`--find` without `--auto-apply`** prints a report for one image and is refused for a batch; add `--auto-apply` (each file then gets its own discovery), or run it per file.
-- **`--merge`, `--extract` and `--select`** keep their own rules for their inputs.
+- **`--merge`, `--extract`, `--select` and `--inspect`** keep their own rules for their inputs; the batch options of this section (`--recursive`, `--include`, `--exclude`, `--keep-structure`, `--name`, `--dry-run`, `--report`) are refused there rather than quietly ignored. The same goes for the folder options given without a folder, and for `--keep-structure` without `-o`.
+- **These options are command-line only.** Which files, what they are called and what gets reported changes with every run, so none of `--recursive`, `--include`, `--exclude`, `--keep-structure`, `--name`, `--dry-run`, `--report` and `--json` can be set in a settings file.
 
 ## Removing or replacing a background color
 
@@ -356,6 +413,33 @@ logo.png (source image, 64x64):
 
 For a GIF it also reports the frame count. Each file is inspected with whichever report fits it, and nothing is written or changed.
 
+**For scripts: `--json`.** `img2ico --inspect icon.ico logo.png --json` prints the same information as JSON — always one array with an entry per file, even for a single file. Standard output then holds nothing but the JSON; if a file cannot be read, nothing is printed and the error goes to standard error.
+
+```json
+[
+  {
+    "path": "icon.ico",
+    "kind": "ico",
+    "entries": [
+      { "index": 0, "width": 16, "height": 16, "bits_per_pixel": 32, "format": "png", "bytes": 1008 }
+    ],
+    "missing_windows_sizes": [20, 24, 40, 96, 128, 256],
+    "warnings": []
+  },
+  {
+    "path": "logo.png",
+    "kind": "image",
+    "width": 64,
+    "height": 64,
+    "frames": null,
+    "windows": { "native": [16, 20, 24, 32, 40, 48, 64], "upscaled": [96, 128, 256] },
+    "macos": { "native": [16, 32, 64], "upscaled": [128, 256, 512, 1024] }
+  }
+]
+```
+
+`frames` is the frame count for a GIF and `null` for every other image; `warnings` lists the same sanity warnings as the text report.
+
 ### Merge
 
 ```
@@ -410,7 +494,7 @@ img2ico --merge small.ico large.ico -o combined.ico --delete-source
 
 ## Settings files
 
-With more than twenty flags, typing the same combination each time gets old. A TOML settings file sets defaults for the "tuning" options: sizes or preset, the chroma-key/`--find` options, padding, grayscale, GIF frame, `--output-format`, `--force`, `--skip-existing`, `--keep-going`, `--delete-source`, `--silent`, and `--select`'s `--combine`/`--index`. **Not** covered: the input file(s), `-o`, and the mode (`--merge`/`--inspect`/`--extract`/`--select`) — those change with every run. An explicit command-line flag always wins over a file; a file only fills in what you didn't type. Where the files sit, and how they layer, is described under [Which settings files apply](#which-settings-files-apply).
+With more than twenty flags, typing the same combination each time gets old. A TOML settings file sets defaults for the "tuning" options: sizes or preset, the chroma-key/`--find` options, padding, grayscale, GIF frame, `--output-format`, `--force`, `--skip-existing`, `--keep-going`, `--delete-source`, `--silent`, and `--select`'s `--combine`/`--index`. **Not** covered: the input file(s), `-o`, the mode (`--merge`/`--inspect`/`--extract`/`--select`), and the options that choose files, names and reporting for a batch (`--recursive`, `--include`, `--exclude`, `--keep-structure`, `--name`, `--dry-run`, `--report`, `--json`) — those change with every run. An explicit command-line flag always wins over a file; a file only fills in what you didn't type. Where the files sit, and how they layer, is described under [Which settings files apply](#which-settings-files-apply).
 
 ### TOML in brief
 
@@ -504,9 +588,12 @@ The [`examples/`](examples/) folder has ready-to-use settings files for a Window
 
 - **Errors** — something going wrong always reaches you, and the exit code.
 - **`--inspect` and `--find` reports** — they are the requested output of those modes.
-- **The final "Done: … created" line.**
+- **The final "Done: … created" line** of a single conversion.
+- **A batch's failure summary** — in a batch, `--silent` hides the per-file progress lines and the summary of a clean run, but if anything failed, the summary and the errors are printed.
 
 `--silent` can also be set in a settings file, with one nuance: it only takes effect once that file has been loaded, so it can never hide a warning about the file itself.
+
+**Machine-readable output.** `--report report.json` (or `.csv`) records a conversion run file by file, and `--inspect --json` prints an inspection as JSON; see [Several files at once](#converting-several-files-at-once) and [Inspect](#inspect). Both leave standard output free of anything else you did not ask for. `--dry-run` lets a script check what a run would do before doing it.
 
 **Diagnostics.** `--verbose` (`-v`) prints details to standard error while it works: the settings actually in effect after all layers are combined (in the same form `--out-toml` writes), the source image, the output, background removal, each generated size with its byte count, and how long the steps took. Standard output is unchanged, so scripts keep working. It is command-line only and cannot be combined with `--silent`.
 
@@ -550,6 +637,16 @@ img2ico --select vendor-icon.ico --index 8,9 --combine -o our-icon.ico --delete-
 img2ico assets/ -o icons/ --preset windows --skip-existing --keep-going
 ```
 
+**Convert a whole asset tree, keep its folders, and keep a record:**
+```
+img2ico assets/ -r -o icons/ --keep-structure --exclude "backup/**" --keep-going --report report.json
+```
+
+**Look before you leap — what would a run do?**
+```
+img2ico assets/ -r -o icons/ --keep-structure --dry-run
+```
+
 **Combine two teams' icons into one shared file:**
 ```
 img2ico --merge team-a.ico team-b.ico -o shared.ico --force --delete-source
@@ -582,7 +679,7 @@ The test suite includes property-based tests that compare the optimized chroma-k
 
 **Continuous integration.** The [GitHub Actions workflow](.github/workflows/main.yml) runs the formatting check, clippy and the full test suite on Windows, macOS and Linux. It runs only when a version tag is pushed or when started manually ("Run workflow"), not on every push.
 
-**Releasing.** Pushing a tag like `v1.4.0` runs the workflow, builds the bundles for all three platforms, verifies the `.icns` output with Apple's `iconutil`, and publishes a GitHub Release. A failing check blocks the release.
+**Releasing.** Pushing a tag like `v1.5.0` runs the workflow, builds the bundles for all three platforms, verifies the `.icns` output with Apple's `iconutil`, and publishes a GitHub Release. A failing check blocks the release.
 
 > Developed in an extended pair-programming session with [Claude Sonnet 5](https://www.anthropic.com/claude) (Anthropic) — every feature, fix, and piece of documentation in this repo went through iterative review and testing during that process.
 

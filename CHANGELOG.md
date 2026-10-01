@@ -10,15 +10,52 @@ when cutting a release.
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-10-01
+
+The batch release: several files or whole folder trees in one run, with file
+selection, naming, progress, a rehearsal mode and reports; plus settings
+layering, `--verbose`, `--version` details and shell completions.
+
 ### Added
 
 - Batch conversion: give several input files, or a folder, and they are
   all converted in one run with the same settings. `-o` then names an
   output folder (created if missing); without it each icon is written next
   to its input. A folder contributes the PNG, JPG, BMP and GIF files
-  directly inside it, in name order (subfolders are not searched). Inputs
+  directly inside it, in name order (subfolders with `--recursive`, below). Inputs
   that would produce the same output file are refused before anything is
   written.
+- `--recursive` / `-r`: search the subfolders of an input folder too, all
+  the way down, in a reproducible order. A folder with images only in
+  subfolders now says to add it.
+- `--include` and `--exclude` (repeatable glob patterns): narrow down which
+  files a folder contributes. A pattern without a `/` matches the file name,
+  one with a `/` the path below the folder; matching ignores case. Files
+  named directly on the command line are never filtered.
+- `--keep-structure`: with `-o`, rebuild the input folder's subfolders below
+  the output folder instead of putting every icon directly into it.
+- `--name`: build the icons' file names from a pattern with `{stem}`,
+  `{ext}` and `{format}`, for example `--name "{stem}-app"`.
+- Output name collisions - now also between same-named files in different
+  folders - are still refused before anything is written, and the message
+  points at `--keep-structure` and `--name`.
+- Every file of a batch gets a numbered progress line
+  (`[3/20] assets/logo.png -> icons/logo.ico (42 KB)`); the summary also
+  counts the warnings and gives the combined size and the time taken.
+  `--silent` hides progress and the summary of a clean run, but not the
+  summary of a run with failures.
+- `--dry-run`: shows, for every input, the icon a run would write, the sizes
+  and what an existing output would mean (skipped, replaced or refused),
+  without writing anything - not even `--out-toml` - and without deleting
+  sources. Options and name collisions are checked as in a real run.
+- `--report FILE`: writes a record of the run as CSV or JSON (by file
+  extension): per file the output, status, size, icon sizes, warning count,
+  duration and message, plus totals. It is written after failures too.
+- `--inspect --json`: the inspection as one JSON array, for scripts.
+- The batch options are refused in `--merge`, `--extract`, `--select` and
+  `--inspect`, and the folder options without a folder, instead of being
+  silently ignored. None of them can be set in a settings file.
+- New dependencies: `walkdir`, `globset` and `serde_json`.
 - `--keep-going`: in a batch, carry on after a file fails. Without it the
   first failure stops the run and names the file. A batch with any failure
   exits with code 1 and a count; `--delete-source` and `--out-toml` then do
@@ -57,9 +94,9 @@ when cutting a release.
 - Several input files without `--merge` are no longer an error: they are
   now converted as a batch (see above). `--merge`, `--extract` and
   `--select` keep their own rules for their inputs.
-- The release binary grows by about 190 KB (1.57 MB to 1.76 MB on
-  Windows) because of the completion generator, the batch mode and the
-  additional help text.
+- The release binary grows by about 1.1 MB (1.57 MB to 2.66 MB on
+  Windows) because of the completion generator, the batch mode with its
+  glob pattern matching, the JSON output and the additional help text.
 
 ### Fixed
 
