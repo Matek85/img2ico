@@ -359,13 +359,13 @@ pub struct Args {
     #[arg(long = "combine")]
     pub combine: bool,
 
-    /// Adds transparent padding around the image before it's placed onto
-    /// the square icon canvas, as a percentage (0-100) of the icon size.
-    /// For example, --padding 10 on a 256x256 icon leaves roughly a 10%
-    /// margin on every side, so the actual artwork ends up smaller and
-    /// more centered instead of touching the edges. Defaults to 0 (fills
-    /// the canvas as much as possible while preserving aspect ratio) if
-    /// neither this nor a config file sets it.
+    /// Shrinks the image by this percentage (0-100) of the icon size and
+    /// centers it, leaving the difference as a transparent margin split
+    /// evenly around it. For example, --padding 10 makes the artwork 90% of
+    /// the icon (a 5% margin on each side), --padding 20 makes it 80% (10%
+    /// on each side), so it no longer touches the edges. Defaults to 0 (the
+    /// image fills the canvas as far as its aspect ratio allows) if neither
+    /// this nor a config file sets it.
     #[arg(long = "padding")]
     pub padding: Option<u8>,
 
