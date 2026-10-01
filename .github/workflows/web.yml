@@ -81,6 +81,12 @@ jobs:
         working-directory: web
         run: npm ci
 
+      # The page imports the engine's generated glue code, so the engine has
+      # to be built before the type check can find it.
+      - name: Build the engine (WebAssembly)
+        working-directory: web
+        run: npm run build:wasm
+
       - name: Type-check the page
         working-directory: web
         run: npm run check
@@ -89,10 +95,9 @@ jobs:
         working-directory: web
         run: npm test
 
-      # Builds the engine (WebAssembly) and then the page.
-      - name: Build
+      - name: Build the page
         working-directory: web
-        run: npm run build
+        run: npx vite build
 
       - name: Keep the built page
         uses: actions/upload-artifact@v6
