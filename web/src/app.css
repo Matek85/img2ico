@@ -371,7 +371,7 @@ a {
   display: none;
 }
 
-.frame {
+.hero-art .frame {
   position: relative;
   display: grid;
   place-items: center;
@@ -379,19 +379,19 @@ a {
   height: 8.5rem;
 }
 
-.pic,
-.sizes i {
+.hero-art .pic,
+.hero-art .sizes i {
   background: var(--art);
   box-shadow: var(--shadow);
 }
 
-.pic {
+.hero-art .pic {
   width: 6.5rem;
   height: 6.5rem;
   border-radius: 1.4rem;
 }
 
-.tag {
+.hero-art .tag {
   position: absolute;
   bottom: 0;
   left: 50%;
@@ -405,31 +405,31 @@ a {
   letter-spacing: 0.08em;
 }
 
-.tag b {
+.hero-art .tag b {
   grid-area: 1 / 1;
   text-align: center;
 }
 
-.tag .from {
+.hero-art .tag .from {
   opacity: 0;
 }
 
-.sizes {
+.hero-art .sizes {
   display: flex;
   align-items: flex-end;
   gap: 0.45rem;
 }
 
-.sizes i {
+.hero-art .sizes i {
   display: block;
   border-radius: 22%;
 }
 
-.sizes i:nth-child(1) { width: 3.4rem; height: 3.4rem; }
-.sizes i:nth-child(2) { width: 2.5rem; height: 2.5rem; }
-.sizes i:nth-child(3) { width: 1.8rem; height: 1.8rem; }
-.sizes i:nth-child(4) { width: 1.2rem; height: 1.2rem; }
-.sizes i:nth-child(5) { width: 0.8rem; height: 0.8rem; }
+.hero-art .sizes i:nth-child(1) { width: 3.4rem; height: 3.4rem; }
+.hero-art .sizes i:nth-child(2) { width: 2.5rem; height: 2.5rem; }
+.hero-art .sizes i:nth-child(3) { width: 1.8rem; height: 1.8rem; }
+.hero-art .sizes i:nth-child(4) { width: 1.2rem; height: 1.2rem; }
+.hero-art .sizes i:nth-child(5) { width: 0.8rem; height: 0.8rem; }
 
 .art1 { --art: radial-gradient(circle at 72% 28%, #ffd66b 0 15%, transparent 16%), linear-gradient(160deg, #5b9bff, #1e3a8a); }
 .art2 { --art: radial-gradient(circle at 30% 68%, #fff1a8 0 14%, transparent 15%), linear-gradient(#ff9a62, #7b2ff7); }
@@ -446,31 +446,31 @@ a {
     animation-delay: calc(var(--i) * 4s);
   }
 
-  .pic {
+  .hero-art .pic {
     animation: pic-morph 20s infinite backwards;
     animation-delay: calc(var(--i) * 4s);
   }
 
-  .tag .from {
+  .hero-art .tag .from {
     animation: tag-from 20s infinite backwards;
     animation-delay: calc(var(--i) * 4s);
   }
 
-  .tag .to {
+  .hero-art .tag .to {
     animation: tag-to 20s infinite backwards;
     animation-delay: calc(var(--i) * 4s);
   }
 
-  .sizes i {
+  .hero-art .sizes i {
     animation: size-pop 20s infinite backwards;
     animation-delay: calc(var(--i) * 4s + var(--n) * 0.12s);
   }
 
-  .sizes i:nth-child(1) { --n: 0; }
-  .sizes i:nth-child(2) { --n: 1; }
-  .sizes i:nth-child(3) { --n: 2; }
-  .sizes i:nth-child(4) { --n: 3; }
-  .sizes i:nth-child(5) { --n: 4; }
+  .hero-art .sizes i:nth-child(1) { --n: 0; }
+  .hero-art .sizes i:nth-child(2) { --n: 1; }
+  .hero-art .sizes i:nth-child(3) { --n: 2; }
+  .hero-art .sizes i:nth-child(4) { --n: 3; }
+  .hero-art .sizes i:nth-child(5) { --n: 4; }
 }
 
 @keyframes scene-life {
