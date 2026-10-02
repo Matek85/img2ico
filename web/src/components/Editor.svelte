@@ -486,6 +486,79 @@
   {/if}
 
   <div class="main">
+  <section class="download">
+    <div class="download-row">
+      <fieldset class="formats">
+        <legend class="sr-only">{t('download.format')}</legend>
+        <label title={t('download.ico_hint')}><input type="radio" name="format" value="ico" bind:group={settings.format} /> {t('download.ico')}</label>
+        <label title={t('download.icns_hint')}><input type="radio" name="format" value="icns" bind:group={settings.format} /> {t('download.icns')}</label>
+        <label title={t('download.favicon_hint')}><input type="radio" name="format" value="favicon" bind:group={settings.format} /> {t('download.favicon')}</label>
+      </fieldset>
+      <div class="download-actions">
+        {#if settings.format !== 'favicon'}
+          <button type="button" class="outline icon-button" title={t('download.png_zip')} aria-label={t('download.png_zip')} onclick={downloadPngZip} disabled={!converted || working}>
+            <Icon name="archive" />
+          </button>
+        {/if}
+        {#if editId !== undefined}
+          <button
+            type="button"
+            class="outline icon-button"
+            onclick={() => saveEditing()}
+            disabled={!converted || working || packing || settings.format === 'favicon'}
+            title={settings.format === 'favicon' ? t('queue.add_favicon') : t('queue.update')}
+            aria-label={t('queue.update')}
+          >
+            <Icon name="queueAdd" />
+          </button>
+        {/if}
+        <button
+          type="button"
+          class="outline icon-button"
+          onclick={addToQueue}
+          disabled={!converted || working || packing || settings.format === 'favicon'}
+          title={settings.format === 'favicon' ? t('queue.add_favicon') : editId !== undefined ? t('queue.add_new') : t('queue.add_hint')}
+          aria-label={editId !== undefined ? t('queue.add_new') : t('queue.add')}
+        >
+          <Icon name={editId !== undefined ? 'plus' : 'queueAdd'} />
+        </button>
+        <button type="button" class="primary" onclick={download} disabled={!converted || working || packing}>
+          <Icon name="download" />
+          {packing ? t('site.building') : t('download.button', { name: downloadName(file.name, settings.format) })}
+        </button>
+      </div>
+    </div>
+    {#if settings.format === 'favicon'}
+      <div class="site">
+        <h3>{t('site.title')}</h3>
+        <p class="hint">{t('site.contents', { svg: opened.vector ? t('site.svg') : '' })}</p>
+        <label class="field">
+          <span>{t('site.name')}</span>
+          <input type="text" maxlength="60" bind:value={settings.siteName} />
+        </label>
+        <p class="hint">{t('site.name_hint')}</p>
+        <label class="field">
+          <span>{t('site.theme')}</span>
+          <input type="color" bind:value={settings.themeColor} />
+        </label>
+        <label class="field">
+          <span>{t('site.apple')}</span>
+          <input type="color" bind:value={settings.appleBackground} />
+        </label>
+        <p class="hint">{t('site.apple_hint')}</p>
+        {#if appleUrl}
+          <figure class="apple">
+            <img src={appleUrl} width="90" height="90" alt="" />
+            <figcaption>{t('site.apple_preview')}</figcaption>
+          </figure>
+        {/if}
+        <p class="hint">{t('site.snippet')}</p>
+        <pre class="snippet">{snippet}</pre>
+        <button type="button" class="quiet" onclick={copySnippet}>{copied ? t('site.copied') : t('site.copy')}</button>
+      </div>
+    {/if}
+    {#if settings.format === 'icns'}<p class="hint">{t('download.icns_note')}</p>{/if}
+  </section>
   <div class="editor">
     <section class="preview" aria-labelledby="preview-title">
       <h2 id="preview-title">{t('editor.preview')}</h2>
@@ -747,78 +820,6 @@
     </section>
   </div>
 
-  <section class="download">
-    <fieldset class="formats">
-      <legend>{t('download.format')}</legend>
-      <label><input type="radio" name="format" value="ico" bind:group={settings.format} /> {t('download.ico')}</label>
-      <label><input type="radio" name="format" value="icns" bind:group={settings.format} /> {t('download.icns')}</label>
-      <label><input type="radio" name="format" value="favicon" bind:group={settings.format} /> {t('download.favicon')}</label>
-    </fieldset>
-    {#if settings.format === 'favicon'}
-      <div class="site">
-        <h3>{t('site.title')}</h3>
-        <p class="hint">{t('site.contents', { svg: opened.vector ? t('site.svg') : '' })}</p>
-        <label class="field">
-          <span>{t('site.name')}</span>
-          <input type="text" maxlength="60" bind:value={settings.siteName} />
-        </label>
-        <p class="hint">{t('site.name_hint')}</p>
-        <label class="field">
-          <span>{t('site.theme')}</span>
-          <input type="color" bind:value={settings.themeColor} />
-        </label>
-        <label class="field">
-          <span>{t('site.apple')}</span>
-          <input type="color" bind:value={settings.appleBackground} />
-        </label>
-        <p class="hint">{t('site.apple_hint')}</p>
-        {#if appleUrl}
-          <figure class="apple">
-            <img src={appleUrl} width="90" height="90" alt="" />
-            <figcaption>{t('site.apple_preview')}</figcaption>
-          </figure>
-        {/if}
-        <p class="hint">{t('site.snippet')}</p>
-        <pre class="snippet">{snippet}</pre>
-        <button type="button" class="quiet" onclick={copySnippet}>{copied ? t('site.copied') : t('site.copy')}</button>
-      </div>
-    {/if}
-    <div class="download-actions">
-      <button type="button" class="primary" onclick={download} disabled={!converted || working || packing}>
-        <Icon name="download" />
-        {packing ? t('site.building') : t('download.button', { name: downloadName(file.name, settings.format) })}
-      </button>
-      {#if settings.format !== 'favicon'}
-        <button type="button" class="outline" onclick={downloadPngZip} disabled={!converted || working}>
-          <Icon name="archive" />
-          {t('download.png_zip')}
-        </button>
-      {/if}
-      {#if editId !== undefined}
-        <button
-          type="button"
-          class="outline"
-          onclick={() => saveEditing()}
-          disabled={!converted || working || packing || settings.format === 'favicon'}
-          title={settings.format === 'favicon' ? t('queue.add_favicon') : t('queue.add_hint')}
-        >
-          <Icon name="queueAdd" />
-          {t('queue.update')}
-        </button>
-      {/if}
-      <button
-        type="button"
-        class="outline"
-        onclick={addToQueue}
-        disabled={!converted || working || packing || settings.format === 'favicon'}
-        title={settings.format === 'favicon' ? t('queue.add_favicon') : t('queue.add_hint')}
-      >
-        <Icon name="queueAdd" />
-        {editId !== undefined ? t('queue.add_new') : t('queue.add')}
-      </button>
-    </div>
-    {#if settings.format === 'icns'}<p class="hint">{t('download.icns_note')}</p>{/if}
-  </section>
   </div>
   <Queue activeId={editId} onopen={jump} onnext={nextPicture} onpicture={nextPicture} />
   </div>
