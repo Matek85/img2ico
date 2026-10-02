@@ -114,7 +114,7 @@ export const en = {
   'picker.dismiss': 'Close this message',
   'picker.clear': 'That pixel is transparent, so there is no color to remove. Choose one that has a color.',
   'advanced.title': 'Advanced editor',
-  'advanced.hint': 'Sizes, margin, corners, crop, background',
+  'advanced.hint': 'Crop, sizes, background, margin, corners',
   'editor.reset': 'Reset to defaults',
   'editor.reset_hint': 'Sizes, look, background and crop go back to how they were when the page was first opened.',
   'presets.remembered': 'Your settings are remembered in this browser.',

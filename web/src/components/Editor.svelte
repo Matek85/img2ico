@@ -526,33 +526,6 @@
       </fieldset>
       {/if}
 
-      <fieldset>
-        <legend>{t('controls.look')}</legend>
-
-        <label class="slider">
-          <span>{t('controls.padding')}</span>
-          <input type="range" min="0" max="40" bind:value={settings.padding} />
-          <output>{settings.padding}%</output>
-        </label>
-
-        <label class="slider">
-          <span>{t('controls.radius')}</span>
-          <input type="range" min="0" max="50" bind:value={settings.cornerRadius} />
-          <output>{settings.cornerRadius}%</output>
-        </label>
-
-        <label class="select">
-          <span>{t('controls.fit')}</span>
-          <select bind:value={settings.fit}>
-            <option value="contain">{t('controls.fit_contain')}</option>
-            <option value="cover">{t('controls.fit_cover')}</option>
-          </select>
-        </label>
-
-        <label><input type="checkbox" bind:checked={settings.grayscale} /> {t('controls.grayscale')}</label>
-        <label><input type="checkbox" bind:checked={settings.trim} /> {t('controls.trim')}</label>
-      </fieldset>
-
       <fieldset id="background-settings" class:empty={!settings.removeBackground} class:flash={flashBackground}>
         <legend>
           <label><input type="checkbox" bind:checked={settings.removeBackground} /> {t('controls.background')}</label>
@@ -584,6 +557,34 @@
           </label>
         {/if}
       </fieldset>
+
+      <fieldset>
+        <legend>{t('controls.look')}</legend>
+
+        <label class="slider">
+          <span>{t('controls.padding')}</span>
+          <input type="range" min="0" max="40" bind:value={settings.padding} />
+          <output>{settings.padding}%</output>
+        </label>
+
+        <label class="slider">
+          <span>{t('controls.radius')}</span>
+          <input type="range" min="0" max="50" bind:value={settings.cornerRadius} />
+          <output>{settings.cornerRadius}%</output>
+        </label>
+
+        <label class="select">
+          <span>{t('controls.fit')}</span>
+          <select bind:value={settings.fit}>
+            <option value="contain">{t('controls.fit_contain')}</option>
+            <option value="cover">{t('controls.fit_cover')}</option>
+          </select>
+        </label>
+
+        <label><input type="checkbox" bind:checked={settings.grayscale} /> {t('controls.grayscale')}</label>
+        <label><input type="checkbox" bind:checked={settings.trim} /> {t('controls.trim')}</label>
+      </fieldset>
+
         </div>
       </details>
     </section>
