@@ -1,6 +1,6 @@
 import { parseReport, type ValidationReport } from '../lib/report';
 import type { EngineOptions } from '../lib/settings';
-import type { Converted, Opened, Pixels, Request, Response } from './protocol';
+import type { Converted, FaviconPack, Opened, Pixels, Request, Response } from './protocol';
 
 type Pending = { resolve: (response: Response & { ok: true }) => void; reject: (error: Error) => void };
 
@@ -40,6 +40,8 @@ type Call =
   | { op: 'extract'; bytes: Uint8Array; index: number }
   | { op: 'select'; bytes: Uint8Array; indices: number[] }
   | { op: 'merge'; files: { name: string; bytes: Uint8Array }[] }
+  | { op: 'faviconPack'; options: EngineOptions; meta: { name: string; themeColor: string; appleBackground: string } }
+  | { op: 'faviconSnippet'; hasSvg: boolean; themeColor: string }
   | { op: 'zipOpen'; bytes: Uint8Array }
   | { op: 'zipRead'; index: number }
   | { op: 'zipBuild'; files: { name: string; bytes: Uint8Array }[] }
@@ -54,7 +56,7 @@ function call(request: Call, transfer: Transferable[] = []): Promise<Response & 
   });
 }
 
-function field<K extends 'value' | 'opened' | 'converted' | 'pixels' | 'data'>(
+function field<K extends 'value' | 'opened' | 'converted' | 'pixels' | 'data' | 'pack'>(
   response: Response & { ok: true },
   key: K,
 ): NonNullable<Extract<Response, Record<K, unknown>>[K]> {
@@ -120,6 +122,19 @@ export async function selectImages(bytes: Uint8Array, indices: number[]): Promis
 /** Merges two or more .ico files into one; images whose size was already there come back as warnings. */
 export async function mergeIcons(files: { name: string; bytes: Uint8Array }[]): Promise<Converted> {
   return field(await call({ op: 'merge', files }), 'converted');
+}
+
+/** The website icon package (a ZIP) for the open picture, with the lines for the page's head. */
+export async function faviconPack(
+  options: EngineOptions,
+  meta: { name: string; themeColor: string; appleBackground: string },
+): Promise<FaviconPack> {
+  return field(await call({ op: 'faviconPack', options, meta }), 'pack');
+}
+
+/** The lines for a page's head that go with the package. */
+export async function faviconSnippet(hasSvg: boolean, themeColor: string): Promise<string> {
+  return field(await call({ op: 'faviconSnippet', hasSvg, themeColor }), 'value');
 }
 
 /** A file inside a ZIP. */

@@ -9,6 +9,7 @@ import init, {
   ZipBuilder,
   ZipReader,
   engine_version,
+  favicon_snippet,
   icon_describe,
   icon_extract_png,
   icon_pixels,
@@ -111,6 +112,19 @@ self.onmessage = async (event: MessageEvent<Request>) => {
         }
         break;
       }
+      case 'faviconPack': {
+        if (!source) throw new Error('No picture is open.');
+        const made = source.favicon_pack(JSON.stringify(request.options), JSON.stringify(request.meta));
+        const zipBytes = made.zip();
+        const pack = { zip: zipBytes, snippet: made.snippet(), warnings: JSON.parse(made.warnings()) as string[] };
+        made.free();
+        transfer.push(zipBytes.buffer);
+        response = { id: request.id, ok: true, pack };
+        break;
+      }
+      case 'faviconSnippet':
+        response = { id: request.id, ok: true, value: favicon_snippet(request.hasSvg, request.themeColor) };
+        break;
       case 'zipOpen': {
         zip?.free();
         zip = undefined;

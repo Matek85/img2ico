@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defaultSettings, downloadName, toEngineOptions } from './settings';
+import { defaultSettings, downloadName, packMeta, toEngineOptions } from './settings';
 
 describe('toEngineOptions', () => {
   it('sorts the sizes and leaves out the background unless it is on', () => {
@@ -35,6 +35,16 @@ describe('downloadName', () => {
   it('replaces the extension', () => {
     expect(downloadName('logo.final.png', 'ico')).toBe('logo.final.ico');
     expect(downloadName('photo.jpeg', 'icns')).toBe('photo.icns');
+  });
+
+  it('names a website package a ZIP', () => {
+    expect(downloadName('logo.png', 'favicon')).toBe('logo_favicon.zip');
+    expect(downloadName('', 'favicon')).toBe('icon_favicon.zip');
+    expect(packMeta({ ...defaultSettings(), siteName: 'Demo' })).toEqual({
+      name: 'Demo',
+      themeColor: '#ffffff',
+      appleBackground: '#ffffff',
+    });
   });
 
   it('copes with no extension or no name', () => {

@@ -18,6 +18,7 @@ describe('presets', () => {
     const start = { ...defaultSettings(), grayscale: true, padding: 12 };
     const favicon = withPreset(start, preset(USE_PRESETS, 'favicon'));
     expect(favicon.sizes).toEqual([16, 32, 48]);
+    expect(favicon.format).toBe('favicon');
     expect(favicon.grayscale).toBe(true);
     expect(favicon.padding).toBe(12);
     const rounded = withPreset(favicon, preset(STYLE_PRESETS, 'rounded'));

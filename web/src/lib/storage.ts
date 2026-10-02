@@ -14,6 +14,10 @@ function whole(value: unknown, min: number, max: number, fallback: number): numb
     : fallback;
 }
 
+function color(value: unknown, fallback: string): string {
+  return typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value) ? value : fallback;
+}
+
 /** The settings out of whatever was stored: valid parts are kept, the rest is the default. */
 export function sanitize(raw: unknown): Settings {
   const base = defaultSettings();
@@ -33,13 +37,13 @@ export function sanitize(raw: unknown): Settings {
     crop: null,
     removeBackground: data.removeBackground === true,
     backgroundAuto: data.backgroundAuto !== false,
-    backgroundColor:
-      typeof data.backgroundColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(data.backgroundColor)
-        ? data.backgroundColor
-        : base.backgroundColor,
+    backgroundColor: color(data.backgroundColor, base.backgroundColor),
     tolerance: whole(data.tolerance, 0, 100, base.tolerance),
     feather: whole(data.feather, 0, 100, base.feather),
-    format: data.format === 'icns' ? 'icns' : 'ico',
+    format: data.format === 'icns' || data.format === 'favicon' ? data.format : 'ico',
+    siteName: typeof data.siteName === 'string' ? data.siteName.slice(0, 60) : base.siteName,
+    themeColor: color(data.themeColor, base.themeColor),
+    appleBackground: color(data.appleBackground, base.appleBackground),
   };
 }
 

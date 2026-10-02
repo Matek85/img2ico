@@ -1,6 +1,14 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
-  import { buildZip, closePicture, convert, openPicture, pngZip } from '../engine/client';
+  import {
+    buildZip,
+    closePicture,
+    convert,
+    faviconPack,
+    faviconSnippet,
+    openPicture,
+    pngZip,
+  } from '../engine/client';
   import type { Converted, Opened } from '../engine/protocol';
   import { t } from '../i18n';
   import Compare from './Compare.svelte';
@@ -23,10 +31,12 @@
   import { loadSettings, saveSettings } from '../lib/storage';
   import {
     DEFAULT_SIZES,
+    FAVICON_SIZES,
     SIZE_CHOICES,
     type Settings,
     defaultSettings,
     downloadName,
+    packMeta,
     toEngineOptions,
   } from '../lib/settings';
 
@@ -56,6 +66,12 @@
   let tiles = $state<{ size: number; url: string }[]>([]);
   let working = $state(false);
   let convertFailure = $state('');
+
+  // The website package: the Apple icon shown, the lines for the page's head.
+  let appleUrl = $state('');
+  let snippet = $state('');
+  let packing = $state(false);
+  let copied = $state(false);
 
   // What the last conversion was made from, so a stale answer (a slider moved
   // again while the engine was busy) is thrown away instead of shown.
@@ -93,6 +109,7 @@
 
   onDestroy(() => {
     if (originalUrl) URL.revokeObjectURL(originalUrl);
+    if (appleUrl) URL.revokeObjectURL(appleUrl);
     revoke(tiles);
     closePicture().catch(() => {});
   });
@@ -113,8 +130,11 @@
   // dragging a slider does not start a conversion for every pixel it moves.
   $effect(() => {
     if (!opened || running) return;
-    const options = toEngineOptions(settings);
-    if (settings.sizes.length === 0) {
+    // The website package has a favicon.ico of fixed sizes, and an Apple icon.
+    const favicon = settings.format === 'favicon' && !batch;
+    const options = toEngineOptions(favicon ? { ...settings, sizes: FAVICON_SIZES } : settings);
+    const apple = settings.appleBackground;
+    if (!favicon && settings.sizes.length === 0) {
       converted = undefined;
       show([]);
       convertFailure = '';
@@ -126,8 +146,15 @@
       try {
         const result = await convert(options);
         if (mine !== latest) return;
+        let appleImage: Uint8Array | undefined;
+        if (favicon) {
+          appleImage = (await convert({ ...options, format: 'png', sizes: [180], flatten: apple })).bytes;
+        }
+        if (mine !== latest) return;
         converted = result;
         show(iconEntries(result.bytes));
+        if (appleUrl) URL.revokeObjectURL(appleUrl);
+        appleUrl = appleImage ? URL.createObjectURL(new Blob([appleImage as BlobPart], { type: 'image/png' })) : '';
         convertFailure = '';
       } catch (error) {
         if (mine !== latest) return;
@@ -138,6 +165,29 @@
     }, 120);
     return () => clearTimeout(timer);
   });
+
+  // A batch makes icons, not website packages.
+  $effect(() => {
+    if (batch && settings.format === 'favicon') settings.format = 'ico';
+  });
+
+  // The lines for the page's head, for the colors as they are now (the package
+  // itself has the exact ones).
+  $effect(() => {
+    if (settings.format !== 'favicon' || !opened) return;
+    const hasSvg = opened.vector && file.name.toLowerCase().endsWith('.svg');
+    faviconSnippet(hasSvg, settings.themeColor).then((text) => (snippet = text), () => {});
+  });
+
+  async function copySnippet() {
+    try {
+      await navigator.clipboard.writeText(snippet);
+      copied = true;
+      setTimeout(() => (copied = false), 1500);
+    } catch {
+      // No clipboard permission: the text can still be selected by hand.
+    }
+  }
 
   // Remember the settings for the next visit.
   $effect(() => {
@@ -169,7 +219,7 @@
     if (!batch || running) return;
     running = true;
     results = [];
-    const format = settings.format;
+    const format = settings.format === 'favicon' ? 'ico' : settings.format;
     const options = toEngineOptions({ ...$state.snapshot(settings), crop: null }, format);
     const made: { name: string; bytes: Uint8Array }[] = [];
     try {
@@ -212,6 +262,22 @@
   }
 
   async function download() {
+    if (settings.format === 'favicon') {
+      packing = true;
+      try {
+        const pack = await faviconPack(
+          toEngineOptions({ ...$state.snapshot(settings), sizes: FAVICON_SIZES }),
+          packMeta(settings),
+        );
+        snippet = pack.snippet;
+        saveBytes(pack.zip, downloadName(file.name, 'favicon'), ZIP_TYPE);
+      } catch (error) {
+        convertFailure = error instanceof Error ? error.message : String(error);
+      } finally {
+        packing = false;
+      }
+      return;
+    }
     let bytes: Uint8Array | undefined;
     if (settings.format === 'ico') {
       bytes = converted?.bytes;
@@ -379,6 +445,7 @@
         </fieldset>
       {/if}
 
+      {#if settings.format !== 'favicon' || batch}
       <fieldset>
         <legend>{t('controls.sizes')}</legend>
         <div class="checks">
@@ -395,6 +462,7 @@
           >{t('controls.sizes_reset')}</button
         >
       </fieldset>
+      {/if}
 
       <fieldset>
         <legend>{t('controls.look')}</legend>
@@ -456,7 +524,39 @@
       <legend>{t('download.format')}</legend>
       <label><input type="radio" name="format" value="ico" bind:group={settings.format} /> {t('download.ico')}</label>
       <label><input type="radio" name="format" value="icns" bind:group={settings.format} /> {t('download.icns')}</label>
+      {#if !batch}
+        <label><input type="radio" name="format" value="favicon" bind:group={settings.format} /> {t('download.favicon')}</label>
+      {/if}
     </fieldset>
+    {#if settings.format === 'favicon' && !batch}
+      <div class="site">
+        <h3>{t('site.title')}</h3>
+        <p class="hint">{t('site.contents', { svg: opened.vector ? t('site.svg') : '' })}</p>
+        <label class="field">
+          <span>{t('site.name')}</span>
+          <input type="text" maxlength="60" bind:value={settings.siteName} />
+        </label>
+        <p class="hint">{t('site.name_hint')}</p>
+        <label class="field">
+          <span>{t('site.theme')}</span>
+          <input type="color" bind:value={settings.themeColor} />
+        </label>
+        <label class="field">
+          <span>{t('site.apple')}</span>
+          <input type="color" bind:value={settings.appleBackground} />
+        </label>
+        <p class="hint">{t('site.apple_hint')}</p>
+        {#if appleUrl}
+          <figure class="apple">
+            <img src={appleUrl} width="90" height="90" alt="" />
+            <figcaption>{t('site.apple_preview')}</figcaption>
+          </figure>
+        {/if}
+        <p class="hint">{t('site.snippet')}</p>
+        <pre class="snippet">{snippet}</pre>
+        <button type="button" class="quiet" onclick={copySnippet}>{copied ? t('site.copied') : t('site.copy')}</button>
+      </div>
+    {/if}
     {#if batch}
       <button type="button" class="primary" onclick={convertAll} disabled={running || settings.sizes.length === 0}>
         {t('batch.convert', { count: batch.items.length })}
@@ -482,12 +582,14 @@
         </ul>
       {/if}
     {:else}
-      <button type="button" class="primary" onclick={download} disabled={!converted || working}>
-        {t('download.button', { name: downloadName(file.name, settings.format) })}
+      <button type="button" class="primary" onclick={download} disabled={!converted || working || packing}>
+        {packing ? t('site.building') : t('download.button', { name: downloadName(file.name, settings.format) })}
       </button>
-      <button type="button" onclick={downloadPngZip} disabled={!converted || working}>
-        {t('download.png_zip')}
-      </button>
+      {#if settings.format !== 'favicon'}
+        <button type="button" onclick={downloadPngZip} disabled={!converted || working}>
+          {t('download.png_zip')}
+        </button>
+      {/if}
       {#if settings.format === 'icns'}<p class="hint">{t('download.icns_note')}</p>{/if}
     {/if}
   </section>

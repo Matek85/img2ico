@@ -17,7 +17,7 @@ export interface Preset {
 export const USE_PRESETS: Preset[] = [
   { id: 'windows', settings: { sizes: WINDOWS_SIZES, format: 'ico' } },
   { id: 'standard', settings: { sizes: [16, 32, 48, 64, 128, 256], format: 'ico' } },
-  { id: 'favicon', settings: { sizes: [16, 32, 48], format: 'ico' } },
+  { id: 'favicon', settings: { sizes: [16, 32, 48], format: 'favicon' } },
   { id: 'macos', settings: { sizes: [16, 32, 64, 128, 256], format: 'icns' } },
   { id: 'small', settings: { sizes: [16, 32], format: 'ico' } },
 ];
