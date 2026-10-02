@@ -14,6 +14,7 @@
   import PixelInspector from './PixelInspector.svelte';
   import CropTool from './CropTool.svelte';
   import Icon from './Icon.svelte';
+  import type { IconName } from '../lib/icons';
   import Queue from './Queue.svelte';
   import {
     ASPECTS,
@@ -62,7 +63,7 @@
   // A surface is one of the named ones, 'picker' (the color being picked) or a kept color like '#3b82f6'.
   type Backdrop = string;
   const NAMED: Backdrop[] = ['checker', 'light', 'dark', 'gray'];
-  const MAX_KEPT = 6;
+  const MAX_KEPT = 7;
   const VIEWS = [
     { id: 'icon', icon: 'view' },
     { id: 'compare', icon: 'compare' },
@@ -600,8 +601,11 @@
                   class:chosen={isActive(settings, preset)}
                   aria-pressed={isActive(settings, preset)}
                   title={t(`preset.${preset.id}_hint`)}
-                  onclick={() => usePreset(preset)}>{t(`preset.${preset.id}`)}</button
+                  onclick={() => usePreset(preset)}
                 >
+                  <Icon name={preset.id as IconName} size={16} />
+                  {t(`preset.${preset.id}`)}
+                </button>
               {/each}
             </div>
           </div>

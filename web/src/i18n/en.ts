@@ -78,7 +78,7 @@ export const en = {
   'editor.bg_dark': 'Dark',
   'editor.bg_gray': 'Gray',
   'editor.bg_custom': 'Custom color',
-  'editor.bg_custom_pick': 'Pick your own background color (up to 6 are kept)',
+  'editor.bg_custom_pick': 'Pick your own background color (up to 7 are kept)',
   'editor.view': 'Show',
   'editor.view_icon': 'Icon',
   'editor.view_compare': 'Before and after',

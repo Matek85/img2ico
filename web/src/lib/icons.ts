@@ -14,6 +14,14 @@ export const ICONS = {
   view: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/>',
   compare: '<path d="M12 3v18"/><path d="M3 5h5a4 4 0 0 1 4 4v6a4 4 0 0 1-4 4H3z"/><path d="M21 5h-5"/><path d="M21 19h-5"/>',
   grid: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/><path d="M15 3v18"/>',
+  windows: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M7 6.5h.01"/>',
+  standard: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>',
+  favicon: '<circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20z"/>',
+  macos: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M2 20h20"/>',
+  small: '<path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/>',
+  plain: '<rect x="4" y="4" width="16" height="16" rx="0.5"/>',
+  rounded: '<rect x="4" y="4" width="16" height="16" rx="5"/>',
+  round: '<circle cx="12" cy="12" r="8"/>',
   checkNone: '<rect x="3" y="3" width="18" height="18" rx="2"/>',
 } as const;
 
