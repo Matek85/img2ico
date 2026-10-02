@@ -14,6 +14,7 @@
   import Compare from './Compare.svelte';
   import PixelInspector from './PixelInspector.svelte';
   import CropTool from './CropTool.svelte';
+  import Queue from './Queue.svelte';
   import {
     ASPECTS,
     type AspectChoice,
@@ -28,6 +29,7 @@
   import { type Preset, STYLE_PRESETS, USE_PRESETS, isActive, withPreset } from '../lib/presets';
   import { type BatchItem, outputName, stemOf } from '../lib/batch';
   import { ICNS_TYPE, ICO_TYPE, ZIP_TYPE, saveBytes } from '../lib/download';
+  import { queue } from '../lib/queue.svelte';
   import { loadSettings, saveSettings } from '../lib/storage';
   import {
     DEFAULT_SIZES,
@@ -301,6 +303,15 @@
       }
       running = false;
     }
+  }
+
+  // Keep this icon in the queue and go back to choose the next picture.
+  async function addToQueue() {
+    if (!converted || settings.format === 'favicon') return;
+    const format = settings.format;
+    const bytes = format === 'ico' ? converted.bytes : (await convert(toEngineOptions(settings, 'icns'))).bytes;
+    queue.add(file.name, format, bytes, converted.bytes);
+    onback();
   }
 
   async function downloadPngZip() {
@@ -661,7 +672,17 @@
           {t('download.png_zip')}
         </button>
       {/if}
+      <button
+        type="button"
+        class="outline"
+        onclick={addToQueue}
+        disabled={!converted || working || packing || settings.format === 'favicon'}
+        title={settings.format === 'favicon' ? t('queue.add_favicon') : t('queue.add_hint')}
+      >
+        {t('queue.add')}
+      </button>
       {#if settings.format === 'icns'}<p class="hint">{t('download.icns_note')}</p>{/if}
     {/if}
   </section>
+  {#if !batch}<Queue />{/if}
 {/if}

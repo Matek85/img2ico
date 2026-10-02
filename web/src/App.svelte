@@ -3,6 +3,8 @@
   import Dropzone from './components/Dropzone.svelte';
   import Editor from './components/Editor.svelte';
   import IconFile from './components/IconFile.svelte';
+  import Queue from './components/Queue.svelte';
+  import { queue } from './lib/queue.svelte';
   import { engineVersion, openZip, readZipFile } from './engine/client';
   import { t } from './i18n';
   import { type BatchItem, MAX_BATCH, baseName, isIconName, isPictureName, isZipName, stemOf } from './lib/batch';
@@ -106,6 +108,8 @@
 {#if view.kind === 'start'}
   <Dropzone onfiles={choose} />
   {#if problem}<p class="failure" role="alert">{problem}</p>{/if}
+  {#if queue.items.length > 0}<p class="hint next">{t('queue.next')}</p>{/if}
+  <Queue />
 {:else if view.kind === 'editor'}
   {#key view.file}
     <Editor file={view.file} onback={back} />

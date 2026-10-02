@@ -46,7 +46,7 @@ The heavy work is in WebAssembly; the page itself is mostly state: many controls
 
 **Not planned:** everything that belongs to a desktop program (target folders, opening folders, tray, sounds, shell integration, plugins, tabs, a separate preview window, recent files), a customizable interface, and image-editor features (pixel editor, shapes, lines, watermarks, palettes, guides).
 
-**Ideas outside the list:** a favicon package as one ZIP (`favicon.ico`, PNGs, Apple touch icon, web manifest), and a background tile or shape behind the artwork.
+**Ideas outside the list:** a favicon package as one ZIP (`favicon.ico`, PNGs, Apple touch icon, web manifest), and a background tile or shape behind the artwork. A **queue**: finish an icon with its own settings, add it, choose the next picture, and at the end download all icons as one ZIP or combine the images of several `.ico` icons into one file (the way `--merge` does; where sizes collide, the icon higher in the list wins).
 
 ## Search engines (SEO)
 
