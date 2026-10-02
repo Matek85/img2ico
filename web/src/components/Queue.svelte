@@ -1,10 +1,11 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { buildZip, mergeIcons } from '../engine/client';
+  import { buildZip, describeIcon, extractPng, mergeIcons, selectImages } from '../engine/client';
   import { t } from '../i18n';
   import { ICNS_TYPE, ICO_TYPE, ZIP_TYPE, saveBytes } from '../lib/download';
   import { type QueueItem, queue } from '../lib/queue.svelte';
   import { sizesText } from '../lib/queue';
+  import { stemOf } from '../lib/batch';
   import Compare from './Compare.svelte';
 
   let {
@@ -64,6 +65,83 @@
     if (queue.takeNotice()) announce();
   });
 
+  // --- Picking images out of an icon with several: a small queue of its own ---------
+
+  interface SubImage {
+    index: number;
+    width: number;
+    height: number;
+    bits: number;
+    format: string;
+    url: string;
+  }
+  let sub = $state<{ id: number; images: SubImage[] } | null>(null);
+  let subTicked = $state<number[]>([]);
+  let subRoot = $state<HTMLElement>();
+
+  // Only an .ico with more than one image has something to pick from.
+  const pickable = (item: QueueItem) => item.format === 'ico' && item.sizes.length > 1;
+
+  function closeSub() {
+    sub?.images.forEach((image) => URL.revokeObjectURL(image.url));
+    sub = null;
+    subTicked = [];
+  }
+
+  async function openSub(item: QueueItem) {
+    if (sub?.id === item.id) return closeSub();
+    closeSub();
+    await run(async () => {
+      const description = await describeIcon(item.bytes.slice());
+      const images: SubImage[] = [];
+      for (const image of description.images) {
+        const png = await extractPng(item.bytes.slice(), image.index);
+        images.push({
+          index: image.index,
+          width: image.width,
+          height: image.height,
+          bits: image.bits_per_pixel,
+          format: image.format,
+          url: URL.createObjectURL(new Blob([png as BlobPart], { type: 'image/png' })),
+        });
+      }
+      sub = { id: item.id, images };
+    });
+    subRoot?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+
+  // The chosen images become a new icon of the queue, right after the one they came from.
+  async function addImages(chosen: number[]) {
+    // A plain copy: the ticked list is reactive state, which cannot be sent to the engine.
+    const indices = [...chosen];
+    const source = sub ? queue.find(sub.id) : undefined;
+    if (!sub || !source || indices.length === 0) return;
+    await run(async () => {
+      const wanted = sub!.images.filter((image) => indices.includes(image.index));
+      const bytes = await selectImages(source.bytes.slice(), indices);
+      const largest = wanted.reduce((a, b) => (b.width > a.width ? b : a), wanted[0]);
+      const name = wanted.length === 1 ? `${stemOf(source.fileName)}_${wanted[0].width}.ico` : `${stemOf(source.fileName)}_selection.ico`;
+      queue.addIcon(
+        name,
+        new File([bytes as BlobPart], name),
+        bytes,
+        [...new Set(wanted.map((image) => image.width))].sort((a, b) => a - b),
+        await extractPng(source.bytes.slice(), largest.index),
+        source.id,
+      );
+      subTicked = [];
+    });
+  }
+
+  function tickImage(index: number) {
+    subTicked = subTicked.includes(index) ? subTicked.filter((other) => other !== index) : [...subTicked, index];
+  }
+
+  // The icon the images came from was removed: its small queue goes with it.
+  $effect(() => {
+    if (sub && !queue.find(sub.id)) closeSub();
+  });
+
   function chosen() {
     const files = Array.from(picker?.files ?? []);
     if (picker) picker.value = '';
@@ -111,7 +189,7 @@
     {#if onopen}<p class="hint">{t('queue.jump_hint')}</p>{/if}
     <ol class="queue-list">
       {#each queue.items as item, at (item.id)}
-        <li class:active={item.id === activeId}>
+        <li class:active={item.id === activeId} class:fresh={item.id === queue.fresh}>
           {#if queue.items.length > 1}
             <input
               type="checkbox"
@@ -138,6 +216,16 @@
             </span>
           </button>
           <div class="item-buttons">
+            {#if pickable(item)}
+              <button
+                type="button"
+                class="quiet pick-images"
+                aria-expanded={sub?.id === item.id}
+                title={t('queue.pick_hint')}
+                disabled={working}
+                onclick={() => openSub(item)}
+              >{t('queue.pick')}</button>
+            {/if}
             <button type="button" class="quiet" aria-label={t('queue.up', { name: item.fileName })} disabled={at === 0} onclick={() => queue.move(item.id, -1)}>↑</button>
             <button type="button" class="quiet" aria-label={t('queue.down', { name: item.fileName })} disabled={at === queue.items.length - 1} onclick={() => queue.move(item.id, 1)}>↓</button>
             <button type="button" class="quiet" aria-label={t('queue.remove', { name: item.fileName })} onclick={() => queue.remove(item.id)}>×</button>
@@ -145,6 +233,42 @@
         </li>
       {/each}
     </ol>
+
+    {#if sub}
+      {@const source = queue.find(sub.id)}
+      <div class="subqueue" bind:this={subRoot}>
+        <div class="queue-compare-head">
+          <h3>{t('queue.sub_title', { name: source?.fileName ?? '' })}</h3>
+          <button type="button" class="quiet" onclick={closeSub}>{t('queue.sub_close')}</button>
+        </div>
+        <p class="hint">{t('queue.sub_hint')}</p>
+        <ul class="sub-images">
+          {#each sub.images as image (image.index)}
+            <li>
+              <input
+                type="checkbox"
+                checked={subTicked.includes(image.index)}
+                aria-label={t('queue.sub_tick', { size: image.width })}
+                onchange={() => tickImage(image.index)}
+              />
+              <img src={image.url} alt="" width={Math.min(image.width, 64)} height={Math.min(image.height, 64)} />
+              <span class="what">
+                <strong>{image.width} × {image.height}</strong>
+                <span class="hint">{t('queue.sub_detail', { format: image.format, bits: image.bits })}</span>
+              </span>
+              <button type="button" class="outline" disabled={working} onclick={() => addImages([image.index])}>{t('queue.sub_add')}</button>
+            </li>
+          {/each}
+        </ul>
+        <div class="queue-actions">
+          <button type="button" disabled={working || subTicked.length < 2} onclick={() => addImages(subTicked)}>
+            {subTicked.length >= 2 ? t('queue.sub_add_chosen', { count: subTicked.length }) : t('queue.sub_add_chosen_none')}
+          </button>
+          <button type="button" class="quiet" onclick={() => (subTicked = sub ? sub.images.map((image) => image.index) : [])}>{t('iconfile.select_all')}</button>
+          <button type="button" class="quiet" onclick={() => (subTicked = [])}>{t('iconfile.select_none')}</button>
+        </div>
+      </div>
+    {/if}
 
     {#if queue.items.length > 1 && !comparing}
       <p class="hint">{t('queue.compare_hint')}</p>

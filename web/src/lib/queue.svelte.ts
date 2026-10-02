@@ -44,6 +44,21 @@ let notice = false;
 let ticks = $state(0);
 // What could not be added, or was left out, when pictures were added in bulk.
 let problems = $state<string[]>([]);
+// The icon added last, for a moment: its row flashes.
+let fresh = $state<number | null>(null);
+let freshTimer: ReturnType<typeof setTimeout> | undefined;
+
+function markFresh(id: number) {
+  fresh = id;
+  clearTimeout(freshTimer);
+  freshTimer = setTimeout(() => (fresh = null), 1800);
+}
+
+/** `list` with `item` put right after the item `afterId` (at the end if there is none). */
+function inserted(list: QueueItem[], item: QueueItem, afterId?: number): QueueItem[] {
+  const at = afterId === undefined ? -1 : list.findIndex((other) => other.id === afterId);
+  return at < 0 ? [...list, item] : [...list.slice(0, at + 1), item, ...list.slice(at + 1)];
+}
 
 function release(item: QueueItem) {
   if (item.thumb) URL.revokeObjectURL(item.thumb);
@@ -80,6 +95,10 @@ export const queue = {
     return problems;
   },
 
+  get fresh(): number | null {
+    return fresh;
+  },
+
   setProblems(list: string[]) {
     problems = list;
   },
@@ -104,11 +123,19 @@ export const queue = {
     items = [...items, item];
     notice = true;
     ticks += 1;
+    markFresh(item.id);
     return item;
   },
 
   /** Adds an .ico file as it is: it is not made from a picture, so it cannot be edited, only looked into. */
-  addIcon(name: string, file: File, bytes: Uint8Array, sizes: number[], largestPng: Uint8Array | null): QueueItem {
+  addIcon(
+    name: string,
+    file: File,
+    bytes: Uint8Array,
+    sizes: number[],
+    largestPng: Uint8Array | null,
+    afterId?: number,
+  ): QueueItem {
     const item: QueueItem = {
       id: nextId++,
       kind: 'icon',
@@ -125,9 +152,10 @@ export const queue = {
       sizes,
       thumb: largestPng ? URL.createObjectURL(new Blob([largestPng as BlobPart], { type: 'image/png' })) : '',
     };
-    items = [...items, item];
+    items = inserted(items, item, afterId);
     notice = true;
     ticks += 1;
+    markFresh(item.id);
     return item;
   },
 

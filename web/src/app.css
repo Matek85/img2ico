@@ -1851,3 +1851,66 @@ h3 {
 .filling progress {
   width: 100%;
 }
+
+/* An icon with several images: pick from them (a small queue inside the queue). */
+.queue-list li.fresh {
+  animation: flash-border 1.8s ease-out;
+}
+
+.pick-images {
+  white-space: nowrap;
+}
+
+.subqueue {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 0.6rem;
+}
+
+.subqueue .hint {
+  margin: 0;
+}
+
+.sub-images {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sub-images li {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.3rem 0.5rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+}
+
+.sub-images img {
+  flex: none;
+  object-fit: contain;
+  background: repeating-conic-gradient(#c8c8d0 0 25%, #f2f2f6 0 50%) 0 0 / 10px 10px;
+  border-radius: 0.25rem;
+}
+
+.sub-images .what {
+  display: grid;
+  flex: 1;
+}
+
+.sub-images .what .hint {
+  margin: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .queue-list li.fresh {
+    animation: none;
+  }
+}
