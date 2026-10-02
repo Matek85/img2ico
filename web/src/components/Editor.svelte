@@ -734,5 +734,5 @@
       </button>
       {#if settings.format === 'icns'}<p class="hint">{t('download.icns_note')}</p>{/if}
   </section>
-  <Queue activeId={editId} onopen={jump} onnext={nextPicture} />
+  <Queue activeId={editId} onopen={jump} onnext={nextPicture} onpicture={nextPicture} />
 {/if}

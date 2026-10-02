@@ -129,6 +129,8 @@ export const en = {
   'queue.clear_ask_other': 'Remove all {count} icons from the queue? This cannot be undone.',
   'queue.clear_yes': 'Yes, clear the queue',
   'queue.clear_no': 'Keep them',
+  'queue.as_picture': 'Edit as picture',
+  'queue.as_picture_hint': 'Take the largest image (or this one) as a picture and edit it: new sizes are made from it, with everything the editor can do',
   'queue.pick': 'Pick images',
   'queue.pick_hint': 'Take single images out of this icon and put them in the queue',
   'queue.sub_title': 'Images in {name}',

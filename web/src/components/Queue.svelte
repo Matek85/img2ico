@@ -12,6 +12,7 @@
     activeId,
     onopen,
     onnext,
+    onpicture,
   }: {
     /** The icon being edited just now, if any. */
     activeId?: number;
@@ -19,6 +20,8 @@
     onopen?: (item: QueueItem) => void;
     /** Chooses the next picture(s), from inside the editor. */
     onnext?: (files: File[]) => void;
+    /** Opens a picture made from an icon's image in the editor (and puts it in the queue). */
+    onpicture?: (files: File[]) => void;
   } = $props();
 
   let picker = $state<HTMLInputElement>();
@@ -89,6 +92,21 @@
   let sub = $state<{ id: number; images: SubImage[] } | null>(null);
   let subTicked = $state<number[]>([]);
   let subRoot = $state<HTMLElement>();
+
+  // An icon's largest image (or the one at `index`) as a picture of its own: the editor makes new sizes from it.
+  async function asPicture(item: QueueItem, index?: number) {
+    await run(async () => {
+      const description = await describeIcon(item.bytes.slice());
+      const image =
+        index === undefined
+          ? description.images.reduce((a, b) => (b.width > a.width || (b.width === a.width && b.bits_per_pixel > a.bits_per_pixel) ? b : a))
+          : description.images.find((candidate) => candidate.index === index);
+      if (!image) return;
+      const png = await extractPng(item.bytes.slice(), image.index);
+      const name = `${stemOf(item.fileName)}${index === undefined ? '' : '_' + image.width}_edited.png`;
+      onpicture?.([new File([png as BlobPart], name, { type: 'image/png' })]);
+    });
+  }
 
   // Only an .ico with more than one image has something to pick from.
   const pickable = (item: QueueItem) => item.format === 'ico' && item.sizes.length > 1;
@@ -221,6 +239,9 @@
             </span>
           </button>
           <div class="item-buttons">
+            {#if onpicture && item.format === 'ico'}
+              <button type="button" class="quiet pick-images" title={t('queue.as_picture_hint')} disabled={working} onclick={() => asPicture(item)}>{t('queue.as_picture')}</button>
+            {/if}
             {#if pickable(item)}
               <button
                 type="button"
@@ -261,6 +282,9 @@
                 <strong>{image.width} × {image.height}</strong>
                 <span class="hint">{t('queue.sub_detail', { format: image.format, bits: image.bits })}</span>
               </span>
+              {#if onpicture && source}
+                <button type="button" class="quiet" title={t('queue.as_picture_hint')} disabled={working} onclick={() => asPicture(source, image.index)}>{t('queue.as_picture')}</button>
+              {/if}
               <button type="button" class="outline" disabled={working} onclick={() => addImages([image.index])}>{t('queue.sub_add')}</button>
             </li>
           {/each}

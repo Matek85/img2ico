@@ -229,7 +229,7 @@
   <Dropzone onfiles={choose} />
   {#if problem}<p class="failure" role="alert">{problem}</p>{/if}
   {#if queue.items.length > 0}<p class="hint next">{t('queue.next')}</p>{/if}
-  <Queue onopen={openFromQueue} />
+  <Queue onopen={openFromQueue} onpicture={chooseNext} />
 {:else if view.kind === 'editor'}
   {#key view}
     <Editor file={view.file} editing={view.editing} onopenitem={openFromQueue} onnext={chooseNext} onback={back} />
