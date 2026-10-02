@@ -40,6 +40,14 @@ npm run build                     # the finished static page in web/dist
 
 `SITE_URL=https://example.org/img2ico/ npm run build` also writes the canonical link, the link-preview address and `sitemap.xml` (without it they are left out, so the build works from any address). See the search engine section of `docs/web-plan.md`.
 
+Rules for changes to the page:
+
+- **Every text goes through the message catalogue** (`web/src/i18n/en.ts`, used with `t('key', { params })`); nothing is written into the markup. The page will be translated, so the same placeholders must be usable in every language, and plurals are keys with `_one` / `_other`. Texts of the engine are shown through `web/src/lib/messages.ts`.
+- **Buttons** are sized by the classes at the end of `web/src/app.css` (`primary`, `outline`, `quiet`, `icon-button`, `chip`, `small`); a button that does something has a line icon (`web/src/lib/icons.ts`) in front of its text, and an icon-only button has a tooltip and an `aria-label`.
+- **The page and the command line must give the same bytes.** The page only calls the engine; nothing in `web/` converts pixels itself.
+- **Relative paths only**, so the built folder works from any address.
+- Before a pull request: `npm run check`, `npm test`, `npm run build`, and, for the Rust side, the commands of the Rust CI jobs. A Lighthouse run (see `docs/web-plan.md`) catches problems with accessibility and search engines.
+
 `npm run build:wasm` rebuilds only the engine (`crates/wasm`) into `web/src/wasm/pkg/`, which is generated and not committed. The `web/dist` folder works from any address, so it can be copied to any web space.
 
 ## Where things are
