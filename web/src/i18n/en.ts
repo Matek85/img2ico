@@ -127,6 +127,7 @@ export const en = {
   'queue.single': 'Download {name}',
   'queue.zip': 'Download all as ZIP',
   'queue.clear': 'Clear the queue',
+  'queue.drop': 'Drop to add to the queue',
   'queue.clear_ask_one': 'Remove the icon from the queue? This cannot be undone.',
   'queue.clear_ask_other': 'Remove all {count} icons from the queue? This cannot be undone.',
   'queue.clear_yes': 'Yes, clear the queue',

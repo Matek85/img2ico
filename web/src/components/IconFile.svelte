@@ -10,6 +10,7 @@
     validateIco,
   } from '../engine/client';
   import { formatBytes, t } from '../i18n';
+  import DropOverlay from './DropOverlay.svelte';
   import Icon from './Icon.svelte';
   import { baseName, stemOf } from '../lib/batch';
   import { ICO_TYPE, PNG_TYPE, ZIP_TYPE, saveBytes } from '../lib/download';
@@ -288,3 +289,5 @@
 
   {#if actionFailure}<p class="failure" role="alert">{actionFailure}</p>{/if}
 {/if}
+
+<DropOverlay onfiles={onpicture} label={t('queue.drop')} />

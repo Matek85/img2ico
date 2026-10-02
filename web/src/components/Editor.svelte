@@ -13,6 +13,7 @@
   import Compare from './Compare.svelte';
   import PixelInspector from './PixelInspector.svelte';
   import CropTool from './CropTool.svelte';
+  import DropOverlay from './DropOverlay.svelte';
   import Icon from './Icon.svelte';
   import type { IconName } from '../lib/icons';
   import Queue from './Queue.svelte';
@@ -830,6 +831,7 @@
       <button type="button" class="primary" onclick={() => siteDialog?.close()}>{t('site.done')}</button>
     </div>
   </dialog>
+  <DropOverlay onfiles={nextPicture} label={t('queue.drop')} />
   <Queue activeId={editId} onopen={jump} onnext={nextPicture} onpicture={nextPicture} />
   </div>
 {/if}
