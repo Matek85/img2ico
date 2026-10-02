@@ -3,6 +3,17 @@
   import { closePicture, convert, openPicture } from '../engine/client';
   import type { Converted, Opened } from '../engine/protocol';
   import { t } from '../i18n';
+  import CropTool from './CropTool.svelte';
+  import {
+    ASPECTS,
+    type AspectChoice,
+    type Rect,
+    aspectValue,
+    clampRect,
+    fitAspect,
+    fullRect,
+    isFull,
+  } from '../lib/crop';
   import { type IconEntry, iconEntries } from '../lib/ico';
   import {
     DEFAULT_SIZES,
@@ -33,10 +44,22 @@
   // again while the engine was busy) is thrown away instead of shown.
   let latest = 0;
 
+  // The crop frame. It is `settings.crop` only while crop is on and the frame
+  // is smaller than the picture; the frame itself is kept while it is off.
+  let cropOn = $state(false);
+  let cropAspect = $state<AspectChoice>('free');
+  let frame = $state<Rect>({ x: 0, y: 0, width: 1, height: 1 });
+  let picture = $derived(opened ? { width: opened.width, height: opened.height } : undefined);
+
+  $effect(() => {
+    settings.crop = picture && cropOn && !isFull(frame, picture) ? { ...frame } : null;
+  });
+
   onMount(async () => {
     originalUrl = URL.createObjectURL(file);
     try {
       opened = await openPicture(new Uint8Array(await file.arrayBuffer()), file.name);
+      frame = fullRect(opened);
     } catch (error) {
       openFailure = error instanceof Error ? error.message : String(error);
     }
@@ -89,6 +112,17 @@
     }, 120);
     return () => clearTimeout(timer);
   });
+
+  function chooseAspect(choice: AspectChoice) {
+    cropAspect = choice;
+    const ratio = aspectValue(choice);
+    if (ratio !== null && picture) frame = fitAspect(frame, ratio, picture);
+  }
+
+  function setFrame(field: keyof Rect, value: number) {
+    if (!picture || !Number.isFinite(value)) return;
+    frame = clampRect({ ...frame, [field]: value }, picture);
+  }
 
   async function download() {
     let bytes: Uint8Array | undefined;
@@ -185,6 +219,49 @@
             : t('editor.source_size', { width: opened.width, height: opened.height })}
         </figcaption>
       </figure>
+
+      {#if !opened.vector && picture}
+        <fieldset class:empty={!cropOn}>
+          <legend>
+            <label><input type="checkbox" bind:checked={cropOn} /> {t('crop.use')}</label>
+          </legend>
+          {#if cropOn}
+            <div class="chips" role="radiogroup" aria-label={t('crop.aspect')}>
+              {#each ASPECTS as choice (choice)}
+                <label class:chosen={cropAspect === choice}>
+                  <input
+                    type="radio"
+                    name="crop-aspect"
+                    value={choice}
+                    checked={cropAspect === choice}
+                    onchange={() => chooseAspect(choice)}
+                  />
+                  {choice === 'free' ? t('crop.aspect_free') : choice}
+                </label>
+              {/each}
+            </div>
+            <CropTool src={originalUrl} size={picture} bind:rect={frame} aspect={aspectValue(cropAspect)} />
+            <p class="hint">{t('crop.hint')}</p>
+            <div class="numbers">
+              {#each [['x', 'crop.x'], ['y', 'crop.y'], ['width', 'crop.width'], ['height', 'crop.height']] as [field, label] (field)}
+                <label>
+                  <span>{t(label)}</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max={field === 'x' || field === 'width' ? picture.width : picture.height}
+                    value={frame[field as keyof Rect]}
+                    onchange={(e) => setFrame(field as keyof Rect, e.currentTarget.valueAsNumber)}
+                  />
+                </label>
+              {/each}
+            </div>
+            <button type="button" class="quiet" onclick={() => (frame = fullRect(picture))} disabled={isFull(frame, picture)}>
+              {t('crop.reset')}
+            </button>
+          {/if}
+        </fieldset>
+      {/if}
 
       <fieldset>
         <legend>{t('controls.sizes')}</legend>

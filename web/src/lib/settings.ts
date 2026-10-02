@@ -1,6 +1,8 @@
 // What the person can change, and how it becomes the options the engine
 // understands (see `parse_options` in crates/wasm).
 
+import type { Rect } from './crop';
+
 export type Fit = 'contain' | 'cover';
 export type Format = 'ico' | 'icns';
 
@@ -17,6 +19,8 @@ export interface Settings {
   fit: Fit;
   grayscale: boolean;
   trim: boolean;
+  /** The part of the picture to use, in its pixels; `null` is all of it. */
+  crop: Rect | null;
   removeBackground: boolean;
   /** Detect the background color from the picture's border. */
   backgroundAuto: boolean;
@@ -35,6 +39,7 @@ export function defaultSettings(): Settings {
     fit: 'contain',
     grayscale: false,
     trim: false,
+    crop: null,
     removeBackground: false,
     backgroundAuto: true,
     backgroundColor: '#00ff00',
@@ -53,6 +58,7 @@ export interface EngineOptions {
   fit?: Fit;
   grayscale?: boolean;
   trim?: boolean;
+  crop?: Rect;
   background?: {
     spec: string;
     tolerance?: number;
@@ -75,6 +81,9 @@ export function toEngineOptions(settings: Settings, format: Format = 'ico'): Eng
     grayscale: settings.grayscale,
     trim: settings.trim,
   };
+  if (settings.crop) {
+    options.crop = { ...settings.crop };
+  }
   if (settings.removeBackground) {
     options.background = {
       spec: settings.backgroundAuto ? 'auto' : settings.backgroundColor,

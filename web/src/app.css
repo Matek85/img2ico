@@ -470,3 +470,98 @@ fieldset .hint,
 h3 {
   margin: 1rem 0 0.25rem;
 }
+
+/* --- the crop frame ----------------------------------------------------- */
+
+.crop-stage {
+  position: relative;
+  line-height: 0;
+  overflow: hidden;
+  border-radius: 0.35rem;
+  user-select: none;
+  touch-action: none;
+}
+
+.crop-stage img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.crop-stage .frame {
+  position: absolute;
+  border: 2px solid #fff;
+  outline: 1px solid rgba(0, 0, 0, 0.6);
+  /* Dims everything outside the frame. */
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55);
+  cursor: move;
+}
+
+.handle {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  margin: -8px;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.7);
+  border-radius: 3px;
+}
+
+.handle.nw { left: 0; top: 0; cursor: nwse-resize; }
+.handle.n { left: 50%; top: 0; cursor: ns-resize; }
+.handle.ne { left: 100%; top: 0; cursor: nesw-resize; }
+.handle.e { left: 100%; top: 50%; cursor: ew-resize; }
+.handle.se { left: 100%; top: 100%; cursor: nwse-resize; }
+.handle.s { left: 50%; top: 100%; cursor: ns-resize; }
+.handle.sw { left: 0; top: 100%; cursor: nesw-resize; }
+.handle.w { left: 0; top: 50%; cursor: ew-resize; }
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.chips label {
+  padding: 0.2rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.chips label.chosen {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--accent);
+}
+
+.chips input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.chips label:has(input:focus-visible) {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.numbers {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.numbers label {
+  display: grid !important;
+  gap: 0.15rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.numbers input {
+  font: inherit;
+  width: 100%;
+  min-width: 0;
+}
