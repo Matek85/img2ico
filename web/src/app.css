@@ -297,8 +297,15 @@ a {
   text-decoration: none;
 }
 
+/* The letters sit higher in their line than the middle of the line, so the
+   logos are raised by that much to share one center line with the text. */
+.topbar nav svg,
 .menu-list svg {
   flex-shrink: 0;
+  transform: translateY(-0.1em);
+}
+
+.menu-list svg {
   color: var(--muted);
 }
 
