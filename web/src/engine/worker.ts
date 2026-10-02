@@ -3,7 +3,7 @@
 // picture that was opened, so changing a setting converts it again without
 // decoding it again.
 
-import init, { Source, engine_version, validate_ico } from '../wasm/pkg/img2ico_wasm.js';
+import init, { Source, engine_version, icon_pixels, validate_ico } from '../wasm/pkg/img2ico_wasm.js';
 import type { Request, Response } from './protocol';
 
 const ready = init();
@@ -52,6 +52,15 @@ self.onmessage = async (event: MessageEvent<Request>) => {
         output.free();
         transfer.push(bytes.buffer);
         response = { id: request.id, ok: true, converted };
+        break;
+      }
+      case 'pixels': {
+        const image = icon_pixels(request.bytes, request.index);
+        const rgba = image.rgba();
+        const pixels = { width: image.width(), height: image.height(), rgba };
+        image.free();
+        transfer.push(rgba.buffer);
+        response = { id: request.id, ok: true, pixels };
         break;
       }
       case 'close':

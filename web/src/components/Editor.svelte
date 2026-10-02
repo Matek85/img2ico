@@ -4,6 +4,7 @@
   import type { Converted, Opened } from '../engine/protocol';
   import { t } from '../i18n';
   import Compare from './Compare.svelte';
+  import PixelInspector from './PixelInspector.svelte';
   import CropTool from './CropTool.svelte';
   import {
     ASPECTS,
@@ -36,7 +37,7 @@
   let originalUrl = $state('');
 
   let backdrop = $state<Backdrop>('checker');
-  let view = $state<'icon' | 'compare'>('icon');
+  let view = $state<'icon' | 'compare' | 'pixels'>('icon');
   let converted = $state<Converted>();
   let tiles = $state<{ size: number; url: string }[]>([]);
   let working = $state(false);
@@ -176,7 +177,7 @@
       </div>
 
       <div class="chips views" role="radiogroup" aria-label={t('editor.view')}>
-        {#each ['icon', 'compare'] as choice (choice)}
+        {#each ['icon', 'compare', 'pixels'] as choice (choice)}
           <label class:chosen={view === choice}>
             <input type="radio" name="view" value={choice} bind:group={view} />
             {t(`editor.view_${choice}`)}
@@ -187,6 +188,8 @@
       <div class="stage {backdrop}" aria-live="polite">
         {#if settings.sizes.length === 0}
           <p class="note">{t('editor.no_sizes')}</p>
+        {:else if converted && tiles.length > 0 && view === 'pixels'}
+          <PixelInspector bytes={converted.bytes} sizes={tiles.map((tile) => tile.size)} />
         {:else if largest && view === 'compare' && picture}
           <Compare before={originalUrl} after={largest.url} {picture} crop={settings.crop} />
         {:else if largest}

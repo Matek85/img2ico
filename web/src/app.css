@@ -644,3 +644,154 @@ h3 {
   border-radius: 0.35rem;
   font-size: 0.85rem;
 }
+
+/* --- the pixel inspector ---------------------------------------------------- */
+
+.inspector {
+  width: 100%;
+  display: grid;
+  gap: 0.75rem;
+  align-self: stretch;
+}
+
+.inspector .tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.9rem;
+}
+
+.inspector .tools label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.inspector .zoom {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.inspector .zoom output {
+  min-width: 2.5rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.inspector .zoom input[type='range'] {
+  width: 7rem;
+}
+
+.inspector .viewport {
+  overflow: auto;
+  max-height: 26rem;
+  display: flex;
+}
+
+.inspector .surface {
+  position: relative;
+  flex: none;
+  margin: auto;
+  cursor: crosshair;
+  line-height: 0;
+  background-color: #fff;
+  background-image:
+    linear-gradient(45deg, #d9d9e0 25%, transparent 25%, transparent 75%, #d9d9e0 75%),
+    linear-gradient(45deg, #d9d9e0 25%, transparent 25%, transparent 75%, #d9d9e0 75%);
+  background-size: 16px 16px;
+  background-position:
+    0 0,
+    8px 8px;
+}
+
+.inspector canvas {
+  image-rendering: pixelated;
+  display: block;
+}
+
+.inspector .grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, rgba(0, 0, 0, 0.35) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.35) 1px, transparent 1px);
+}
+
+.inspector .cell {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px solid #fff;
+  outline: 1px solid #000;
+  pointer-events: none;
+}
+
+.inspector .cell.pinned {
+  border-color: #ffd43b;
+}
+
+.inspector .values {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  min-height: 3.5rem;
+}
+
+.inspector .values .hint {
+  margin: 0;
+}
+
+.inspector .swatch {
+  flex: none;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 0.3rem;
+  border: 1px solid var(--border);
+  background-image:
+    linear-gradient(45deg, #d9d9e0 25%, transparent 25%, transparent 75%, #d9d9e0 75%),
+    linear-gradient(45deg, #d9d9e0 25%, transparent 25%, transparent 75%, #d9d9e0 75%);
+  background-size: 8px 8px;
+  background-position:
+    0 0,
+    4px 4px;
+  background-color: #fff;
+  position: relative;
+  overflow: hidden;
+}
+
+.inspector .swatch span {
+  position: absolute;
+  inset: 0;
+}
+
+.inspector dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: 0.25rem 1rem;
+  flex: 1;
+}
+
+.inspector dl div {
+  display: grid;
+}
+
+.inspector dt {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.inspector dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
