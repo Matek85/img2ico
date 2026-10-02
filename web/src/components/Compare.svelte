@@ -47,6 +47,20 @@
   function move(event: PointerEvent) {
     if (dragging) place(event);
   }
+
+  // The mouse wheel moves the divider while the pointer is over the preview
+  // box (a notch is about 2 percent); outside it the page scrolls as usual.
+  $effect(() => {
+    const area = box?.closest<HTMLElement>('.preview') ?? box;
+    if (!area) return;
+    const onWheel = (event: WheelEvent) => {
+      if (event.ctrlKey || event.deltaY === 0) return;
+      event.preventDefault();
+      position = Math.min(Math.max(position + event.deltaY * 0.02, 0), 100);
+    };
+    area.addEventListener('wheel', onWheel, { passive: false });
+    return () => area.removeEventListener('wheel', onWheel);
+  });
 </script>
 
 <div class="compare">
@@ -69,7 +83,7 @@
   </div>
   <label class="slider">
     <span>{t('compare.divider')}</span>
-    <input type="range" min="0" max="100" bind:value={position} />
-    <output>{position}%</output>
+    <input type="range" min="0" max="100" step="any" bind:value={position} />
+    <output>{Math.round(position)}%</output>
   </label>
 </div>
