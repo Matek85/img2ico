@@ -611,11 +611,13 @@
       </div>
 
       <div class="preview-main">
-      <div class="stage {surfaceClass}" style={surface} aria-live="polite">
+      <div class="stage {surfaceClass}" class:masked={masking && view === 'icon' && picture} style={surface} aria-live="polite">
         {#if settings.sizes.length === 0}
           <p class="note">{t('editor.no_sizes')}</p>
         {:else if masking && view === 'icon' && picture}
           <div class="mask">
+            <h3 class="mask-title">{t('crop.use')}</h3>
+            <div class="mask-grid">
             <div class="chips aspects" role="radiogroup" aria-label={t('crop.aspect')}>
               {#each ASPECTS as choice (choice)}
                 <label class:chosen={cropAspect === choice} title={choice === 'free' ? t('crop.aspect_free') : choice}>
@@ -624,7 +626,9 @@
                 </label>
               {/each}
             </div>
-            <CropTool src={originalUrl} size={picture} bind:rect={frame} aspect={aspectValue(cropAspect)} />
+            <div class="mask-picture {surfaceClass}" style={surface}>
+              <CropTool src={originalUrl} size={picture} bind:rect={frame} aspect={aspectValue(cropAspect)} />
+            </div>
             <div class="numbers sides">
               {#each [['x', 'crop.x', 'cropLeft'], ['y', 'crop.y', 'cropTop'], ['width', 'crop.width', 'cropWidth'], ['height', 'crop.height', 'cropHeight']] as [field, label, icon] (field)}
                 <label title={t(`${label}_hint`)}>
@@ -638,6 +642,12 @@
                   />
                 </label>
               {/each}
+            </div>
+            </div>
+            <p class="hint">{t('crop.hint')}</p>
+            <div class="mask-actions">
+              <button type="button" class="quiet small" onclick={() => (frame = fullRect(picture))} disabled={isFull(frame, picture)}><Icon name="reset" size={16} />{t('crop.reset')}</button>
+              <button type="button" class="primary small" onclick={() => (masking = false)}><Icon name="check" size={16} />{t('crop.done')}</button>
             </div>
           </div>
         {:else if converted && tiles.length > 0 && view === 'pixels'}
@@ -657,16 +667,6 @@
           </figure>
         {/if}
       </div>
-
-      {#if masking && view === 'icon' && picture}
-        <div class="mask-tools">
-          <p class="hint">{t('crop.hint')}</p>
-          <div class="mask-actions">
-            <button type="button" class="quiet small" onclick={() => (frame = fullRect(picture))} disabled={isFull(frame, picture)}><Icon name="reset" size={16} />{t('crop.reset')}</button>
-            <button type="button" class="primary small" onclick={() => (masking = false)}><Icon name="check" size={16} />{t('crop.done')}</button>
-          </div>
-        </div>
-      {/if}
 
       {#if smaller.length > 0}
         <ul class="tiles {surfaceClass}" style={surface}>

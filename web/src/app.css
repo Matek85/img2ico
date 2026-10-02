@@ -2766,3 +2766,61 @@ button.small {
   justify-content: space-between;
   gap: 0.5rem 1rem;
 }
+
+/* The mask is a box of its own: a title, the shapes, the picture with its frame
+   (on the chosen background) and the measures, then the buttons. */
+.stage.masked {
+  display: block;
+  min-height: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+}
+
+.stage .mask {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.75rem;
+  padding: 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+}
+
+.mask-title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.mask-grid {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.6rem;
+  align-items: start;
+}
+
+.mask .aspects,
+.mask .numbers {
+  background: var(--bg);
+}
+
+.mask-picture {
+  display: grid;
+  place-items: center;
+  align-self: center;
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+}
+
+.mask .hint {
+  margin: 0;
+}
+
+.mask .mask-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
