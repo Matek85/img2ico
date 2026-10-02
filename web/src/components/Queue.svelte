@@ -23,6 +23,18 @@
 
   let picker = $state<HTMLInputElement>();
 
+  // Clearing the queue cannot be undone, so it asks first, in place of the button.
+  let confirmClear = $state(false);
+  let keepButton = $state<HTMLButtonElement>();
+  $effect(() => {
+    if (confirmClear) keepButton?.focus();
+  });
+  // A queue that has changed or emptied is not the one that was asked about.
+  $effect(() => {
+    queue.items.length;
+    confirmClear = false;
+  });
+
   let root = $state<HTMLElement>();
   let flash = $state(false);
   let working = $state(false);
@@ -317,8 +329,18 @@
         <button type="button" class="primary" onclick={downloadZip} disabled={working}>{t('queue.zip')}</button>
         <button type="button" onclick={downloadCombined} disabled={working || !queue.canCombine}>{t('queue.combine')}</button>
       {/if}
-      <button type="button" class="quiet" onclick={() => queue.clear()}>{t('queue.clear')}</button>
+      {#if !confirmClear}
+        <button type="button" class="quiet" onclick={() => (confirmClear = true)}>{t('queue.clear')}</button>
+      {/if}
     </div>
+    {#if confirmClear}
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+      <div class="confirm" role="group" aria-label={t('queue.clear')} onkeydown={(e) => e.key === 'Escape' && (confirmClear = false)}>
+        <p>{t('queue.clear_ask', { count: queue.items.length })}</p>
+        <button type="button" class="danger" onclick={() => { confirmClear = false; queue.clear(); }}>{t('queue.clear_yes')}</button>
+        <button type="button" class="outline" bind:this={keepButton} onclick={() => (confirmClear = false)}>{t('queue.clear_no')}</button>
+      </div>
+    {/if}
     {#if queue.items.length > 1}
       <p class="hint">{queue.canCombine ? t('queue.combine_hint') : t('queue.combine_icns')}</p>
     {/if}
