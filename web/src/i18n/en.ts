@@ -7,6 +7,11 @@ export const en = {
   'app.tagline': 'Turn PNG, JPG, SVG and more into .ico and .icns icons, or a complete favicon package. Right in your browser, nothing is uploaded.',
   'hero.title': 'Image to Icon Converter',
   'nav.github': 'GitHub',
+  'nav.cli': 'Download CLI',
+  'nav.cli_windows': 'Windows',
+  'nav.cli_macos': 'macOS',
+  'nav.cli_linux': 'Linux',
+  'nav.cli_all': 'All versions and release notes',
   'app.privacy': 'Your files never leave your browser. Nothing is uploaded.',
 
   // What search engines and link previews show.

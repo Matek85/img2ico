@@ -113,6 +113,22 @@ export function artHtml(): string {
         </div>`;
 }
 
+/** The command-line tool: the latest release for each system (GitHub redirects "latest" to the newest one). */
+export function navHtml(m: Messages): string {
+  const latest = `${REPOSITORY}/releases/latest/download/`;
+  const item = (file: string, key: string) => `<a href="${latest}${file}">${escapeHtml(m[key])}</a>`;
+  return `<details class="menu">
+            <summary>${escapeHtml(m['nav.cli'])}</summary>
+            <div class="menu-list">
+              ${item('img2ico-windows.zip', 'nav.cli_windows')}
+              ${item('img2ico-macos.zip', 'nav.cli_macos')}
+              ${item('img2ico-linux.zip', 'nav.cli_linux')}
+              <a class="all" href="${REPOSITORY}/releases/latest">${escapeHtml(m['nav.cli_all'])}</a>
+            </div>
+          </details>
+          <a href="${REPOSITORY}">${escapeHtml(m['nav.github'])}</a>`;
+}
+
 /** The text under the converter. */
 export function aboutHtml(m: Messages): string {
   const e = (key: string) => escapeHtml(m[key]);
@@ -154,9 +170,8 @@ export function seo(address?: string): Plugin {
         .replace('<!--seo:head-->', () => headTags(en, siteUrl))
         .replace('<!--seo:header-->', () => headerHtml(en))
         .replace('<!--seo:art-->', () => artHtml())
+        .replace('<!--seo:nav-->', () => navHtml(en))
         .replace('<!--seo:name-->', () => escapeHtml(en['app.name']))
-        .replace('<!--seo:github-->', () => escapeHtml(en['nav.github']))
-        .replace('<!--seo:repository-->', () => REPOSITORY)
         .replace('<!--seo:noscript-->', () => escapeHtml(en['seo.noscript']))
         .replace('<!--seo:privacy-->', () => escapeHtml(en['app.privacy']))
         .replace('<!--seo:about-->', () => aboutHtml(en));

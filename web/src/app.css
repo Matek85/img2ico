@@ -211,14 +211,88 @@ a {
   border-radius: 50%;
 }
 
-.topbar nav a {
+.topbar nav {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.topbar nav a,
+.menu summary {
   color: var(--text);
   font-weight: 600;
   text-decoration: none;
 }
 
-.topbar nav a:hover {
+.topbar nav > a:hover,
+.menu summary:hover {
   text-decoration: underline;
+}
+
+.menu {
+  position: relative;
+}
+
+.menu summary {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.menu summary::after {
+  content: '';
+  width: 0.45rem;
+  height: 0.45rem;
+  margin-top: -0.2rem;
+  border: solid currentColor;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+  transition: transform 0.15s;
+}
+
+.menu[open] summary::after {
+  margin-top: 0.15rem;
+  transform: rotate(-135deg);
+}
+
+.menu-list {
+  position: absolute;
+  right: 0;
+  z-index: 10;
+  display: grid;
+  min-width: 13rem;
+  margin-top: 0.75rem;
+  padding: 0.4rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  box-shadow: var(--shadow);
+}
+
+.menu-list a {
+  padding: 0.55rem 0.75rem;
+  border-radius: 0.5rem;
+  white-space: nowrap;
+}
+
+.menu-list a:hover,
+.menu-list a:focus-visible {
+  background: var(--tint);
+  text-decoration: none;
+}
+
+.menu-list .all {
+  margin-top: 0.25rem;
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 0.5rem 0.5rem;
+  font-weight: 400;
+  color: var(--muted);
 }
 
 .hero {
