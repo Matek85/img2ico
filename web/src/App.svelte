@@ -14,10 +14,32 @@
     | { kind: 'batch'; file: File; items: BatchItem[]; archive: string; notes: string[] };
 
   let view = $state<View>({ kind: 'start' });
-  let version = $state('');
 
   onMount(() => {
-    engineVersion().then((v) => (version = v), () => {});
+    // The page around the app (heading, text, footer) is plain HTML in
+    // index.html. Start the engine once the page has settled, so the first
+    // picture is converted without waiting for it, and show its version.
+    const start = () =>
+      engineVersion().then(
+        (version) => {
+          const line = document.getElementById('engine');
+          if (line) {
+            line.textContent = t('footer.engine', { version });
+            line.hidden = false;
+          }
+        },
+        () => {},
+      );
+    if ('requestIdleCallback' in window) requestIdleCallback(() => void start(), { timeout: 3000 });
+    else setTimeout(() => void start(), 1000);
+  });
+
+  // The explanatory text belongs to the start page only, and a wide editor
+  // widens the whole page.
+  $effect(() => {
+    const about = document.getElementById('about');
+    if (about) about.hidden = view.kind !== 'start';
+    document.body.classList.toggle('wide', view.kind === 'editor' || view.kind === 'batch');
   });
 
   let problem = $state('');
@@ -80,31 +102,19 @@
   }
 </script>
 
-<main class:wide={view.kind === 'editor' || view.kind === 'batch'}>
-  <header>
-    <h1>{t('app.name')}</h1>
-    <p class="tagline">{t('app.tagline')}</p>
-  </header>
-
-  {#if view.kind === 'start'}
-    <Dropzone onfiles={choose} />
-    {#if problem}<p class="failure" role="alert">{problem}</p>{/if}
-  {:else if view.kind === 'editor'}
-    {#key view.file}
-      <Editor file={view.file} onback={back} />
-    {/key}
-  {:else if view.kind === 'batch'}
-    {#key view.items}
-      <Editor file={view.file} batch={{ items: view.items, archive: view.archive, notes: view.notes }} onback={back} />
-    {/key}
-  {:else}
-    {#key view.file}
-      <IconFile file={view.file} onback={back} />
-    {/key}
-  {/if}
-
-  <footer>
-    <p>{t('app.privacy')}</p>
-    {#if version}<p class="engine">{t('footer.engine', { version })}</p>{/if}
-  </footer>
-</main>
+{#if view.kind === 'start'}
+  <Dropzone onfiles={choose} />
+  {#if problem}<p class="failure" role="alert">{problem}</p>{/if}
+{:else if view.kind === 'editor'}
+  {#key view.file}
+    <Editor file={view.file} onback={back} />
+  {/key}
+{:else if view.kind === 'batch'}
+  {#key view.items}
+    <Editor file={view.file} batch={{ items: view.items, archive: view.archive, notes: view.notes }} onback={back} />
+  {/key}
+{:else}
+  {#key view.file}
+    <IconFile file={view.file} onback={back} />
+  {/key}
+{/if}

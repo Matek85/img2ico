@@ -48,6 +48,19 @@ The heavy work is in WebAssembly; the page itself is mostly state: many controls
 
 **Ideas outside the list:** a favicon package as one ZIP (`favicon.ico`, PNGs, Apple touch icon, web manifest), and a background tile or shape behind the artwork.
 
+## Search engines (SEO)
+
+Being found counts as part of the page, so it is built in from the start and checked with every change to the page:
+
+- **Text before any script runs.** The heading, the explanation (what it does, how it works, questions and answers) and the footer are plain HTML in `web/index.html`, filled from the message catalogue at build time by `web/seo.ts`. A crawler without JavaScript reads the same text as a visitor; the app fills only the converter. The explanation shows on the start page and hides once a picture is open.
+- **Head tags:** a title and description with the words people search for, canonical link, Open Graph and Twitter tags, a theme color for both color schemes, and schema.org `WebApplication` data (free, runs in the browser).
+- **robots.txt** always; **sitemap.xml, canonical link and the link-preview picture only when the address is known**, because they need absolute URLs and the page must stay movable: `SITE_URL=https://example.org/img2ico/ npm run build`. The deployment step sets it.
+- **Speed:** the engine starts when the browser is idle, not before the page is shown.
+- **Structure:** one `h1`, headings in order, landmarks (header, main, footer), `lang` follows the language in use.
+- **Check:** `npx lighthouse <address> --only-categories=seo,accessibility,best-practices,performance` should give 100 for the first three. `web/seo.test.ts` tests the generated tags and text.
+- **When languages are added:** one page per language (`/de/`) with `hreflang` links, not one page that switches by script; crawlers index what the address returns.
+- **When the design is done:** the link-preview picture `web/public/og-image.png` is a plain placeholder and is redone then.
+
 ## Checks
 
 Pull requests that only change `web/`, `docs/` or Markdown files skip the Rust checks (they still report as passed, which the protected `main` branch needs). Pull requests that touch Rust code, the workspace or the workflows run everything, and the web checks run too whenever the core or the bindings change. See `.github/workflows/ci.yml` and `web.yml`.

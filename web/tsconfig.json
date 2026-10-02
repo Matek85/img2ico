@@ -8,5 +8,5 @@
     "checkJs": false,
     "noEmit": true
   },
-  "include": ["src/**/*.ts", "src/**/*.svelte", "vite.config.ts"]
+  "include": ["src/**/*.ts", "src/**/*.svelte", "vite.config.ts", "seo.ts", "seo.test.ts"]
 }

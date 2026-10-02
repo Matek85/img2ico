@@ -7,6 +7,46 @@ export const en = {
   'app.tagline': 'Turn any picture into an icon, right in your browser.',
   'app.privacy': 'Your files never leave your browser. Nothing is uploaded.',
 
+  // What search engines and link previews show.
+  'seo.title': 'img2ico – Convert PNG, JPG and SVG to ICO and ICNS online',
+  'seo.description':
+    'Free icon converter: turn PNG, JPG, SVG or GIF into .ico and .icns files, or a complete favicon package. It runs in your browser, nothing is uploaded.',
+  'seo.noscript': 'img2ico needs JavaScript and WebAssembly to convert pictures in your browser. Please turn JavaScript on.',
+
+  // The text under the converter. It is also what a search engine reads, so it
+  // says what the page does, in the words people search with.
+  'about.title': 'Make Windows, macOS and website icons from any picture',
+  'about.intro':
+    'img2ico turns a PNG, JPG, GIF, WebP, BMP, TIFF or SVG picture into an .ico file for Windows, an .icns file for macOS, or a package of favicon files for a website. Everything happens in your browser: your pictures are not uploaded anywhere, and there is nothing to install.',
+  'about.how_title': 'How it works',
+  'about.how_1': 'Drop a picture on the page, choose one, or paste a screenshot.',
+  'about.how_2': 'Pick what the icon is for and see every size at once, on light, dark and grey backgrounds.',
+  'about.how_3': 'Download the .ico, the .icns, or the website package.',
+  'about.can_title': 'What it can do',
+  'about.can_1': 'Several sizes in one file, from 16 to 256 pixels, with a warning when the picture is too small.',
+  'about.can_2': 'Crop, margin, rounded or round corners, black and white, and removing a plain background.',
+  'about.can_3': 'A website package in one ZIP: favicon.ico, PNG icons, an Apple touch icon, a web manifest and the lines for your page.',
+  'about.can_4': 'Open an existing .ico to check it, take images out, keep some of them or combine several files.',
+  'about.can_5': 'Many pictures, or a ZIP full of them, are turned into icons at once.',
+  'about.faq_title': 'Questions',
+  'about.q_free': 'Is it free?',
+  'about.a_free': 'Yes. There are no ads, no account and no limits on how often you use it.',
+  'about.q_private': 'Are my pictures uploaded?',
+  'about.a_private':
+    'No. The conversion runs on your own computer, inside the page. The page sends your pictures nowhere, and it has no server that could receive them.',
+  'about.q_sizes': 'Which sizes does a Windows icon need?',
+  'about.a_sizes':
+    'A good icon file holds several sizes, from 16 up to 256 pixels, so Windows has a fitting image for the taskbar, the title bar, lists and large previews and never has to stretch one. The "Windows app" preset sets the ten sizes Microsoft recommends.',
+  'about.q_favicon': 'What is a favicon package?',
+  'about.a_favicon':
+    'The small icon in a browser tab needs more than one file today: favicon.ico, PNG icons, an Apple touch icon and a web manifest. The website package makes all of them and the lines to paste into your page.',
+  'about.q_formats': 'Which pictures can I convert?',
+  'about.a_formats':
+    'PNG, JPG, GIF (any frame), WebP, BMP, TIFF and SVG. A square picture with a transparent background works best. The icons can be saved as .ico, or as .icns for macOS.',
+  'about.q_cli': 'Is there a command-line version?',
+  'about.a_cli': 'Yes. This page and the img2ico command-line tool share the same engine, so both make the same files.',
+  'about.source': 'Source code and command-line tool on GitHub',
+
   'drop.prompt': 'Drop a picture here',
   'drop.or': 'or',
   'drop.choose': 'Choose a file',

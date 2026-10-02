@@ -38,6 +38,8 @@ npm test                          # the page's tests
 npm run build                     # the finished static page in web/dist
 ```
 
+`SITE_URL=https://example.org/img2ico/ npm run build` also writes the canonical link, the link-preview address and `sitemap.xml` (without it they are left out, so the build works from any address). See the search engine section of `docs/web-plan.md`.
+
 `npm run build:wasm` rebuilds only the engine (`crates/wasm`) into `web/src/wasm/pkg/`, which is generated and not committed. The `web/dist` folder works from any address, so it can be copied to any web space.
 
 ## Where things are

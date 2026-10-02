@@ -40,10 +40,46 @@ body {
   font: 16px/1.5 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 
-main {
+/* The page is four parts under one another (heading, app, text, footer), all
+   as wide as the content; the editor makes the whole page wider. */
+.part {
   max-width: 40rem;
   margin: 0 auto;
-  padding: 2rem 1rem 3rem;
+  padding: 0 1rem;
+}
+
+header.part {
+  padding-top: 2rem;
+}
+
+body.wide .part {
+  max-width: 64rem;
+}
+
+.about {
+  margin-top: 2rem;
+}
+
+.about a {
+  color: var(--accent);
+}
+
+.about h2 {
+  margin-top: 1.5rem;
+}
+
+.about ul,
+.about ol {
+  margin: 0.25rem 0;
+  padding-left: 1.5rem;
+}
+
+.about p {
+  margin: 0.25rem 0;
+}
+
+main.part {
+  min-height: 12rem;
 }
 
 h1 {
@@ -157,6 +193,7 @@ button:hover {
 
 footer {
   margin-top: 2rem;
+  padding-bottom: 3rem;
   font-size: 0.875rem;
   text-align: center;
 }
@@ -172,10 +209,6 @@ footer p {
 }
 
 /* --- the editor ------------------------------------------------------- */
-
-main.wide {
-  max-width: 64rem;
-}
 
 .bar {
   display: flex;
