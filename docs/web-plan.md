@@ -10,7 +10,9 @@ img2ico also gets a version that runs in the browser. This file records what it 
 - **Features that make no sense in a browser are left out** (for example `--delete-source`).
 - **Hosted on github.io first**, with the option to move to another web space later. For that the page uses only relative paths and no server-side routing; moving it means copying one folder.
 - **Multilingual.** The page is multilingual and the languages are fixed: English, German, Spanish, Brazilian Portuguese and French. English comes first; every text goes through a message catalogue from the start, so a language is a new catalogue and not a change to the code. The language is detected from the browser and can be changed by the visitor. The translations themselves come after the first big pull request.
-- **Help in every language.** A help menu next to "Download CLI" in the top bar offers guidance (how to use the page, what the settings do, the file types). It exists in all languages, so its texts are catalogue entries and its pages are part of the static build.
+- **Language switcher:** top right in the top bar, next to "Download CLI", showing the flags and names of the five languages.
+- **Help in every language.** A help menu next to "Download CLI" in the top bar offers guidance. Each topic is a page of its own, per language, built statically (so it can be found and indexed); its texts are catalogue entries. Topics: getting started, the settings explained, file types, privacy, keyboard shortcuts (a feature still to design), and what the page cannot do and what the command line is for instead.
+- **Light and dark mode:** a switch for the theme comes after the first big pull request (the colours are already tokens, so the switch sets a theme on the root element and remembers the choice).
 - **Documentation stays English:** the README, the docs and the repository are for GitHub, the contributors and the maintainer, and are written in English only.
 - **WYSIWYG**: what the preview shows is what the downloaded file contains.
 
