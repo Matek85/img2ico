@@ -34,7 +34,7 @@ The heavy work is in WebAssembly; the page itself is mostly state: many controls
 
 ## What carries over from the command line, and what does not
 
-**Carries over:** conversion to `.ico` and `.icns`, size selection, padding, fit, crop, trim, corner radius, grayscale, background removal (chroma key, seed, find), SVG and GIF-frame sources, inspect, validate, extract, merge, select.
+**Carries over:** conversion to `.ico` and `.icns`, size selection, padding, fit, crop, trim, corner radius, grayscale, background removal (chroma key, seed, find), SVG and GIF-frame sources, inspect, validate, extract, select.
 
 **Left out:** folders and `--recursive`, include/exclude filters, `--delete-source`, settings files and `--config`, `--jobs`, atomic writing, exit codes, `--json`, the batch report. `--max-pixels` stays as a fixed safety limit with a clear message. A later iteration replaces folder conversion with a ZIP upload and a ZIP download.
 
@@ -71,7 +71,7 @@ Pull requests that only change `web/`, `docs/` or Markdown files skip the Rust c
 2. The page's foundation: build setup, worker, message catalogue, a first working screen. (Done: open an `.ico`, validate it.)
 3. The conversion pipeline in the core, byte-identical to the command line. (Done: the command line itself runs on it, so there is one implementation. Errors are still English sentences; codes for translation come when the first translation does.)
 4. Convert: drop or paste a picture, live preview of every size on four backgrounds, settings (sizes, margin, rounded corners, fit, black and white, trim, background removal), download as `.ico` or `.icns`. (Done in its first form.)
-5. Features, until every one of them works and has been checked. (Done: crop frame, before/after, pixel inspector, presets and remembered settings, inspect/extract/select/merge of `.ico` files, several pictures or a ZIP at once, PNG ZIPs, the website icon package.)
+5. Features, until every one of them works and has been checked. (Done: crop frame, before/after, pixel inspector, presets and remembered settings, inspect/extract/select of `.ico` files, several pictures or a ZIP at once, PNG ZIPs, the website icon package.)
 6. Design: only once all features work. The page is looked at and reworked until it looks the way its owner wants.
 7. Deployment to github.io, offline use: only once the design is approved. Until then the page is developed and tried locally (`npm run dev`) and nothing is published.
 

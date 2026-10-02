@@ -43,6 +43,7 @@
     packMeta,
     toEngineOptions,
   } from '../lib/settings';
+  import { explain, friendly } from '../lib/messages';
 
   let {
     file,
@@ -169,7 +170,7 @@
       frame = startCrop ? { ...startCrop } : fullRect(opened);
       cropOn = startCrop !== null;
     } catch (error) {
-      openFailure = error instanceof Error ? error.message : String(error);
+      openFailure = explain(error);
     }
   });
 
@@ -228,7 +229,7 @@
         convertFailure = '';
       } catch (error) {
         if (mine !== latest) return;
-        convertFailure = error instanceof Error ? error.message : String(error);
+        convertFailure = explain(error);
       } finally {
         if (mine === latest) working = false;
       }
@@ -474,7 +475,7 @@
         snippet = pack.snippet;
         saveBytes(pack.zip, downloadName(file.name, 'favicon'), ZIP_TYPE);
       } catch (error) {
-        convertFailure = error instanceof Error ? error.message : String(error);
+        convertFailure = explain(error);
       } finally {
         packing = false;
       }
@@ -742,7 +743,7 @@
         <h3>{t('editor.warnings')}</h3>
         <ul class="findings warn">
           {#each converted.warnings as warning}
-            <li>{warning.replace(/^Warning:\s*/, '')}</li>
+            <li>{friendly(warning)}</li>
           {/each}
         </ul>
       {/if}

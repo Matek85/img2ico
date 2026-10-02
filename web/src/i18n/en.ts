@@ -85,6 +85,22 @@ export const en = {
   'editor.view_pixels': 'Pixels',
   'editor.working': 'Updating …',
   'editor.no_sizes': 'Choose at least one size to see the icon.',
+  // The engine's own sentences (made for the command line) as they read on this page.
+  'msg.bg_nothing': 'Nothing was removed: no pixel along the border is close to {color}. Check the background color and the tolerance, or let the page detect the color from the border.',
+  'msg.bg_little': 'Only {percent}% of the picture matched the background color {color}, so almost nothing was removed. Check the color and the tolerance.',
+  'msg.bg_much': '{percent}% of the picture matched the background color {color}, so almost everything was removed. The color may be too close to the colors of the picture itself, or the tolerance too high.',
+  'msg.bg_detect': 'The background color could not be detected: the most common color along the border, {color}, covers only {percent}% of it (with a tolerance of {tolerance}%). The background may be a gradient or a photo. Pick the color yourself, or raise the tolerance.',
+  'msg.trim_none': 'Nothing was cut away: the picture has content up to its edges. For a solid-color background, use "Remove the background" first.',
+  'msg.trim_empty': 'Nothing was kept: the picture is completely transparent.',
+  'msg.sliver': 'At these sizes only a thin sliver of the picture will be visible: {sizes}. This can come from a very elongated picture, a large margin, or both. Try a less elongated picture or a smaller margin.',
+  'msg.seed': 'The chosen point ({x}, {y}) is outside the picture ({width} × {height} pixels) and is ignored.',
+  'msg.too_big': 'The picture is {width} × {height} pixels ({megapixels} megapixels), more than the limit of {limit} megapixels.',
+  'msg.option_tolerance': 'the tolerance',
+  'msg.option_background': 'the background removal',
+  'msg.option_trim': 'cutting away the margin',
+  'msg.option_padding': 'the margin',
+  'msg.option_crop': 'the crop frame',
+  'msg.option_point': 'the chosen point',
   'editor.warnings': 'Notes',
   'editor.convert_failed': 'The icon could not be made: {reason}',
 
@@ -302,13 +318,6 @@ export const en = {
   'iconfile.select_none': 'Choose none',
   'iconfile.missing': 'Sizes Windows would like but this file lacks (it will scale a nearby one): {sizes}.',
 
-  'merge.title': 'Combine with other icon files',
-  'merge.hint': 'Adds the images of other .ico files to this one. If two files have the same size, the first one wins.',
-  'merge.this': 'this file',
-  'merge.add': 'Add .ico files',
-  'merge.remove': 'Remove',
-  'merge.combine': 'Combine and download',
-  'merge.done': 'Combined: {count} images ({sizes}).',
 
   'footer.engine': 'Engine {version}',
 } as const;

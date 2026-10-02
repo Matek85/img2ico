@@ -39,7 +39,6 @@ type Call =
   | { op: 'describe'; bytes: Uint8Array }
   | { op: 'extract'; bytes: Uint8Array; index: number }
   | { op: 'select'; bytes: Uint8Array; indices: number[] }
-  | { op: 'merge'; files: { name: string; bytes: Uint8Array }[] }
   | { op: 'faviconPack'; options: EngineOptions; meta: { name: string; themeColor: string; appleBackground: string } }
   | { op: 'faviconSnippet'; hasSvg: boolean; themeColor: string }
   | { op: 'zipOpen'; bytes: Uint8Array }
@@ -117,11 +116,6 @@ export async function extractPng(bytes: Uint8Array, index: number): Promise<Uint
 /** A new .ico file with only the images at `indices`. */
 export async function selectImages(bytes: Uint8Array, indices: number[]): Promise<Uint8Array> {
   return field(await call({ op: 'select', bytes, indices }), 'data');
-}
-
-/** Merges two or more .ico files into one; images whose size was already there come back as warnings. */
-export async function mergeIcons(files: { name: string; bytes: Uint8Array }[]): Promise<Converted> {
-  return field(await call({ op: 'merge', files }), 'converted');
 }
 
 /** The website icon package (a ZIP) for the open picture, with the lines for the page's head. */

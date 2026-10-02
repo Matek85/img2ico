@@ -13,6 +13,7 @@
     opacityPercent,
     pixelAt,
   } from '../lib/pixels';
+  import { explain } from '../lib/messages';
 
   let {
     bytes,
@@ -62,7 +63,7 @@
         if (pinned && (pinned.x >= result.width || pinned.y >= result.height)) pinned = null;
       },
       (error) => {
-        if (current) failure = error instanceof Error ? error.message : String(error);
+        if (current) failure = explain(error);
       },
     );
     return () => {

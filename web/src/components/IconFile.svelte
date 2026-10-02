@@ -4,7 +4,6 @@
     type IconDescription,
     describeIcon,
     extractPng,
-    mergeIcons,
     pngZip,
     selectImages,
     validateIco,
@@ -14,6 +13,7 @@
   import Icon from './Icon.svelte';
   import { baseName, stemOf } from '../lib/batch';
   import { ICO_TYPE, PNG_TYPE, ZIP_TYPE, saveBytes } from '../lib/download';
+  import { explain } from '../lib/messages';
   import { queue } from '../lib/queue.svelte';
   import type { ValidationReport } from '../lib/report';
 
@@ -38,20 +38,13 @@
   let working = $state(false);
   let actionFailure = $state('');
 
-  // Other icon files to combine this one with.
-  // (Not a deep $state: the engine worker cannot be sent proxies.)
-  let others = $state.raw<{ name: string; bytes: Uint8Array }[]>([]);
-  let mergeNotes = $state<string[]>([]);
-  let mergedSummary = $state('');
-  let input = $state<HTMLInputElement>();
-
   onMount(async () => {
     try {
       bytes = new Uint8Array(await file.arrayBuffer());
       // validateIco hands its bytes over to the engine, so it gets a copy.
       report = await validateIco(bytes.slice());
     } catch (error) {
-      failure = messageOf(error);
+      failure = explain(error);
       return;
     }
     // A file too damaged to describe still has its validation report.
@@ -75,17 +68,13 @@
     for (const url of Object.values(thumbnails)) URL.revokeObjectURL(url);
   });
 
-  function messageOf(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
-  }
-
   async function run(action: () => Promise<void>) {
     working = true;
     actionFailure = '';
     try {
       await action();
     } catch (error) {
-      actionFailure = messageOf(error);
+      actionFailure = explain(error);
     } finally {
       working = false;
     }
@@ -139,23 +128,6 @@
       );
     });
 
-  async function addOthers() {
-    const files = Array.from(input?.files ?? []);
-    if (input) input.value = '';
-    for (const added of files) {
-      others = [...others, { name: added.name, bytes: new Uint8Array(await added.arrayBuffer()) }];
-    }
-    mergedSummary = '';
-    mergeNotes = [];
-  }
-
-  const combine = () =>
-    run(async () => {
-      const result = await mergeIcons([{ name: file.name, bytes }, ...others]);
-      mergeNotes = result.warnings;
-      mergedSummary = t('merge.done', { count: result.sizes.length, sizes: result.sizes.join(', ') });
-      saveBytes(result.bytes, `${stemOf(file.name)}_merged.ico`, ICO_TYPE);
-    });
 </script>
 
 {#if failure}
@@ -259,33 +231,6 @@
       </div>
     </section>
   {/if}
-
-  <section class="merge-panel" aria-labelledby="merge-title">
-    <h2 id="merge-title">{t('merge.title')}</h2>
-    <p class="hint">{t('merge.hint')}</p>
-    <ul class="others">
-      <li>{file.name} <span class="hint">({t('merge.this')})</span></li>
-      {#each others as other, i (i)}
-        <li>
-          {other.name}
-          <button type="button" class="quiet" onclick={() => (others = others.filter((_, at) => at !== i))}><Icon name="close" />{t('merge.remove')}</button>
-        </li>
-      {/each}
-    </ul>
-    <div class="actions">
-      <button type="button" onclick={() => input?.click()}><Icon name="plus" /> {t('merge.add')}</button>
-      <input bind:this={input} type="file" accept=".ico" multiple hidden onchange={addOthers} />
-      <button type="button" class="primary" disabled={working || others.length === 0} onclick={combine}>
-        <Icon name="download" /> {t('merge.combine')}
-      </button>
-    </div>
-    {#if mergedSummary}<p class="ok" role="status">{mergedSummary}</p>{/if}
-    {#if mergeNotes.length > 0}
-      <ul class="findings warn">
-        {#each mergeNotes as note}<li>{note}</li>{/each}
-      </ul>
-    {/if}
-  </section>
 
   {#if actionFailure}<p class="failure" role="alert">{actionFailure}</p>{/if}
 {/if}

@@ -8,6 +8,7 @@
   import { stemOf } from '../lib/batch';
   import Compare from './Compare.svelte';
   import Icon from './Icon.svelte';
+  import { explain } from '../lib/messages';
 
   let {
     activeId,
@@ -187,7 +188,7 @@
       await queue.flush();
       await job();
     } catch (error) {
-      failure = error instanceof Error ? error.message : String(error);
+      failure = explain(error);
     } finally {
       working = false;
     }

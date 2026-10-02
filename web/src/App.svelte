@@ -19,6 +19,7 @@
   } from './engine/client';
   import { t } from './i18n';
   import { type BatchItem, MAX_BATCH, baseName, isIconName, isPictureName, isZipName } from './lib/batch';
+  import { explain } from './lib/messages';
 
   type View =
     | { kind: 'start' }
@@ -77,7 +78,7 @@
         await queueFiles(files);
       }
     } catch (error) {
-      problem = t('state.failed', { reason: error instanceof Error ? error.message : String(error) });
+      problem = t('state.failed', { reason: explain(error) });
     }
   }
 
@@ -109,7 +110,7 @@
         await queueFiles(files);
       }
     } catch (error) {
-      problem = t('state.failed', { reason: error instanceof Error ? error.message : String(error) });
+      problem = t('state.failed', { reason: explain(error) });
     }
   }
 
@@ -179,7 +180,7 @@
           });
           first ??= added;
         } catch (error) {
-          problems.push(`${item.name}: ${error instanceof Error ? error.message : String(error)}`);
+          problems.push(`${item.name}: ${explain(error)}`);
         }
       }
     } finally {
