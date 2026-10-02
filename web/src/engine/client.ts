@@ -1,6 +1,6 @@
 import { parseReport, type ValidationReport } from '../lib/report';
 import type { EngineOptions } from '../lib/settings';
-import type { Converted, Opened, Request, Response } from './protocol';
+import type { Converted, Opened, Pixels, Request, Response } from './protocol';
 
 type Pending = { resolve: (response: Response & { ok: true }) => void; reject: (error: Error) => void };
 
@@ -35,6 +35,7 @@ type Call =
   | { op: 'validate'; bytes: Uint8Array }
   | { op: 'open'; bytes: Uint8Array; name: string; gifFrame: number }
   | { op: 'convert'; options: EngineOptions }
+  | { op: 'pixels'; bytes: Uint8Array; index: number }
   | { op: 'close' };
 
 function call(request: Call, transfer: Transferable[] = []): Promise<Response & { ok: true }> {
@@ -45,7 +46,7 @@ function call(request: Call, transfer: Transferable[] = []): Promise<Response & 
   });
 }
 
-function field<K extends 'value' | 'opened' | 'converted'>(
+function field<K extends 'value' | 'opened' | 'converted' | 'pixels'>(
   response: Response & { ok: true },
   key: K,
 ): NonNullable<Extract<Response, Record<K, unknown>>[K]> {
@@ -70,6 +71,12 @@ export async function openPicture(bytes: Uint8Array, name: string, gifFrame = 1)
 /** Makes the icon file the options ask for from the open picture. */
 export async function convert(options: EngineOptions): Promise<Converted> {
   return field(await call({ op: 'convert', options }), 'converted');
+}
+
+/** The exact pixels of image number `index` (from 0) of an .ico file. */
+export async function iconPixels(bytes: Uint8Array, index: number): Promise<Pixels> {
+  // The engine takes its own copy: the page keeps the file for the download.
+  return field(await call({ op: 'pixels', bytes, index }), 'pixels');
 }
 
 /** Lets the engine forget the open picture. */

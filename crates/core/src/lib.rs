@@ -11,6 +11,7 @@ pub mod chroma_key;
 pub mod convert;
 pub mod diag;
 pub mod icns;
+pub mod icon;
 pub mod layout;
 pub mod par;
 pub mod resize;

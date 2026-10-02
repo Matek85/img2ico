@@ -9,6 +9,7 @@ use img2ico_core::convert::{
     convert_raster, convert_vector,
 };
 use img2ico_core::diag;
+use img2ico_core::icon::read_entry;
 use img2ico_core::layout::{CropRect, FitMode, Layout, MAX_CORNER_RADIUS};
 use img2ico_core::source::{
     Artwork, decode_source_bytes, extract_gif_frame_from_bytes, is_gif_bytes,
@@ -66,6 +67,43 @@ pub fn validate_ico(bytes: &[u8]) -> String {
         "warnings": findings(Severity::Warning),
     })
     .to_string()
+}
+
+/// One image of an icon file, decoded to pixels.
+#[wasm_bindgen]
+pub struct IconPixels {
+    width: u32,
+    height: u32,
+    rgba: Vec<u8>,
+}
+
+#[wasm_bindgen]
+impl IconPixels {
+    pub fn width(&self) -> u32 {
+        self.width
+    }
+
+    pub fn height(&self) -> u32 {
+        self.height
+    }
+
+    /// Four bytes per pixel (red, green, blue, alpha - not premultiplied), row
+    /// by row from the top left.
+    pub fn rgba(&self) -> Vec<u8> {
+        self.rgba.clone()
+    }
+}
+
+/// Decodes image number `index` (from 0) of an .ico file to its exact pixels.
+#[wasm_bindgen]
+pub fn icon_pixels(bytes: &[u8], index: usize) -> Result<IconPixels, JsError> {
+    read_entry(bytes, index)
+        .map(|image| IconPixels {
+            width: image.width,
+            height: image.height,
+            rgba: image.rgba,
+        })
+        .map_err(|message| JsError::new(&message))
 }
 
 /// A picture that has been opened and can be converted again and again with
@@ -488,6 +526,17 @@ mod tests {
             .unwrap();
         let warnings: Vec<String> = serde_json::from_str(&output.warnings()).unwrap();
         assert!(!warnings.is_empty(), "{warnings:?}");
+    }
+
+    #[test]
+    fn the_pixels_of_an_icon_image_come_back_exactly() {
+        let output = source(&png(32, 32))
+            .convert_with(r#"{"sizes": [16, 32]}"#)
+            .unwrap();
+        let image = icon_pixels(&output.bytes, 0).ok().unwrap();
+        assert_eq!((image.width(), image.height()), (16, 16));
+        assert_eq!(image.rgba().len(), 16 * 16 * 4);
+        assert_eq!(icon_pixels(&output.bytes, 1).ok().unwrap().width(), 32);
     }
 
     #[test]
