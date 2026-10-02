@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { en } from './src/i18n/en';
 import {
+  HELP_TOPICS,
+  LANGUAGES,
   aboutHtml,
+  headTags as headTagsFor,
+  helpHtml,
+  helpPageInfo,
+  navHtml,
   escapeHtml,
   headTags,
   headerHtml,
@@ -73,5 +79,44 @@ describe('robots.txt and sitemap.xml', () => {
     expect(robotsTxt('')).toBe('User-agent: *\nAllow: /\n');
     expect(robotsTxt('https://example.org/')).toContain('Sitemap: https://example.org/sitemap.xml');
     expect(sitemapXml('https://example.org/')).toContain('<loc>https://example.org/</loc>');
+  });
+});
+
+describe('the help pages and the top bar menus', () => {
+  it('lists every help topic in the menu and on each page, with a working address from any depth', () => {
+    for (const prefix of ['./', '../../']) {
+      const nav = navHtml(en, prefix);
+      for (const topic of HELP_TOPICS) {
+        expect(nav).toContain(`href="${prefix}help/${topic.slug}/"`);
+        expect(nav).toContain(en[`help.${topic.key}.title`]);
+      }
+    }
+    const page = helpHtml(en, 'privacy', '../../');
+    for (const topic of HELP_TOPICS) expect(page).toContain(`href="../../help/${topic.slug}/"`);
+    expect(page).toContain('aria-current="page"');
+    expect(page).toContain(`<h1>${en['help.privacy.title']}</h1>`);
+  });
+
+  it('shows the five languages, with only English a link for now, and a switch for the theme that does nothing yet', () => {
+    const nav = navHtml(en);
+    expect(LANGUAGES.map((language) => language.code)).toEqual(['en', 'de', 'es', 'pt-br', 'fr']);
+    for (const language of LANGUAGES) expect(nav).toContain(language.name);
+    expect(nav.match(/aria-disabled="true"/g)).toHaveLength(4);
+    expect(nav).toContain('class="theme-switch" disabled');
+  });
+
+  it('gives each help page its own title, description and address', () => {
+    const info = helpPageInfo(en, 'file-types');
+    expect(info?.path).toBe('help/file-types/');
+    expect(info?.title).toContain(en['help.types.title']);
+    expect(helpPageInfo(en, 'nonsense')).toBeUndefined();
+    const tags = headTagsFor(en, 'https://example.org/img2ico/', info);
+    expect(tags).toContain('href="https://example.org/img2ico/help/file-types/"');
+    expect(tags).not.toContain('application/ld+json');
+  });
+
+  it('puts every help page in the sitemap', () => {
+    const map = sitemapXml('https://example.org/img2ico/');
+    for (const topic of HELP_TOPICS) expect(map).toContain(`https://example.org/img2ico/help/${topic.slug}/`);
   });
 });

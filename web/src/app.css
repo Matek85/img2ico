@@ -2963,3 +2963,132 @@ button.small {
   grid-column: 1 / -1;
   margin: 0;
 }
+
+/* =========================================================================
+   The top bar's language menu and theme switch, and the help pages.
+   ========================================================================= */
+
+.flag {
+  flex: none;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(128, 128, 128, 0.4);
+  transform: none;
+}
+
+.menu-list .flag {
+  color: inherit;
+}
+
+.menu-list .soon {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0.75rem;
+  color: var(--muted);
+  white-space: nowrap;
+  cursor: default;
+}
+
+.menu-list .soon small {
+  margin-left: auto;
+  padding-left: 1rem;
+  font-size: 0.75rem;
+}
+
+.menu-list a[aria-current='true'] {
+  background: var(--tint);
+}
+
+.theme-switch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  min-height: 0;
+  padding: 0;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+}
+
+.theme-switch:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.topbar nav {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem 1.25rem;
+}
+
+.help-main {
+  padding-top: 2rem;
+  padding-bottom: 3rem;
+}
+
+.help {
+  display: grid;
+  grid-template-columns: 16rem minmax(0, 1fr);
+  gap: 2rem;
+  align-items: start;
+}
+
+.help-nav ul {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0.5rem;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+}
+
+.help-nav a {
+  display: block;
+  padding: 0.5rem 0.75rem;
+  color: var(--text);
+  border-radius: 0.5rem;
+  text-decoration: none;
+}
+
+.help-nav a:hover {
+  background: var(--tint);
+}
+
+.help-nav a[aria-current='page'] {
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+.help-page h1 {
+  margin: 0 0 0.5rem;
+  font-size: 2rem;
+}
+
+.help-page .lead {
+  margin: 0 0 1.5rem;
+  color: var(--muted);
+  font-size: 1.1rem;
+}
+
+.help-page .placeholder {
+  padding: 1rem 1.25rem;
+  color: var(--muted);
+  border: 1px dashed var(--border);
+  border-radius: 0.75rem;
+}
+
+@media (max-width: 52rem) {
+  .help {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.topbar .shell {
+  padding-block: 0.5rem;
+}
