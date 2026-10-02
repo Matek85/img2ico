@@ -59,8 +59,10 @@
     onopenitem?: (item: QueueItem) => void;
   } = $props();
 
-  type Backdrop = 'checker' | 'light' | 'dark' | 'gray' | 'custom';
-  const BACKDROPS: Backdrop[] = ['checker', 'light', 'dark', 'gray', 'custom'];
+  // A surface is one of the named ones, 'picker' (the color being picked) or a kept color like '#3b82f6'.
+  type Backdrop = string;
+  const NAMED: Backdrop[] = ['checker', 'light', 'dark', 'gray'];
+  const MAX_KEPT = 6;
   const VIEWS = [
     { id: 'icon', icon: 'view' },
     { id: 'compare', icon: 'compare' },
@@ -81,10 +83,23 @@
 
   let backdrop = $state<Backdrop>('checker');
   let customColor = $state('#3b82f6');
+  // Colors picked before stay as swatches of their own (up to MAX_KEPT).
+  let keptColors = $state<string[]>([]);
   // The surface under the mouse is shown at once; a click keeps it.
   let hovered = $state<Backdrop | null>(null);
   let shown = $derived(hovered ?? backdrop);
-  let surface = $derived(shown === 'custom' ? `background:${customColor}` : undefined);
+  let surface = $derived(
+    shown === 'picker' ? `background:${customColor}` : shown.startsWith('#') ? `background:${shown}` : undefined,
+  );
+  let surfaceClass = $derived(NAMED.includes(shown) ? shown : 'custom');
+
+  // The picker was closed with a color: it becomes a swatch, unless it is there already or the row is full.
+  function keepColor() {
+    const color = customColor.toLowerCase();
+    if (keptColors.includes(color) || keptColors.length >= MAX_KEPT) return;
+    keptColors = [...keptColors, color];
+    backdrop = color;
+  }
   let view = $state<'icon' | 'compare' | 'pixels'>('icon');
   let converted = $state<Converted>();
   let tiles = $state<{ size: number; url: string }[]>([]);
@@ -235,11 +250,25 @@
   }
 
   // Everything back to how the page starts, the crop frame included.
-  function resetSettings() {
-    settings = defaultSettings();
+  let confirmingReset = $state(false);
+  let keepResetButton = $state<HTMLButtonElement>();
+
+  function askReset() {
+    confirmingReset = true;
+    void tick().then(() => keepResetButton?.focus());
   }
 
-  let isDefault = $derived(JSON.stringify($state.snapshot(settings)) === JSON.stringify(defaultSettings()));
+  function resetSettings() {
+    settings = defaultSettings();
+    keptColors = [];
+    customColor = '#3b82f6';
+    backdrop = 'checker';
+    confirmingReset = false;
+  }
+
+  let isDefault = $derived(
+    keptColors.length === 0 && JSON.stringify($state.snapshot(settings)) === JSON.stringify(defaultSettings()),
+  );
 
   function startPicking() {
     picking = true;
@@ -427,11 +456,20 @@
   <div class="bar">
     <button type="button" class="quiet" onclick={leave}>← {t('state.back')}</button>
     <span class="file">{file.name}</span>
-    <button type="button" class="outline reset" onclick={resetSettings} disabled={isDefault} title={t('editor.reset_hint')}>
+    <button type="button" class="outline reset" onclick={askReset} disabled={isDefault} title={t('editor.reset_hint')}>
       <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
       {t('editor.reset')}
     </button>
   </div>
+
+  {#if confirmingReset}
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+    <div class="confirm" role="group" aria-label={t('editor.reset')} onkeydown={(e) => e.key === 'Escape' && (confirmingReset = false)}>
+      <p>{t('editor.reset_ask')}</p>
+      <button type="button" class="danger" onclick={resetSettings}>{t('editor.reset_yes')}</button>
+      <button type="button" class="outline" bind:this={keepResetButton} onclick={() => (confirmingReset = false)}>{t('editor.reset_no')}</button>
+    </div>
+  {/if}
 
   {#if editId !== undefined}
     <div class="editing-note" role="status">
@@ -463,8 +501,8 @@
 
       <div class="preview-body">
       <div class="swatches" role="group" aria-label={t('editor.background')} onpointerleave={() => (hovered = null)}>
-        {#each BACKDROPS as choice (choice)}
-          {@const name = t(`editor.bg_${choice}`)}
+        {#each [...NAMED, ...keptColors, 'picker'] as choice (choice)}
+          {@const name = choice === 'picker' ? t('editor.bg_custom') : choice.startsWith('#') ? choice : t(`editor.bg_${choice}`)}
           <label
             class:chosen={backdrop === choice}
             title={name}
@@ -473,14 +511,15 @@
             onfocusout={() => (hovered = null)}
           >
             <input type="radio" name="backdrop" value={choice} aria-label={name} bind:group={backdrop} />
-            <span class="sw {choice}" style={choice === 'custom' ? `background:${customColor}` : undefined}>
-              {#if choice === 'custom'}
+            <span class="sw {NAMED.includes(choice) ? choice : 'custom'}" style={choice === 'picker' ? `background:${customColor}` : choice.startsWith('#') ? `background:${choice}` : undefined}>
+              {#if choice === 'picker'}
                 <input
                   type="color"
                   class="sw-color"
                   aria-label={t('editor.bg_custom_pick')}
                   bind:value={customColor}
-                  oninput={() => (backdrop = 'custom')}
+                  oninput={() => (backdrop = 'picker')}
+                  onchange={keepColor}
                 />
               {/if}
             </span>
@@ -489,7 +528,7 @@
       </div>
 
       <div class="preview-main">
-      <div class="stage {shown}" style={surface} aria-live="polite">
+      <div class="stage {surfaceClass}" style={surface} aria-live="polite">
         {#if settings.sizes.length === 0}
           <p class="note">{t('editor.no_sizes')}</p>
         {:else if converted && tiles.length > 0 && view === 'pixels'}
@@ -511,7 +550,7 @@
       </div>
 
       {#if smaller.length > 0}
-        <ul class="tiles {shown}" style={surface}>
+        <ul class="tiles {surfaceClass}" style={surface}>
           {#each smaller as tile (tile.size)}
             <li>
               <img src={tile.url} alt="" width={tile.size} height={tile.size} />
