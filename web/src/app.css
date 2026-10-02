@@ -3051,5 +3051,9 @@ button.small {
 }
 
 .crop-viewport.zoomed {
-  max-height: min(34rem, 70vh);
+  cursor: grab;
+}
+
+.crop-viewport.zoomed .frame {
+  cursor: move;
 }

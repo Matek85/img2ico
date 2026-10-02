@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { t } from '../i18n';
   import Icon from './Icon.svelte';
-  import { HANDLES, type Handle, type Rect, type Size, clampRect, dragRect } from '../lib/crop';
+  import { HANDLES, type Handle, type Rect, type Size, clampRect, dragRect, isFull } from '../lib/crop';
 
   let {
     src,
@@ -16,13 +16,38 @@
 
   // The wheel zooms the picture, with the pointer anywhere on the preview box; the
   // point under the pointer stays where it is.
-  const MAX_ZOOM = 3;
+  const MAX_ZOOM = 4;
   let zoom = $state(1);
+  // The box keeps the height it had before the zoom: the picture grows inside it.
+  let lockedHeight = $state<number | null>(null);
+
+  // Moving the picture inside the box: drag it (outside the frame, with the middle
+  // button, or on a frame that is the whole picture) - or use the scroll bars.
+  let pan: { x: number; y: number; left: number; top: number } | undefined;
+
+  function panBegin(event: PointerEvent) {
+    if (!viewport || zoom <= 1) return;
+    event.preventDefault();
+    viewport.setPointerCapture(event.pointerId);
+    pan = { x: event.clientX, y: event.clientY, left: viewport.scrollLeft, top: viewport.scrollTop };
+  }
+
+  function panMove(event: PointerEvent) {
+    if (!pan || !viewport) return;
+    viewport.scrollLeft = pan.left - (event.clientX - pan.x);
+    viewport.scrollTop = pan.top - (event.clientY - pan.y);
+  }
+
+  function panEnd() {
+    pan = undefined;
+  }
 
   function zoomBy(factor: number, clientX: number, clientY: number) {
     if (!viewport) return;
     const next = Math.min(MAX_ZOOM, Math.max(1, zoom * factor));
     if (next === zoom) return;
+    if (zoom === 1) lockedHeight = viewport.clientHeight;
+    if (next === 1) lockedHeight = null;
     const box = viewport.getBoundingClientRect();
     const px = clientX - box.left;
     const py = clientY - box.top;
@@ -55,6 +80,8 @@
   }
 
   function begin(event: PointerEvent, handle: Handle) {
+    // A frame that is the whole picture cannot move: dragging it moves the picture instead.
+    if (event.button === 1 || (handle === 'move' && zoom > 1 && isFull(rect, size))) return panBegin(event);
     event.preventDefault();
     event.stopPropagation();
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
@@ -100,7 +127,17 @@
   );
 </script>
 
-<div class="crop-viewport" class:zoomed={zoom > 1} bind:this={viewport}>
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div
+  class="crop-viewport"
+  class:zoomed={zoom > 1}
+  style:height={zoom > 1 && lockedHeight ? `${lockedHeight}px` : undefined}
+  bind:this={viewport}
+  onpointerdown={panBegin}
+  onpointermove={panMove}
+  onpointerup={panEnd}
+  onpointercancel={panEnd}
+>
 <div class="crop-stage" style:width="{zoom * 100}%" bind:this={stage}>
   <img {src} alt="" draggable="false" />
   <!-- The frame is a small custom control: it takes the pointer and the arrow keys. -->
