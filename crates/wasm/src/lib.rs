@@ -10,6 +10,7 @@ use img2ico_core::convert::{
     convert_raster, convert_vector,
 };
 use img2ico_core::diag;
+use img2ico_core::favicon::{head_snippet, manifest};
 use img2ico_core::icon::{
     alpha_share, alpha_summary, entry_png, merge, missing_windows_sizes, read_dir, read_entry,
     select, unique_file_name, write_dir,
@@ -19,7 +20,7 @@ use img2ico_core::source::{
     Artwork, decode_source_bytes, extract_gif_frame_from_bytes, is_gif_bytes,
 };
 use img2ico_core::validate::{Severity, validate_bytes};
-use img2ico_core::vector::VectorImage;
+use img2ico_core::vector::{VectorImage, is_svg};
 use serde_json::{Map, Value};
 use wasm_bindgen::prelude::*;
 
@@ -71,6 +72,39 @@ pub fn validate_ico(bytes: &[u8]) -> String {
         "warnings": findings(Severity::Warning),
     })
     .to_string()
+}
+
+/// The website icon package: a ZIP of the files a site needs, and the lines
+/// for its `<head>`.
+#[wasm_bindgen]
+pub struct FaviconPack {
+    zip: Vec<u8>,
+    snippet: String,
+    warnings: Vec<String>,
+}
+
+#[wasm_bindgen]
+impl FaviconPack {
+    /// The ZIP.
+    pub fn zip(&self) -> Vec<u8> {
+        self.zip.clone()
+    }
+
+    /// The lines to paste into the page's `<head>`.
+    pub fn snippet(&self) -> String {
+        self.snippet.clone()
+    }
+
+    /// The warnings raised while making the pictures, as JSON text (a list of strings).
+    pub fn warnings(&self) -> String {
+        Value::from(self.warnings.clone()).to_string()
+    }
+}
+
+/// The lines for a page's `<head>` that go with the website icon package.
+#[wasm_bindgen]
+pub fn favicon_snippet(has_svg: bool, theme_color: &str) -> String {
+    head_snippet(has_svg, theme_color)
 }
 
 /// One image of an icon file, decoded to pixels.
@@ -332,6 +366,8 @@ pub fn select_images(bytes: &[u8], indices: &[u32]) -> Result<Vec<u8>, String> {
 #[wasm_bindgen]
 pub struct Source {
     picture: Picture,
+    /// The text of an SVG, kept for the website icon package.
+    svg: Option<Vec<u8>>,
 }
 
 pub enum Picture {
@@ -354,7 +390,13 @@ impl Source {
     /// `gif_frame` picks the frame (counted from 1).
     pub fn open(bytes: &[u8], name: &str, gif_frame: usize) -> Result<Source, JsError> {
         open_source(bytes, name, gif_frame)
-            .map(|picture| Source { picture })
+            .map(|picture| Source {
+                svg: (matches!(picture, Picture::Vector(_))
+                    && is_svg(bytes)
+                    && !bytes.starts_with(&[0x1f, 0x8b]))
+                .then(|| bytes.to_vec()),
+                picture,
+            })
             .map_err(|message| JsError::new(&message))
     }
 
@@ -371,6 +413,14 @@ impl Source {
     /// Whether this is a drawing (SVG), which is drawn anew at every size.
     pub fn is_vector(&self) -> bool {
         matches!(self.picture, Picture::Vector(_))
+    }
+
+    /// Makes the website icon package from the options (JSON text, see
+    /// `parse_options`; the sizes and the format are decided here) and
+    /// `meta`: `{ "name", "themeColor", "appleBackground" }`.
+    pub fn favicon_pack(&self, options: &str, meta: &str) -> Result<FaviconPack, JsError> {
+        self.pack_with(options, meta)
+            .map_err(|message| JsError::new(&message))
     }
 
     /// Makes the icon file the options (JSON text, see `parse_options`) ask for.
@@ -411,7 +461,77 @@ impl Source {
 
     /// `convert` without the JavaScript error type, so it can be tested.
     pub fn convert_with(&self, options_json: &str) -> Result<Output, String> {
-        let options = parse_options(options_json)?;
+        self.run(&parse_options(options_json)?)
+    }
+
+    /// `favicon_pack` without the JavaScript error type.
+    pub fn pack_with(&self, options_json: &str, meta_json: &str) -> Result<FaviconPack, String> {
+        let base = parse_options(options_json)?;
+        let meta: Value = serde_json::from_str(meta_json)
+            .map_err(|e| format!("The package settings are not valid JSON: {e}"))?;
+        let text = |key: &str, default: &str| -> String {
+            meta.get(key)
+                .and_then(Value::as_str)
+                .unwrap_or(default)
+                .to_string()
+        };
+        let name = text("name", "");
+        let theme = color_text(&text("themeColor", "#ffffff"))?;
+        let apple_input = text("appleBackground", "#ffffff");
+        let apple_color = img2ico_core::chroma_key::parse_hex_color(&apple_input)
+            .map_err(|e| format!("Invalid color for the Apple icon: {e}"))?;
+        let apple = color_text(&apple_input)?;
+
+        let variant = |format: Format, size: Vec<u32>, flatten: Option<[u8; 3]>| Options {
+            format,
+            sizes: Sizes::Fixed(size),
+            flatten,
+            ..base.clone()
+        };
+        let png = |size: u32, flatten: Option<[u8; 3]>| variant(Format::Png, vec![size], flatten);
+
+        let jobs: Vec<(&str, Options)> = vec![
+            ("favicon.ico", variant(Format::Ico, vec![16, 32, 48], None)),
+            ("favicon-16x16.png", png(16, None)),
+            ("favicon-32x32.png", png(32, None)),
+            ("apple-touch-icon.png", png(180, Some(apple_color))),
+            ("icon-192.png", png(192, None)),
+            ("icon-512.png", png(512, None)),
+        ];
+        let mut files: Vec<(String, Vec<u8>)> = Vec::new();
+        let mut warnings: Vec<String> = Vec::new();
+        for (file_name, options) in jobs {
+            let output = self.run(&options)?;
+            for warning in output.warnings {
+                if !warnings.contains(&warning) {
+                    warnings.push(warning);
+                }
+            }
+            files.push((file_name.to_string(), output.bytes));
+        }
+        files.push((
+            "site.webmanifest".to_string(),
+            manifest(&name, &theme, &apple).into_bytes(),
+        ));
+        if let Some(svg) = &self.svg {
+            files.push(("favicon.svg".to_string(), svg.clone()));
+        }
+        let snippet = head_snippet(self.svg.is_some(), &theme);
+        files.push((
+            "head-snippet.html".to_string(),
+            snippet.clone().into_bytes(),
+        ));
+
+        Ok(FaviconPack {
+            zip: write_zip(&files)?,
+            snippet,
+            warnings,
+        })
+    }
+
+    /// Converts with options that are already parsed.
+    pub fn run(&self, options: &Options) -> Result<Output, String> {
+        let options = options.clone();
         let (result, warnings) = diag::collect(|| match &self.picture {
             Picture::Raster(image) => {
                 let analysis = analyze_raster(image, &options, &NoNotes)?;
@@ -447,11 +567,12 @@ pub fn open_source(bytes: &[u8], name: &str, gif_frame: usize) -> Result<Picture
 ///
 /// ```text
 /// {
-///   "format": "ico" | "icns",                 default "ico"
+///   "format": "ico" | "icns" | "png",         default "ico"; a png has one size
 ///   "sizes": [16, 32, ...] | "auto",           default 16,32,48,64,128,256
 ///   "padding": 0-100, "cornerRadius": 0-50,    default 0
 ///   "fit": "contain" | "cover",                default "contain"
 ///   "grayscale": bool, "trim": bool,           default false
+///   "flatten": "#rrggbb",                     lay the icon on this color (no transparency)
 ///   "crop": { "x", "y", "width", "height" },   default none
 ///   "background": {                            default none
 ///     "spec": "auto" | "#rrggbb",
@@ -483,6 +604,7 @@ pub fn parse_options(json: &str) -> Result<Options, String> {
             "trim",
             "crop",
             "background",
+            "flatten",
         ],
         "option",
     )?;
@@ -490,9 +612,10 @@ pub fn parse_options(json: &str) -> Result<Options, String> {
     let format = match text(&map, "format")?.as_deref() {
         None | Some("ico") => Format::Ico,
         Some("icns") => Format::Icns,
+        Some("png") => Format::Png,
         Some(other) => {
             return Err(format!(
-                "Unknown format '{other}' (use \"ico\" or \"icns\")."
+                "Unknown format '{other}' (use \"ico\", \"icns\" or \"png\")."
             ));
         }
     };
@@ -554,6 +677,13 @@ pub fn parse_options(json: &str) -> Result<Options, String> {
         trim: flag(&map, "trim")?,
         // A browser page has no threads to hand out.
         threads: 1,
+        flatten: match text(&map, "flatten")? {
+            None => None,
+            Some(color) => Some(
+                img2ico_core::chroma_key::parse_hex_color(&color)
+                    .map_err(|e| format!("Invalid flatten color: {e}"))?,
+            ),
+        },
         // The warnings are collected and shown by the page, not printed.
         silent: false,
     })
@@ -609,6 +739,13 @@ fn parse_background(bg: &Map<String, Value>) -> Result<Background, String> {
         seeds,
         replacement,
     })
+}
+
+/// A color given as `#rrggbb` (or `rrggbb`), as `#rrggbb` text.
+fn color_text(text: &str) -> Result<String, String> {
+    let [r, g, b] = img2ico_core::chroma_key::parse_hex_color(text)
+        .map_err(|e| format!("Invalid color '{text}': {e}"))?;
+    Ok(format!("#{r:02x}{g:02x}{b:02x}"))
 }
 
 fn check_keys(map: &Map<String, Value>, known: &[&str], what: &str) -> Result<(), String> {
@@ -687,6 +824,7 @@ mod tests {
     fn source(bytes: &[u8]) -> Source {
         Source {
             picture: open_source(bytes, "test.png", 1).unwrap(),
+            svg: None,
         }
     }
 
@@ -851,10 +989,116 @@ mod tests {
     }
 
     #[test]
+    fn the_website_icon_package_has_the_files_a_site_needs() {
+        let source = source(&png(120, 80));
+        let meta = r##"{"name": "Demo", "themeColor": "#336699", "appleBackground": "#ffffff"}"##;
+        let pack = source.pack_with(r#"{"padding": 10}"#, meta).unwrap();
+        let zip = ZipArchive::open(pack.zip()).unwrap();
+        let names: Vec<String> = zip.files().into_iter().map(|f| f.name).collect();
+        assert_eq!(
+            names,
+            vec![
+                "favicon.ico",
+                "favicon-16x16.png",
+                "favicon-32x32.png",
+                "apple-touch-icon.png",
+                "icon-192.png",
+                "icon-512.png",
+                "site.webmanifest",
+                "head-snippet.html",
+            ]
+        );
+        let read = |name: &str| {
+            let file = zip.files().into_iter().find(|f| f.name == name).unwrap();
+            zip.read(file.index).unwrap()
+        };
+        assert_eq!(
+            read_dir(&read("favicon.ico"), "x").unwrap().entries().len(),
+            3
+        );
+        let apple = image::load_from_memory(&read("apple-touch-icon.png"))
+            .unwrap()
+            .to_rgba8();
+        assert_eq!((apple.width(), apple.height()), (180, 180));
+        assert!(
+            apple.pixels().all(|p| p[3] == 255),
+            "the Apple icon has no transparency"
+        );
+        let big = image::load_from_memory(&read("icon-512.png")).unwrap();
+        assert_eq!((big.width(), big.height()), (512, 512));
+        let manifest = String::from_utf8(read("site.webmanifest")).unwrap();
+        assert!(manifest.contains("\"name\": \"Demo\"") && manifest.contains("#336699"));
+        assert!(
+            pack.snippet().contains("apple-touch-icon.png")
+                && !pack.snippet().contains("favicon.svg")
+        );
+        assert!(!pack.warnings().is_empty() || pack.warnings() == "[]");
+    }
+
+    #[test]
+    fn an_svg_goes_into_the_package_as_it_is() {
+        let svg = br##"<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="40" height="40" fill="#336699"/></svg>"##;
+        let source = Source {
+            picture: open_source(svg, "a.svg", 1).unwrap(),
+            svg: Some(svg.to_vec()),
+        };
+        let pack = source.pack_with("{}", "{}").unwrap();
+        let zip = ZipArchive::open(pack.zip()).unwrap();
+        let file = zip
+            .files()
+            .into_iter()
+            .find(|f| f.name == "favicon.svg")
+            .unwrap();
+        assert_eq!(zip.read(file.index).unwrap(), svg);
+        assert!(pack.snippet().contains("favicon.svg"));
+    }
+
+    #[test]
+    fn the_package_settings_are_checked() {
+        let source = source(&png(32, 32));
+        assert!(
+            source
+                .pack_with("{}", r#"{"themeColor": "blue-ish"}"#)
+                .err()
+                .unwrap()
+                .contains("Invalid color")
+        );
+        assert!(
+            source
+                .pack_with("{}", r#"{"appleBackground": "nope"}"#)
+                .err()
+                .unwrap()
+                .contains("Apple icon")
+        );
+        assert!(source.pack_with("{}", "not json").is_err());
+    }
+
+    #[test]
+    fn a_png_and_a_flatten_color_can_be_asked_for_by_json() {
+        let source = source(&png(32, 32));
+        let output = source
+            .convert_with(
+                r##"{"format": "png", "sizes": [64], "flatten": "#ffcc00", "padding": 20}"##,
+            )
+            .unwrap();
+        let image = image::load_from_memory(&output.bytes).unwrap().to_rgba8();
+        assert_eq!((image.width(), image.height()), (64, 64));
+        assert_eq!(image.get_pixel(0, 0).0, [255, 204, 0, 255]);
+        assert!(
+            source
+                .convert_with(r#"{"flatten": "x"}"#)
+                .err()
+                .unwrap()
+                .contains("flatten")
+        );
+    }
+
+    #[test]
     fn an_svg_is_a_drawing() {
         let svg = br##"<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><rect width="40" height="20" fill="#336699"/></svg>"##;
         let source = Source {
             picture: open_source(svg, "a.svg", 1).unwrap(),
+            svg: Some(svg.to_vec()),
         };
         assert!(source.is_vector());
         assert_eq!((source.width(), source.height()), (40, 20));
@@ -882,7 +1126,7 @@ mod tests {
             (r#"{"padding": 101}"#, "from 0 to 100"),
             (r#"{"cornerRadius": 51}"#, "from 0 to 50"),
             (r#"{"fit": "stretch"}"#, "Unknown fit"),
-            (r#"{"format": "png"}"#, "Unknown format"),
+            (r#"{"format": "gif"}"#, "Unknown format"),
             (r#"{"grayscale": 1}"#, "true or false"),
             (r#"{"background": {}}"#, "needs a \"spec\""),
             (

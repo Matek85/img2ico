@@ -43,11 +43,16 @@ const PARALLEL_SIZES_MIN_PIXELS: u64 = 250_000;
 /// once for all sizes.
 const VECTOR_REFERENCE_SIZE: u32 = 256;
 
+/// The largest edge a PNG output may have.
+pub const MAX_PNG_SIZE: u32 = 1024;
+
 /// Which kind of icon file to make.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Format {
     Ico,
     Icns,
+    /// A single PNG file, at the first of the sizes.
+    Png,
 }
 
 /// Which sizes an .ico gets (an .icns has its own fixed set).
@@ -99,6 +104,10 @@ pub struct Options {
     /// How many threads the sizes may be made on. 1 does it in a plain loop
     /// (a browser page has no threads to give).
     pub threads: usize,
+    /// A color to lay the icon on, so that nothing is transparent: for the
+    /// icon of an iPhone's home screen, which would fill transparency with
+    /// black.
+    pub flatten: Option<[u8; 3]>,
     /// Hides the warnings that would be printed. They are counted, and
     /// collected by `diag::collect`, either way.
     pub silent: bool,
@@ -543,11 +552,39 @@ fn encode(
     threads: usize,
     notes: &dyn Notes,
 ) -> Result<Converted, String> {
+    // With a color to flatten onto, every image is laid on it first.
+    let flat = |size: u32| {
+        let mut image = render(size);
+        if let Some(color) = options.flatten {
+            flatten_onto(&mut image, color);
+        }
+        image
+    };
+    let render = &flat;
     match options.format {
         Format::Icns => Ok(Converted {
             bytes: encode_icns(render, threads)?,
             sizes: icns_sizes(),
         }),
+        Format::Png => {
+            let size = sizes
+                .first()
+                .copied()
+                .ok_or_else(|| "A PNG needs a size.".to_string())?;
+            if !(1..=MAX_PNG_SIZE).contains(&size) {
+                return Err(format!(
+                    "A PNG can be 1 to {MAX_PNG_SIZE} pixels wide; {size} is not."
+                ));
+            }
+            let mut png = std::io::Cursor::new(Vec::new());
+            render(size)
+                .write_to(&mut png, image::ImageFormat::Png)
+                .map_err(|e| format!("Could not encode the {size}x{size} PNG: {e}"))?;
+            Ok(Converted {
+                bytes: png.into_inner(),
+                sizes: vec![size],
+            })
+        }
         Format::Ico => {
             let (bytes, written) = encode_ico(render, sizes, options.silent, threads, notes)?;
             Ok(Converted {
@@ -555,6 +592,20 @@ fn encode(
                 sizes: written,
             })
         }
+    }
+}
+
+/// Lays the picture on a solid color: every pixel becomes opaque, with the
+/// picture's colors mixed with `color` in proportion to its transparency.
+pub fn flatten_onto(image: &mut RgbaImage, color: [u8; 3]) {
+    for pixel in image.pixels_mut() {
+        let alpha = u32::from(pixel[3]);
+        for channel in 0..3 {
+            let over =
+                u32::from(pixel[channel]) * alpha + u32::from(color[channel]) * (255 - alpha);
+            pixel[channel] = ((over + 127) / 255) as u8;
+        }
+        pixel[3] = 255;
     }
 }
 
@@ -661,6 +712,7 @@ mod tests {
             crop: None,
             trim: false,
             threads: 1,
+            flatten: None,
             silent: true,
         }
     }
@@ -765,6 +817,74 @@ mod tests {
             pixel(&result.bytes, 1, 0, 0)[3],
             255,
             "trimmed to the square"
+        );
+    }
+
+    #[test]
+    fn a_single_png_can_be_asked_for_at_any_size_up_to_the_limit() {
+        let mut options = options();
+        options.format = Format::Png;
+        options.sizes = Sizes::Fixed(vec![512]);
+        let result = convert(
+            Artwork::Raster(image::DynamicImage::ImageRgba8(picture())),
+            &options,
+            &NoNotes,
+        )
+        .unwrap();
+        assert_eq!(result.sizes, vec![512]);
+        let decoded = image::load_from_memory(&result.bytes).unwrap();
+        assert_eq!((decoded.width(), decoded.height()), (512, 512));
+
+        options.sizes = Sizes::Fixed(vec![MAX_PNG_SIZE + 1]);
+        let error = convert(
+            Artwork::Raster(image::DynamicImage::ImageRgba8(picture())),
+            &options,
+            &NoNotes,
+        )
+        .unwrap_err();
+        assert!(error.contains("1 to 1024"), "{error}");
+    }
+
+    #[test]
+    fn flattening_lays_the_icon_on_a_color() {
+        let mut image = RgbaImage::new(3, 1);
+        image.put_pixel(0, 0, Rgba([255, 0, 0, 255]));
+        image.put_pixel(1, 0, Rgba([255, 0, 0, 0]));
+        image.put_pixel(2, 0, Rgba([255, 0, 0, 128]));
+        flatten_onto(&mut image, [0, 0, 255]);
+        assert_eq!(image.get_pixel(0, 0).0, [255, 0, 0, 255], "opaque stays");
+        assert_eq!(
+            image.get_pixel(1, 0).0,
+            [0, 0, 255, 255],
+            "transparent becomes the color"
+        );
+        let mixed = image.get_pixel(2, 0).0;
+        assert_eq!(mixed[3], 255);
+        assert!(
+            (120..=135).contains(&mixed[0]) && (120..=135).contains(&mixed[2]),
+            "{mixed:?}"
+        );
+
+        let mut options = options();
+        options.format = Format::Png;
+        options.sizes = Sizes::Fixed(vec![16]);
+        options.flatten = Some([255, 255, 255]);
+        options.layout.padding = 40;
+        let result = convert(
+            Artwork::Raster(image::DynamicImage::ImageRgba8(picture())),
+            &options,
+            &NoNotes,
+        )
+        .unwrap();
+        let decoded = image::load_from_memory(&result.bytes).unwrap().to_rgba8();
+        assert!(
+            decoded.pixels().all(|p| p[3] == 255),
+            "nothing is transparent"
+        );
+        assert_eq!(
+            decoded.get_pixel(0, 0).0,
+            [255, 255, 255, 255],
+            "the margin is the color"
         );
     }
 

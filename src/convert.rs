@@ -796,6 +796,7 @@ fn options_of(
         crop: resolved.crop.map(parse_crop).transpose()?,
         trim: resolved.trim,
         threads,
+        flatten: None,
         silent: resolved.silent,
     })
 }
