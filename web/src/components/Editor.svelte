@@ -17,6 +17,8 @@
     isFull,
   } from '../lib/crop';
   import { type IconEntry, iconEntries } from '../lib/ico';
+  import { type Preset, STYLE_PRESETS, USE_PRESETS, isActive, withPreset } from '../lib/presets';
+  import { loadSettings, saveSettings } from '../lib/storage';
   import {
     DEFAULT_SIZES,
     SIZE_CHOICES,
@@ -31,7 +33,8 @@
   type Backdrop = 'checker' | 'light' | 'dark' | 'gray';
   const BACKDROPS: Backdrop[] = ['checker', 'light', 'dark', 'gray'];
 
-  let settings = $state<Settings>(defaultSettings());
+  // What was chosen last time is the starting point (see storage.ts).
+  let settings = $state<Settings>(loadSettings());
   let opened = $state<Opened>();
   let openFailure = $state('');
   let originalUrl = $state('');
@@ -115,6 +118,21 @@
     }, 120);
     return () => clearTimeout(timer);
   });
+
+  // Remember the settings for the next visit.
+  $effect(() => {
+    saveSettings($state.snapshot(settings));
+  });
+
+  function usePreset(preset: Preset) {
+    // Keep the crop frame: it belongs to this picture, not to a preset.
+    const crop = settings.crop;
+    settings = { ...withPreset($state.snapshot(settings), preset), crop };
+  }
+
+  function resetSettings() {
+    settings = { ...defaultSettings(), crop: settings.crop };
+  }
 
   function chooseAspect(choice: AspectChoice) {
     cropAspect = choice;
@@ -235,6 +253,31 @@
             : t('editor.source_size', { width: opened.width, height: opened.height })}
         </figcaption>
       </figure>
+
+      <fieldset class="presets">
+        <legend>{t('presets.title')}</legend>
+        {#each [{ label: 'presets.use', list: USE_PRESETS }, { label: 'presets.style', list: STYLE_PRESETS }] as group (group.label)}
+          <div class="preset-group">
+            <span class="group-label">{t(group.label)}</span>
+            <div class="chips" role="group" aria-label={t(group.label)}>
+              {#each group.list as preset (preset.id)}
+                <button
+                  type="button"
+                  class="chip"
+                  class:chosen={isActive(settings, preset)}
+                  aria-pressed={isActive(settings, preset)}
+                  title={t(`preset.${preset.id}_hint`)}
+                  onclick={() => usePreset(preset)}>{t(`preset.${preset.id}`)}</button
+                >
+              {/each}
+            </div>
+          </div>
+        {/each}
+        <div class="preset-foot">
+          <button type="button" class="quiet" onclick={resetSettings}>{t('presets.reset')}</button>
+          <span class="hint">{t('presets.remembered')}</span>
+        </div>
+      </fieldset>
 
       {#if !opened.vector && picture}
         <fieldset class:empty={!cropOn}>
