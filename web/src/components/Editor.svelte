@@ -322,23 +322,35 @@
     if (view !== 'pixels') picking = false;
   });
 
+  // The settings were folded away by starting the crop (and are opened again when it ends).
+  let foldedByCrop = false;
+
+  function endMask() {
+    masking = false;
+    if (foldedByCrop) setSide(true);
+    foldedByCrop = false;
+  }
+
   function toggleMask() {
-    masking = !masking;
-    if (masking) {
-      cropOn = true;
-      view = 'icon';
-      // The preview gets the room; the way back to the settings lights up once.
-      if (sideOpen) {
-        setSide(false);
-        flashExpand = true;
-        setTimeout(() => (flashExpand = false), 1800);
-      }
+    if (masking) return endMask();
+    masking = true;
+    cropOn = true;
+    view = 'icon';
+    // The preview gets the room; the way back to the settings lights up once.
+    foldedByCrop = sideOpen;
+    if (sideOpen) {
+      setSide(false);
+      flashExpand = true;
+      setTimeout(() => (flashExpand = false), 1800);
     }
   }
 
   // Another view ends the mask.
   $effect(() => {
-    if (view !== 'icon') masking = false;
+    if (view !== 'icon') {
+      masking = false;
+      foldedByCrop = false;
+    }
   });
 
   function chooseAspect(choice: AspectChoice) {
@@ -689,7 +701,7 @@
           </div>
           <p class="hint">{t('crop.hint')}</p>
           <div class="mask-actions">
-            <button type="button" class="primary small" onclick={() => (masking = false)}><Icon name="check" size={16} />{t('crop.done')}</button>
+            <button type="button" class="primary small" onclick={endMask}><Icon name="check" size={16} />{t('crop.done')}</button>
             <button type="button" class="quiet small" onclick={() => (frame = fullRect(picture))} disabled={isFull(frame, picture)}><Icon name="reset" size={16} />{t('crop.reset')}</button>
           </div>
         </div>
