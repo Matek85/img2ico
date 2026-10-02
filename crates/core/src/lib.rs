@@ -8,10 +8,12 @@
 //! access and operating-system threads.
 
 pub mod chroma_key;
+pub mod convert;
 pub mod diag;
 pub mod icns;
 pub mod layout;
 pub mod par;
 pub mod resize;
+pub mod source;
 pub mod validate;
 pub mod vector;

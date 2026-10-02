@@ -6,9 +6,12 @@
 // This module fills that one gap; everything else about a GIF (or any
 // other format) still goes through the normal image::open() path.
 
+// Detecting a GIF in memory and extracting a frame from bytes or any reader is
+// in the shared core; this file is the part that works on files.
 use image::AnimationDecoder;
 use image::codecs::gif::GifDecoder;
-use std::io::{BufRead, BufReader, Cursor, Seek};
+pub use img2ico_core::source::is_gif_bytes;
+use std::io::BufReader;
 use std::path::Path;
 
 /// Returns true if `path` is actually a GIF file, detected from its
@@ -23,12 +26,6 @@ pub fn is_gif(path: &Path) -> Result<bool, String> {
         .map_err(|e| format!("Could not read '{}': {e}", path.display()))?
         .format();
     Ok(format == Some(image::ImageFormat::Gif))
-}
-
-/// Whether `bytes` - an image already read into memory, for instance from
-/// standard input - start like a GIF. Like `is_gif`, this goes by the content.
-pub fn is_gif_bytes(bytes: &[u8]) -> bool {
-    image::guess_format(bytes).is_ok_and(|format| format == image::ImageFormat::Gif)
 }
 
 /// Decodes every frame of the GIF at `path` and returns the total count -
@@ -64,7 +61,7 @@ pub fn extract_gif_frame_limited(
 ) -> Result<image::RgbaImage, String> {
     let file = std::fs::File::open(path)
         .map_err(|e| format!("Could not read '{}': {e}", path.display()))?;
-    extract_gif_frame_from(
+    img2ico_core::source::extract_gif_frame_from(
         BufReader::new(file),
         &path.display().to_string(),
         frame_number,
@@ -76,61 +73,6 @@ pub fn extract_gif_frame_limited(
 #[cfg(test)]
 pub fn extract_gif_frame(path: &Path, frame_number: usize) -> Result<image::RgbaImage, String> {
     extract_gif_frame_limited(path, frame_number, crate::source::DEFAULT_MAX_PIXELS)
-}
-
-/// `extract_gif_frame` for a GIF that is already in memory (read from
-/// standard input, say).
-pub fn extract_gif_frame_from_bytes(
-    bytes: &[u8],
-    frame_number: usize,
-    max_pixels: u64,
-) -> Result<image::RgbaImage, String> {
-    extract_gif_frame_from(
-        Cursor::new(bytes),
-        "standard input",
-        frame_number,
-        max_pixels,
-    )
-}
-
-/// The shared work of both: `name` is how the GIF is called in messages.
-fn extract_gif_frame_from<R: BufRead + Seek>(
-    reader: R,
-    name: &str,
-    frame_number: usize,
-    max_pixels: u64,
-) -> Result<image::RgbaImage, String> {
-    if frame_number == 0 {
-        return Err(
-            "--gif-frame must be 1 or greater (frames are numbered starting at 1).".to_string(),
-        );
-    }
-
-    let decoder =
-        GifDecoder::new(reader).map_err(|e| format!("Could not read '{name}' as a GIF: {e}"))?;
-    let (width, height) = image::ImageDecoder::dimensions(&decoder);
-    crate::source::check_pixel_limit(width, height, max_pixels)
-        .map_err(|e| format!("Could not read '{name}': {e}"))?;
-
-    // A single pass over the frames: decoding happens once per frame
-    // regardless, so counting the total (for a helpful error message if
-    // frame_number is out of range) costs nothing extra on top of finding
-    // the requested one.
-    let mut selected: Option<image::RgbaImage> = None;
-    let mut total = 0usize;
-    for (index, frame) in decoder.into_frames().enumerate() {
-        let frame = frame.map_err(|e| format!("Could not decode a frame in '{name}': {e}"))?;
-        total += 1;
-        if index + 1 == frame_number {
-            selected = Some(frame.into_buffer());
-        }
-    }
-
-    selected.ok_or_else(|| {
-        format!(
-            "--gif-frame {frame_number} is out of range - '{name}' has {total} frame(s), so valid values are 1..{total}."
-        )
-    })
 }
 
 #[cfg(test)]

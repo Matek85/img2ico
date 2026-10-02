@@ -4,7 +4,6 @@
 // message about" context used while converting several files in a row.
 
 pub use img2ico_core::diag::{enter_file_context, file_prefix, warn, warnings_so_far};
-pub use img2ico_core::par::parallel_map;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -314,7 +313,7 @@ mod tests {
         let budget = super::Budget::new(100);
         let running = AtomicU64::new(0);
         let highest = AtomicU64::new(0);
-        super::parallel_map(&[40u64; 12], 8, |&amount| {
+        img2ico_core::par::parallel_map(&[40u64; 12], 8, |&amount| {
             let _share = budget.take(amount);
             let now = running.fetch_add(amount, Ordering::SeqCst) + amount;
             highest.fetch_max(now, Ordering::SeqCst);
@@ -328,7 +327,7 @@ mod tests {
     #[test]
     fn an_amount_beyond_the_budget_still_gets_its_turn_alone() {
         let budget = super::Budget::new(10);
-        let results = super::parallel_map(&[5u64, 500, 5, 500], 4, |&amount| {
+        let results = img2ico_core::par::parallel_map(&[5u64, 500, 5, 500], 4, |&amount| {
             let _share = budget.take(amount);
             amount
         });

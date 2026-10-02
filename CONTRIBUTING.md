@@ -46,12 +46,12 @@ npm run build                     # the finished static page in web/dist
 |---|---|
 | `main.rs`, `cli.rs` | The program entry, the mode dispatch and the command-line definition (the `--help` texts live in `cli.rs`) |
 | `config.rs`, `settings.rs` | Settings files, and how command line, files and defaults combine into the settings of a run |
-| `convert.rs` | The conversion of one image or a batch: loading, background removal, layout, encoding, writing, the thread-per-file work |
+| `convert.rs` | Running a conversion or a batch: loading the file, the `--find` preview, output checks, writing, progress, the thread-per-file work. The conversion itself is `crates/core`'s `convert` |
 | `plan.rs`, `select.rs`, `report.rs` | Which inputs become which outputs, folder expansion and filters, the batch report |
-| `source.rs`, `gif.rs` | Opening source files (raster, animated GIF) and deciding what they are |
+| `source.rs`, `gif.rs` | Opening source files from disk (raster, animated GIF); decoding from memory is in the core |
 | `ico_ops.rs`, `ico_validate.rs` | `--inspect`, `--merge`, `--extract`, `--select`, and the `--validate` parser |
 | `util.rs` | Shared helpers: atomic file writing, thread helpers, the file context for messages |
-| `crates/core` | Code that needs neither files nor threads, shared with the web version: the `.ico` validator's parser, fitting, cropping, trimming and scaling (`layout`, `resize`), background detection and removal (`chroma_key`), SVG rendering (`vector`), `.icns` reading and writing (`icns`), warnings and the file context (`diag`), thread helpers (`par`) |
+| `crates/core` | Code that needs neither files nor threads, shared with the web version: the conversion itself (`convert`: background removal, crop, trim, fitting, scaling, encoding, for any source), decoding sources from memory (`source`), the `.ico` validator's parser, fitting, cropping, trimming and scaling (`layout`, `resize`), background detection and removal (`chroma_key`), SVG rendering (`vector`), `.icns` reading and writing (`icns`), warnings and the file context (`diag`), thread helpers (`par`) |
 | `crates/wasm` | The WebAssembly bindings the web page calls |
 | `web/` | The web page |
 

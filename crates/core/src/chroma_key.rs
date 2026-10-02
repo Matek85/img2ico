@@ -595,6 +595,7 @@ pub fn detect_background_color(
 
 /// One region --find discovered: how many pixels it covers, and a single
 /// representative point inside it suitable for use as a --seed value.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FoundRegion {
     pub pixel_count: usize,
     pub seed: (u32, u32),
