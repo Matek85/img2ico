@@ -7,7 +7,7 @@ export type Fit = 'contain' | 'cover';
 export type Format = 'ico' | 'icns';
 
 /** The sizes the page offers. An .ico can hold 1 to 256 pixels. */
-export const SIZE_CHOICES = [16, 24, 32, 48, 64, 96, 128, 256] as const;
+export const SIZE_CHOICES = [16, 20, 24, 32, 40, 48, 64, 96, 128, 256] as const;
 
 /** The sizes a Windows application icon normally has. */
 export const DEFAULT_SIZES: readonly number[] = [16, 32, 48, 64, 128, 256];

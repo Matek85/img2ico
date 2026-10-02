@@ -795,3 +795,46 @@ h3 {
   margin: 0;
   font-variant-numeric: tabular-nums;
 }
+
+/* --- presets ------------------------------------------------------------------ */
+
+.presets {
+  gap: 0.75rem;
+}
+
+.preset-group {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.group-label {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.chip {
+  padding: 0.2rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.9rem;
+  background: transparent;
+  color: var(--text);
+}
+
+.chip:hover {
+  border-color: var(--accent);
+  filter: none;
+}
+
+.chip.chosen {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--accent);
+}
+
+.preset-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 1rem;
+}
