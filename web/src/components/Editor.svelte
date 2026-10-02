@@ -200,9 +200,12 @@
     settings = { ...withPreset($state.snapshot(settings), preset), crop };
   }
 
+  // Everything back to how the page starts, the crop frame included.
   function resetSettings() {
-    settings = { ...defaultSettings(), crop: settings.crop };
+    settings = defaultSettings();
   }
+
+  let isDefault = $derived(JSON.stringify($state.snapshot(settings)) === JSON.stringify(defaultSettings()));
 
   function chooseAspect(choice: AspectChoice) {
     cropAspect = choice;
@@ -302,6 +305,10 @@
   <div class="bar">
     <button type="button" class="quiet" onclick={onback}>← {t('state.back')}</button>
     <span class="file">{file.name}</span>
+    <button type="button" class="outline reset" onclick={resetSettings} disabled={isDefault} title={t('editor.reset_hint')}>
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+      {t('editor.reset')}
+    </button>
   </div>
 
   <div class="editor">
@@ -397,7 +404,6 @@
           </div>
         {/each}
         <div class="preset-foot">
-          <button type="button" class="quiet" onclick={resetSettings}>{t('presets.reset')}</button>
           <span class="hint">{t('presets.remembered')}</span>
         </div>
       </fieldset>

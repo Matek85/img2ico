@@ -657,6 +657,26 @@ footer {
   margin-bottom: 1rem;
 }
 
+.bar .reset {
+  margin-left: auto;
+}
+
+button.outline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.4rem 0.9rem;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+button.outline:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--link);
+  filter: none;
+}
+
 .bar .file {
   color: var(--muted);
   overflow: hidden;
