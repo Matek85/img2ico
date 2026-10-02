@@ -251,6 +251,7 @@
   }
 
   // Everything back to how the page starts, the crop frame included.
+  let siteDialog = $state<HTMLDialogElement>();
   let confirmingReset = $state(false);
   let keepResetButton = $state<HTMLButtonElement>();
 
@@ -492,7 +493,12 @@
         <legend class="sr-only">{t('download.format')}</legend>
         <label title={t('download.ico_hint')}><input type="radio" name="format" value="ico" bind:group={settings.format} /> {t('download.ico')}</label>
         <label title={t('download.icns_hint')}><input type="radio" name="format" value="icns" bind:group={settings.format} /> {t('download.icns')}</label>
-        <label title={t('download.favicon_hint')}><input type="radio" name="format" value="favicon" bind:group={settings.format} /> {t('download.favicon')}</label>
+        <label title={t('download.favicon_hint')}><input type="radio" name="format" value="favicon" bind:group={settings.format} onchange={() => siteDialog?.showModal()} /> {t('download.favicon')}</label>
+        {#if settings.format === 'favicon'}
+          <button type="button" class="gear" title={t('site.configure')} aria-label={t('site.configure')} onclick={() => siteDialog?.showModal()}>
+            <Icon name="gear" size={16} />
+          </button>
+        {/if}
       </fieldset>
       <div class="download-actions">
         {#if settings.format !== 'favicon'}
@@ -528,35 +534,6 @@
         </button>
       </div>
     </div>
-    {#if settings.format === 'favicon'}
-      <div class="site">
-        <h3>{t('site.title')}</h3>
-        <p class="hint">{t('site.contents', { svg: opened.vector ? t('site.svg') : '' })}</p>
-        <label class="field">
-          <span>{t('site.name')}</span>
-          <input type="text" maxlength="60" bind:value={settings.siteName} />
-        </label>
-        <p class="hint">{t('site.name_hint')}</p>
-        <label class="field">
-          <span>{t('site.theme')}</span>
-          <input type="color" bind:value={settings.themeColor} />
-        </label>
-        <label class="field">
-          <span>{t('site.apple')}</span>
-          <input type="color" bind:value={settings.appleBackground} />
-        </label>
-        <p class="hint">{t('site.apple_hint')}</p>
-        {#if appleUrl}
-          <figure class="apple">
-            <img src={appleUrl} width="90" height="90" alt="" />
-            <figcaption>{t('site.apple_preview')}</figcaption>
-          </figure>
-        {/if}
-        <p class="hint">{t('site.snippet')}</p>
-        <pre class="snippet">{snippet}</pre>
-        <button type="button" class="quiet" onclick={copySnippet}>{copied ? t('site.copied') : t('site.copy')}</button>
-      </div>
-    {/if}
     {#if settings.format === 'icns'}<p class="hint">{t('download.icns_note')}</p>{/if}
   </section>
   <div class="editor">
@@ -821,6 +798,38 @@
   </div>
 
   </div>
+  <dialog class="site-dialog" bind:this={siteDialog} aria-labelledby="site-title" onclick={(e) => e.target === siteDialog && siteDialog?.close()}>
+      <div class="site">
+        <h3 id="site-title">{t('site.title')}</h3>
+        <p class="hint">{t('site.contents', { svg: opened.vector ? t('site.svg') : '' })}</p>
+        <label class="field">
+          <span>{t('site.name')}</span>
+          <input type="text" maxlength="60" bind:value={settings.siteName} />
+        </label>
+        <p class="hint">{t('site.name_hint')}</p>
+        <label class="field">
+          <span>{t('site.theme')}</span>
+          <input type="color" bind:value={settings.themeColor} />
+        </label>
+        <label class="field">
+          <span>{t('site.apple')}</span>
+          <input type="color" bind:value={settings.appleBackground} />
+        </label>
+        <p class="hint">{t('site.apple_hint')}</p>
+        {#if appleUrl}
+          <figure class="apple">
+            <img src={appleUrl} width="90" height="90" alt="" />
+            <figcaption>{t('site.apple_preview')}</figcaption>
+          </figure>
+        {/if}
+        <p class="hint">{t('site.snippet')}</p>
+        <pre class="snippet">{snippet}</pre>
+        <button type="button" class="quiet" onclick={copySnippet}>{copied ? t('site.copied') : t('site.copy')}</button>
+      </div>
+    <div class="dialog-actions">
+      <button type="button" class="primary" onclick={() => siteDialog?.close()}>{t('site.done')}</button>
+    </div>
+  </dialog>
   <Queue activeId={editId} onopen={jump} onnext={nextPicture} onpicture={nextPicture} />
   </div>
 {/if}

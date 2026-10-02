@@ -250,6 +250,8 @@ export const en = {
   'site.apple_preview': 'Apple icon (180 pixels)',
   'site.snippet': 'Paste into the <head> of your pages (the files go to the root of your site):',
   'site.copy': 'Copy',
+  'site.done': 'Done',
+  'site.configure': 'Change the website package settings',
   'site.copied': 'Copied',
   'site.building': 'Making the package …',
 

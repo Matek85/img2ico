@@ -2511,3 +2511,68 @@ input[type='range'] {
   width: var(--control);
   height: var(--control);
 }
+
+/* =========================================================================
+   The download bar stays at the top while the page is scrolled; the website
+   package settings are a dialog, reopened by the gear next to its type.
+   ========================================================================= */
+
+.main > .download {
+  position: sticky;
+  top: 0.5rem;
+  z-index: 5;
+  box-shadow: var(--shadow);
+}
+
+@media (min-width: 52rem) and (min-height: 760px) {
+  .editor .preview {
+    top: 5.5rem;
+    max-height: calc(100vh - 6.5rem);
+  }
+}
+
+.download-row .formats button.gear {
+  min-height: var(--control-small);
+  width: var(--control-small);
+  padding: 0;
+  margin-left: -0.3rem;
+  background: var(--accent);
+  color: var(--accent-text);
+  border: 0;
+  border-radius: 0.5rem;
+}
+
+.download-row .formats button.gear:hover {
+  filter: brightness(1.1);
+}
+
+.site-dialog {
+  width: min(34rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+  padding: 1.25rem 1.5rem;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 0.9rem;
+  box-shadow: 0 1.5rem 4rem rgba(0, 0, 0, 0.45);
+}
+
+.site-dialog::backdrop {
+  background: rgba(8, 12, 24, 0.6);
+}
+
+.site-dialog .site {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.site-dialog .site .field {
+  grid-template-columns: 11rem minmax(0, 1fr);
+}
+
+.site-dialog .dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 1rem;
+}
