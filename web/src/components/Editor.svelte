@@ -227,8 +227,9 @@
     settings.backgroundColor = color;
     settings.backgroundAuto = false;
     settings.removeBackground = true;
+    // After picking, show the icon again; from the plain pixel view, stay there.
+    if (picking) view = 'icon';
     picking = false;
-    view = 'icon';
   }
 
   // Leaving the pixel view ends the picking.

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import { iconPixels } from '../engine/client';
   import type { Pixels } from '../engine/protocol';
   import { t } from '../i18n';
@@ -27,6 +28,9 @@
     oncancel?: () => void;
   } = $props();
   let transparentNote = $state(false);
+  // Counts the times the note was raised, so it can play its attention animation again.
+  let noteCount = $state(0);
+  let viewportEl = $state<HTMLElement>();
 
   // Which image is looked at: the largest until another is chosen.
   let picked = $state<number | null>(null);
@@ -86,12 +90,13 @@
     return cellAt(event.clientX - box.left, event.clientY - box.top, zoom, pixels.width, pixels.height);
   }
 
-  // While picking, a pixel with a color is taken at once; a transparent one is said so.
-  function take(cell: { x: number; y: number } | null) {
-    if (!picking || !cell || !pixels) return;
+  // A pixel with a color becomes the background to remove; a transparent one is said so.
+  function apply(cell: { x: number; y: number } | null) {
+    if (!cell || !pixels) return;
     const pixel = pixelAt(pixels.rgba, pixels.width, cell.x, cell.y);
     if (pixel.a === 0) {
       transparentNote = true;
+      noteCount += 1;
     } else {
       transparentNote = false;
       onuse?.(hexOf(pixel));
@@ -105,8 +110,8 @@
       pinned = null;
       return;
     }
-    if (event.key === 'Enter' && pinned) {
-      take(pinned);
+    if (event.key === 'Enter' && pinned && picking) {
+      apply(pinned);
       return;
     }
     const start = pinned ?? hover ?? { x: Math.floor(pixels.width / 2), y: Math.floor(pixels.height / 2) };
@@ -120,13 +125,55 @@
   function setZoom(value: number) {
     zoom = Math.min(Math.max(Math.round(value), 1), MAX_ZOOM);
   }
+
+  // The mouse wheel zooms while the pointer is over the image, around the pixel
+  // under it; anywhere else it scrolls the page as usual.
+  $effect(() => {
+    const viewport = viewportEl;
+    if (!viewport) return;
+    const onWheel = async (event: WheelEvent) => {
+      const surface = (event.target as Element).closest('.surface');
+      if (!surface || !pixels || event.ctrlKey || event.deltaY === 0) return;
+      event.preventDefault();
+      const before = surface.getBoundingClientRect();
+      const column = (event.clientX - before.left) / zoom;
+      const row = (event.clientY - before.top) / zoom;
+      const direction = event.deltaY < 0 ? 1 : -1;
+      let next = Math.round(zoom * (direction > 0 ? 1.2 : 1 / 1.2));
+      if (next === zoom) next = zoom + direction;
+      next = Math.min(Math.max(next, 1), MAX_ZOOM);
+      if (next === zoom) return;
+      zoom = next;
+      await tick();
+      // Keep the pixel under the pointer where it was.
+      const after = surface.getBoundingClientRect();
+      viewport.scrollLeft += after.left - (event.clientX - column * next);
+      viewport.scrollTop += after.top - (event.clientY - row * next);
+    };
+    viewport.addEventListener('wheel', onWheel, { passive: false });
+    return () => viewport.removeEventListener('wheel', onWheel);
+  });
 </script>
 
 <div class="inspector" class:picking>
-  {#if picking}
-    <div class="pickbar" role="status">
-      <p>{transparentNote ? t('picker.clear') : t('picker.hint')}</p>
-      <button type="button" class="outline" onclick={() => oncancel?.()}>{t('picker.cancel')}</button>
+  {#if picking || transparentNote}
+    <!-- Stays in view while the page is scrolled, so a message cannot be missed. -->
+    <div class="inspector-top">
+      {#if picking}
+        <div class="pickbar" role="status">
+          <p>{t('picker.hint')}</p>
+          <button type="button" class="outline" onclick={() => oncancel?.()}>{t('picker.cancel')}</button>
+        </div>
+      {/if}
+      {#if transparentNote}
+        {#key noteCount}
+          <div class="notice" role="alert">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+            <p>{t('picker.clear')}</p>
+            <button type="button" class="quiet" aria-label={t('picker.dismiss')} onclick={() => (transparentNote = false)}>×</button>
+          </div>
+        {/key}
+      {/if}
     </div>
   {/if}
   <div class="tools">
@@ -155,7 +202,7 @@
     <label><input type="checkbox" bind:checked={grid} /> {t('pixels.grid')}</label>
   </div>
 
-  <div class="viewport" bind:clientWidth={width}>
+  <div class="viewport" bind:clientWidth={width} bind:this={viewportEl}>
     {#if failure}
       <p class="failure" role="alert">{failure}</p>
     {:else if pixels}
@@ -170,7 +217,8 @@
         onpointerleave={() => (hover = null)}
         onclick={(e) => {
           pinned = pointed(e as unknown as PointerEvent);
-          take(pinned);
+          transparentNote = false;
+          if (picking) apply(pinned);
         }}
         onkeydown={key}
       >
@@ -200,6 +248,11 @@
         <div><dt>{t('pixels.alpha')}</dt><dd>{info.a} ({opacityPercent(info.a)} %)</dd></div>
         <div><dt>{t('pixels.hex')}</dt><dd>{hexOf(info)}</dd></div>
       </dl>
+      {#if onuse && pinned}
+        <button type="button" class="primary remove" title={t('pixels.remove_bg_hint')} onclick={() => apply(pinned)}>
+          {t('pixels.remove_bg')}
+        </button>
+      {/if}
     {:else}
       <p class="hint">{t('pixels.hint')}</p>
     {/if}
