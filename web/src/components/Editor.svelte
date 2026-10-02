@@ -320,6 +320,22 @@
     return () => clearTimeout(timer);
   });
 
+  // What reads the queue (a download, say) first asks for the last changes to be put into it:
+  // it waits for the preview to be made again, then saves at once instead of after the pause.
+  let idleWaiters: (() => void)[] = [];
+  $effect(() => {
+    if (!working) idleWaiters.splice(0).forEach((resolve) => resolve());
+  });
+  const untilIdle = () => (working ? new Promise<void>((resolve) => idleWaiters.push(resolve)) : Promise.resolve());
+  onMount(() => {
+    queue.setFlusher(async () => {
+      if (editId === undefined || !autoSave) return;
+      await untilIdle();
+      if (dirty) await saveEditing(false);
+    });
+    return () => queue.setFlusher(null);
+  });
+
   // Before leaving the icon being edited: save its changes (auto-save), or ask when they would be lost.
   async function settle(announce: boolean): Promise<boolean> {
     if (editId === undefined) return true;

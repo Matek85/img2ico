@@ -44,6 +44,8 @@ let notice = false;
 let ticks = $state(0);
 // What could not be added, or was left out, when pictures were added in bulk.
 let problems = $state<string[]>([]);
+// What the editor next to the queue still has to put into it (see flush).
+let flusher: (() => Promise<void>) | null = null;
 // The icon added last, for a moment: its row flashes.
 let fresh = $state<number | null>(null);
 let freshTimer: ReturnType<typeof setTimeout> | undefined;
@@ -101,6 +103,16 @@ export const queue = {
 
   setProblems(list: string[]) {
     problems = list;
+  },
+
+  /** The editor says how to bring the queue up to date with what is being edited. */
+  setFlusher(job: (() => Promise<void>) | null) {
+    flusher = job;
+  },
+
+  /** Brings the queue up to date; what reads it (a download) calls this first, so no last change is missed. */
+  async flush(): Promise<void> {
+    await flusher?.();
   },
 
   find(id: number): QueueItem | undefined {

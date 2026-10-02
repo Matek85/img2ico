@@ -165,6 +165,8 @@
     failure = '';
     notes = [];
     try {
+      // The icon being edited next to the queue puts its last changes in first.
+      await queue.flush();
       await job();
     } catch (error) {
       failure = error instanceof Error ? error.message : String(error);
@@ -189,10 +191,11 @@
       saveBytes(merged.bytes, 'combined.ico', ICO_TYPE);
     });
 
-  function downloadOne() {
-    const item = queue.items[0];
-    saveBytes(item.bytes, item.fileName, item.format === 'ico' ? ICO_TYPE : ICNS_TYPE);
-  }
+  const downloadOne = () =>
+    run(async () => {
+      const item = queue.items[0];
+      saveBytes(item.bytes, item.fileName, item.format === 'ico' ? ICO_TYPE : ICNS_TYPE);
+    });
 </script>
 
 {#if queue.items.length > 0}
