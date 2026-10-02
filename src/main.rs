@@ -38,23 +38,22 @@ macro_rules! say {
     };
 }
 
-mod chroma_key;
 mod cli;
 mod config;
 mod convert;
 mod gif;
-mod icns;
 mod ico_ops;
 mod ico_validate;
-mod layout;
 mod plan;
 mod report;
-mod resize;
 mod select;
 mod settings;
 mod source;
 mod util;
-mod vector;
+
+// The modules that moved to the shared core keep their old names here, so the
+// rest of the program still says `crate::resize::...` and so on.
+use img2ico_core::{chroma_key, icns, layout, resize, vector};
 
 use clap::Parser;
 use cli::Args;

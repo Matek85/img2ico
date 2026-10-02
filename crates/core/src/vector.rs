@@ -52,11 +52,15 @@ impl VectorImage {
     /// Parses SVG (or .svgz) bytes. `name` is how the file is called in
     /// messages.
     pub fn parse(bytes: &[u8], name: &str) -> Result<Self, String> {
+        #[cfg_attr(not(feature = "system-fonts"), allow(unused_mut))]
         let mut options = usvg::Options::default();
         // Fonts for <text>: the ones installed on this computer. Looking
         // through them takes a few hundred milliseconds, so it is done only
         // when the drawing has text at all (a compressed one is not looked
-        // into, it gets the fonts to be safe).
+        // into, it gets the fonts to be safe). Without the "system-fonts"
+        // feature (the web version: a browser has no fonts to read) text is
+        // laid out with no fonts at all, so it does not show.
+        #[cfg(feature = "system-fonts")]
         if bytes.starts_with(&GZIP_MAGIC) || bytes.windows(5).any(|w| w == b"<text") {
             options.fontdb_mut().load_system_fonts();
         }

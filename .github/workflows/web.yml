@@ -87,6 +87,12 @@ jobs:
         working-directory: web
         run: npm run build:wasm
 
+      # The engine is built for the browser without the command line's extras
+      # (system fonts, argument parsing). Linting it for that target keeps
+      # code that only works with them from creeping into the shared core.
+      - name: Lint the engine for the browser
+        run: cargo clippy -p img2ico-core -p img2ico-wasm --target wasm32-unknown-unknown --locked -- -D warnings
+
       - name: Type-check the page
         working-directory: web
         run: npm run check

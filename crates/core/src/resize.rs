@@ -2,7 +2,7 @@
 // correctly-padded square icon: the alpha-aware resize logic, and the
 // upscaling warning that goes along with it.
 
-use crate::util::{file_prefix, warn};
+use crate::diag::{file_prefix, warn};
 use image::imageops::FilterType;
 use image::{Rgba, RgbaImage};
 

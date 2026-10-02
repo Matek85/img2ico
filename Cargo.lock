@@ -513,12 +513,10 @@ dependencies = [
  "clap_complete",
  "flate2",
  "globset",
- "icns",
  "ico",
  "image",
  "img2ico-core",
  "proptest",
- "resvg",
  "serde",
  "serde_json",
  "tempfile",
@@ -531,9 +529,14 @@ dependencies = [
 name = "img2ico-core"
 version = "0.0.0"
 dependencies = [
+ "clap",
+ "icns",
  "ico",
  "image",
  "proptest",
+ "resvg",
+ "serde",
+ "tempfile",
 ]
 
 [[package]]

@@ -7,4 +7,11 @@
 //! here from the command line step by step, whenever it is free of file
 //! access and operating-system threads.
 
+pub mod chroma_key;
+pub mod diag;
+pub mod icns;
+pub mod layout;
+pub mod par;
+pub mod resize;
 pub mod validate;
+pub mod vector;

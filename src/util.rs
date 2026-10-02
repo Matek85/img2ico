@@ -3,36 +3,10 @@
 // source-file deletion for --delete-source, and the "which file is this
 // message about" context used while converting several files in a row.
 
-use std::cell::{Cell, RefCell};
+pub use img2ico_core::diag::{enter_file_context, file_prefix, warn, warnings_so_far};
+pub use img2ico_core::par::parallel_map;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-
-thread_local! {
-    /// The input file this thread is converting right now - set only while
-    /// a batch run works through several files (see `enter_file_context`).
-    /// Per thread, so it stays correct if files are ever processed in
-    /// parallel.
-    static CURRENT_FILE: RefCell<Option<String>> = const { RefCell::new(None) };
-}
-
-/// Marks `path` as the file being converted until the returned guard is
-/// dropped. While it is alive, `file_prefix()` yields `"<path>: "`, so a
-/// warning raised deep inside the conversion (an upscaling hint, a seed
-/// outside the image, ...) says which of the many files it is about.
-#[must_use = "the file context ends as soon as this guard is dropped"]
-pub fn enter_file_context(path: &Path) -> FileContext {
-    CURRENT_FILE.with(|current| *current.borrow_mut() = Some(path.display().to_string()));
-    FileContext(())
-}
-
-/// Ends the context begun by `enter_file_context` when dropped.
-pub struct FileContext(());
-
-impl Drop for FileContext {
-    fn drop(&mut self) {
-        CURRENT_FILE.with(|current| *current.borrow_mut() = None);
-    }
-}
 
 /// Whether --quiet is on: the normal progress and success output is off.
 static QUIET: AtomicBool = AtomicBool::new(false);
@@ -86,41 +60,6 @@ pub fn say(line: std::fmt::Arguments) {
     }
 }
 
-thread_local! {
-    /// How many warnings this thread has raised so far (see `warn`).
-    static WARNINGS: Cell<usize> = const { Cell::new(0) };
-}
-
-/// Raises a warning: counts it - always, so a batch summary can say how many
-/// there were even when --silent hid them - and prints `message` to standard
-/// error unless `silent` is set. `message` is printed as given, so it
-/// carries its own "Warning: " lead-in where it wants one.
-pub fn warn(silent: bool, message: impl std::fmt::Display) {
-    WARNINGS.with(|count| count.set(count.get() + 1));
-    if !silent {
-        eprintln!("{message}");
-    }
-}
-
-/// The number of warnings raised on this thread so far. A caller that wants
-/// the warnings of one piece of work reads it before and after.
-pub fn warnings_so_far() -> usize {
-    WARNINGS.with(Cell::get)
-}
-
-/// The text to put in front of a per-file message: `"logo.png: "` while a
-/// file context is active (batch mode), and an empty string otherwise - so
-/// messages from a single conversion read exactly as they always have.
-pub fn file_prefix() -> String {
-    CURRENT_FILE.with(|current| {
-        current
-            .borrow()
-            .as_ref()
-            .map(|path| format!("{path}: "))
-            .unwrap_or_default()
-    })
-}
-
 /// Parses a "--seed" value in the format "x,y" (e.g. "200,50") into a
 /// coordinate pair. Returns an understandable error message if the format
 /// doesn't match.
@@ -159,46 +98,6 @@ pub fn check_overwrite(path: &Path, force: bool) -> Result<(), String> {
 /// (1 if that cannot be told).
 pub fn available_threads() -> usize {
     std::thread::available_parallelism().map_or(1, |n| n.get())
-}
-
-/// Runs `work` for every item - on up to `threads` threads - and returns the
-/// results in the order of `items`, whatever order they finished in. With one
-/// thread (or one item) nothing is spawned and it is a plain loop.
-pub fn parallel_map<T: Sync, R: Send>(
-    items: &[T],
-    threads: usize,
-    work: impl Fn(&T) -> R + Sync,
-) -> Vec<R> {
-    use std::sync::Mutex;
-    use std::sync::atomic::AtomicUsize;
-
-    if threads <= 1 || items.len() <= 1 {
-        return items.iter().map(work).collect();
-    }
-    let next = AtomicUsize::new(0);
-    let slots: Vec<Mutex<Option<R>>> = items.iter().map(|_| Mutex::new(None)).collect();
-    std::thread::scope(|scope| {
-        for _ in 0..threads.min(items.len()) {
-            scope.spawn(|| {
-                loop {
-                    let index = next.fetch_add(1, Ordering::Relaxed);
-                    let Some(item) = items.get(index) else { break };
-                    let result = work(item);
-                    *slots[index]
-                        .lock()
-                        .expect("a result slot is never poisoned") = Some(result);
-                }
-            });
-        }
-    });
-    slots
-        .into_iter()
-        .map(|slot| {
-            slot.into_inner()
-                .expect("a result slot is never poisoned")
-                .expect("every item has been worked on")
-        })
-        .collect()
 }
 
 /// Runs `work` for the items on up to `threads` threads and hands the results
@@ -437,34 +336,6 @@ mod tests {
     }
 
     #[test]
-    fn parallel_map_keeps_the_order_of_the_items() {
-        let items: Vec<u32> = (0..50).collect();
-        for threads in [1, 2, 8, 100] {
-            let squares = super::parallel_map(&items, threads, |&n| {
-                // Make the early items the slow ones, so they finish last.
-                std::thread::sleep(std::time::Duration::from_micros(u64::from(50 - n) * 20));
-                n * n
-            });
-            assert_eq!(
-                squares,
-                items.iter().map(|n| n * n).collect::<Vec<_>>(),
-                "{threads}"
-            );
-        }
-        assert!(super::parallel_map(&Vec::<u32>::new(), 4, |&n| n).is_empty());
-    }
-
-    #[test]
-    fn parallel_map_really_uses_several_threads() {
-        let ids = super::parallel_map(&[0; 8], 4, |_| {
-            std::thread::sleep(std::time::Duration::from_millis(20));
-            std::thread::current().id()
-        });
-        let distinct: std::collections::HashSet<_> = ids.into_iter().collect();
-        assert!(distinct.len() > 1, "all on one thread: {distinct:?}");
-    }
-
-    #[test]
     fn for_each_ordered_hands_over_in_order_whatever_the_finishing_order() {
         let items: Vec<u32> = (0..40).collect();
         for threads in [1, 3, 16] {
@@ -588,45 +459,6 @@ mod tests {
         );
         assert_eq!(sink_for(true, false), Sink::Nowhere);
         assert_eq!(sink_for(true, true), Sink::Nowhere, "--quiet wins");
-    }
-
-    // --- file context ----------------------------------------------------------
-
-    #[test]
-    fn there_is_no_prefix_outside_a_file_context() {
-        assert_eq!(file_prefix(), "");
-    }
-
-    #[test]
-    fn a_file_context_adds_the_path_as_a_prefix_until_it_ends() {
-        {
-            let _context = enter_file_context(Path::new("art/logo.png"));
-            assert_eq!(
-                file_prefix(),
-                format!("{}: ", Path::new("art/logo.png").display())
-            );
-        }
-        assert_eq!(
-            file_prefix(),
-            "",
-            "the prefix must disappear with the guard"
-        );
-    }
-
-    #[test]
-    fn a_new_file_context_replaces_the_previous_one() {
-        let first = enter_file_context(Path::new("a.png"));
-        drop(first);
-        let _second = enter_file_context(Path::new("b.png"));
-        assert!(file_prefix().starts_with("b.png"), "{}", file_prefix());
-    }
-
-    #[test]
-    fn the_file_context_belongs_to_one_thread() {
-        let _context = enter_file_context(Path::new("main-thread.png"));
-        let other = std::thread::spawn(file_prefix).join().unwrap();
-        assert_eq!(other, "", "another thread must not see this thread's file");
-        assert!(file_prefix().starts_with("main-thread.png"));
     }
 
     // --- parse_seed ------------------------------------------------------------
