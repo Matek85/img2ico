@@ -1981,3 +1981,11 @@ button.icon-button.on {
   background: var(--tint);
   color: var(--link);
 }
+
+/* Buttons of the icon file view: the line icon sits before the text. */
+.images-panel button,
+.merge-panel button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}

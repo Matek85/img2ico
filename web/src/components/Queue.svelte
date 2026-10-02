@@ -7,6 +7,7 @@
   import { sizesText } from '../lib/queue';
   import { stemOf } from '../lib/batch';
   import Compare from './Compare.svelte';
+  import Icon from './Icon.svelte';
 
   let {
     activeId,
@@ -25,15 +26,6 @@
   } = $props();
 
   let picker = $state<HTMLInputElement>();
-
-  // The inner markup of the small line icons of the buttons.
-  const ICONS = {
-    edit: '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>',
-    layers: '<path d="m12 2 10 5-10 5L2 7l10-5z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/>',
-    up: '<path d="M12 19V5"/><path d="m5 12 7-7 7 7"/>',
-    down: '<path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>',
-    close: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
-  };
 
   // Clearing the queue cannot be undone, so it asks first, in place of the button.
   let confirmClear = $state(false);
@@ -216,11 +208,6 @@
     });
 </script>
 
-<!-- A small line icon; `paths` is the inner SVG markup. -->
-{#snippet glyph(paths: string)}
-  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{@html paths}</svg>
-{/snippet}
-
 {#if queue.items.length > 0}
   <section class="queue" class:flash bind:this={root} aria-labelledby="queue-title">
     <h2 id="queue-title">{t('queue.title', { count: queue.items.length })}</h2>
@@ -262,7 +249,7 @@
                 aria-label={t('queue.as_picture_for', { name: item.fileName })}
                 disabled={working}
                 onclick={() => asPicture(item)}
-              >{@render glyph(ICONS.edit)}</button>
+              ><Icon name="edit" /></button>
             {/if}
             {#if pickable(item)}
               <button
@@ -274,11 +261,11 @@
                 aria-label={t('queue.pick_for', { name: item.fileName })}
                 disabled={working}
                 onclick={() => openSub(item)}
-              >{@render glyph(ICONS.layers)}</button>
+              ><Icon name="layers" /></button>
             {/if}
-            <button type="button" class="quiet icon-button" title={t('queue.up_title')} aria-label={t('queue.up', { name: item.fileName })} disabled={at === 0} onclick={() => queue.move(item.id, -1)}>{@render glyph(ICONS.up)}</button>
-            <button type="button" class="quiet icon-button" title={t('queue.down_title')} aria-label={t('queue.down', { name: item.fileName })} disabled={at === queue.items.length - 1} onclick={() => queue.move(item.id, 1)}>{@render glyph(ICONS.down)}</button>
-            <button type="button" class="quiet icon-button" title={t('queue.remove_title')} aria-label={t('queue.remove', { name: item.fileName })} onclick={() => queue.remove(item.id)}>{@render glyph(ICONS.close)}</button>
+            <button type="button" class="quiet icon-button" title={t('queue.up_title')} aria-label={t('queue.up', { name: item.fileName })} disabled={at === 0} onclick={() => queue.move(item.id, -1)}><Icon name="up" /></button>
+            <button type="button" class="quiet icon-button" title={t('queue.down_title')} aria-label={t('queue.down', { name: item.fileName })} disabled={at === queue.items.length - 1} onclick={() => queue.move(item.id, 1)}><Icon name="down" /></button>
+            <button type="button" class="quiet icon-button" title={t('queue.remove_title')} aria-label={t('queue.remove', { name: item.fileName })} onclick={() => queue.remove(item.id)}><Icon name="close" /></button>
           </div>
         </li>
       {/each}
@@ -314,7 +301,7 @@
                   aria-label={t('queue.as_picture_for', { name: image.width + ' × ' + image.height })}
                   disabled={working}
                   onclick={() => asPicture(source, image.index)}
-                >{@render glyph(ICONS.edit)}</button>
+                ><Icon name="edit" /></button>
               {/if}
               <button type="button" class="outline" disabled={working} onclick={() => addImages([image.index])}>{t('queue.sub_add')}</button>
             </li>

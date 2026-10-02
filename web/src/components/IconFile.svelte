@@ -10,6 +10,7 @@
     validateIco,
   } from '../engine/client';
   import { formatBytes, t } from '../i18n';
+  import Icon from './Icon.svelte';
   import { baseName, stemOf } from '../lib/batch';
   import { ICO_TYPE, PNG_TYPE, ZIP_TYPE, saveBytes } from '../lib/download';
   import { queue } from '../lib/queue.svelte';
@@ -216,10 +217,10 @@
             </p>
             <p class="facts">{t('iconfile.alpha', { alpha: image.alpha })}</p>
             <button type="button" class="quiet" disabled={working} onclick={() => savePng(image.index, image.width)}>
-              {t('iconfile.save_png')}
+              <Icon name="download" /> {t('iconfile.save_png')}
             </button>
             <button type="button" class="quiet" disabled={working} title={t('queue.as_picture_this_hint')} onclick={() => asPicture(image.index)}>
-              {t('queue.as_picture')}
+              <Icon name="edit" /> {t('queue.as_picture')}
             </button>
           </li>
         {/each}
@@ -238,21 +239,21 @@
           disabled={working || selected.length === 0}
           onclick={saveSelected}
         >
-          {t('iconfile.save_selected', { count: selected.length })}
+          <Icon name="download" /> {t('iconfile.save_selected', { count: selected.length })}
         </button>
-        <button type="button" disabled={working} onclick={savePngZip}>{t('iconfile.save_zip')}</button>
+        <button type="button" disabled={working} onclick={savePngZip}><Icon name="archive" /> {t('iconfile.save_zip')}</button>
         <button type="button" class="quiet" onclick={() => (selected = description!.images.map((i) => i.index))}>
-          {t('iconfile.select_all')}
+          <Icon name="checkAll" /> {t('iconfile.select_all')}
         </button>
-        <button type="button" class="quiet" onclick={() => (selected = [])}>{t('iconfile.select_none')}</button>
+        <button type="button" class="quiet" onclick={() => (selected = [])}><Icon name="checkNone" /> {t('iconfile.select_none')}</button>
       </div>
       <div class="actions">
         <button type="button" class="outline" disabled={working} title={t('queue.as_picture_hint')} onclick={() => asPicture()}>
-          {t('iconfile.as_picture_largest')}
+          <Icon name="edit" /> {t('iconfile.as_picture_largest')}
         </button>
-        <button type="button" class="outline" disabled={working} onclick={() => addToQueue()}>{t('iconfile.add_all')}</button>
+        <button type="button" class="outline" disabled={working} onclick={() => addToQueue()}><Icon name="queueAdd" /> {t('iconfile.add_all')}</button>
         <button type="button" class="outline" disabled={working || selected.length === 0} onclick={() => addToQueue([...selected])}>
-          {t('iconfile.add_selected', { count: selected.length })}
+          <Icon name="queueAdd" /> {t('iconfile.add_selected', { count: selected.length })}
         </button>
       </div>
     </section>
@@ -271,10 +272,10 @@
       {/each}
     </ul>
     <div class="actions">
-      <button type="button" onclick={() => input?.click()}>{t('merge.add')}</button>
+      <button type="button" onclick={() => input?.click()}><Icon name="plus" /> {t('merge.add')}</button>
       <input bind:this={input} type="file" accept=".ico" multiple hidden onchange={addOthers} />
       <button type="button" class="primary" disabled={working || others.length === 0} onclick={combine}>
-        {t('merge.combine')}
+        <Icon name="download" /> {t('merge.combine')}
       </button>
     </div>
     {#if mergedSummary}<p class="ok" role="status">{mergedSummary}</p>{/if}
