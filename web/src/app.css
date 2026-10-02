@@ -3003,3 +3003,26 @@ button.small {
 .bar button {
   white-space: nowrap;
 }
+
+/* The arrow that brings the settings back lights up blue once when they fold away by themselves. */
+.rail .flash-blue {
+  animation: flash-blue 1.8s ease-out;
+}
+
+@keyframes flash-blue {
+  0%, 45% {
+    background: var(--accent);
+    color: var(--accent-text);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent);
+  }
+  100% {
+    box-shadow: 0 0 0 3px transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rail .flash-blue {
+    animation: none;
+  }
+}

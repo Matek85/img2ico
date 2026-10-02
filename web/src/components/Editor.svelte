@@ -138,6 +138,7 @@
   let advanced = $state(false);
   // The settings beside the preview can be folded to a slim row of icons, for a wider preview.
   let sideOpen = $state(loadSideOpen());
+  let flashExpand = $state(false);
   function setSide(open: boolean) {
     sideOpen = open;
     saveSideOpen(open);
@@ -326,6 +327,12 @@
     if (masking) {
       cropOn = true;
       view = 'icon';
+      // The preview gets the room; the way back to the settings lights up once.
+      if (sideOpen) {
+        setSide(false);
+        flashExpand = true;
+        setTimeout(() => (flashExpand = false), 1800);
+      }
     }
   }
 
@@ -838,7 +845,7 @@
     </section>
     {:else}
     <aside class="rail" aria-label={t('controls.look')}>
-      <button type="button" class="icon-button outline" title={t('side.expand')} aria-label={t('side.expand')} onclick={() => setSide(true)}>
+      <button type="button" class="icon-button outline" class:flash-blue={flashExpand} title={t('side.expand')} aria-label={t('side.expand')} onclick={() => setSide(true)}>
         <Icon name="expand" size={16} />
       </button>
       {#each [USE_PRESETS, STYLE_PRESETS] as list, i (i)}
