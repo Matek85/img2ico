@@ -15,6 +15,11 @@ export function setLocale(requested: string): void {
   messages = catalogues[tag] ?? en;
 }
 
+/** The language in use, as a language tag ("en"). */
+export function locale(): string {
+  return tag;
+}
+
 export type Params = Record<string, string | number>;
 
 /**

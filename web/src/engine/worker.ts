@@ -4,7 +4,6 @@
 // decoding it again.
 
 import init, {
-  Merger,
   Source,
   ZipBuilder,
   ZipReader,
@@ -91,25 +90,6 @@ self.onmessage = async (event: MessageEvent<Request>) => {
         const data = icon_select(request.bytes, Uint32Array.from(request.indices));
         transfer.push(data.buffer);
         response = { id: request.id, ok: true, data };
-        break;
-      }
-      case 'merge': {
-        const merger = new Merger();
-        try {
-          for (const file of request.files) merger.add(file.bytes, file.name);
-          const output = merger.merge();
-          const bytes = output.bytes();
-          const converted = {
-            bytes,
-            sizes: Array.from(output.sizes()),
-            warnings: JSON.parse(output.warnings()) as string[],
-          };
-          output.free();
-          transfer.push(bytes.buffer);
-          response = { id: request.id, ok: true, converted };
-        } finally {
-          merger.free();
-        }
         break;
       }
       case 'faviconPack': {

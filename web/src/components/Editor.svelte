@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { onDestroy, onMount } from 'svelte';
+  import { onDestroy, onMount, tick } from 'svelte';
   import {
-    buildZip,
     closePicture,
     convert,
+    convertLatest,
     faviconPack,
     faviconSnippet,
     openPicture,
@@ -14,6 +14,10 @@
   import Compare from './Compare.svelte';
   import PixelInspector from './PixelInspector.svelte';
   import CropTool from './CropTool.svelte';
+  import DropOverlay from './DropOverlay.svelte';
+  import Icon from './Icon.svelte';
+  import type { IconName } from '../lib/icons';
+  import Queue from './Queue.svelte';
   import {
     ASPECTS,
     type AspectChoice,
@@ -26,9 +30,10 @@
   } from '../lib/crop';
   import { type IconEntry, iconEntries } from '../lib/ico';
   import { type Preset, STYLE_PRESETS, USE_PRESETS, isActive, withPreset } from '../lib/presets';
-  import { type BatchItem, outputName, stemOf } from '../lib/batch';
+  import { stemOf } from '../lib/batch';
   import { ICNS_TYPE, ICO_TYPE, ZIP_TYPE, saveBytes } from '../lib/download';
-  import { loadSettings, saveSettings } from '../lib/storage';
+  import { type QueueItem, queue } from '../lib/queue.svelte';
+  import { loadAutoSave, loadSettings, loadSideOpen, saveAutoSave, saveSettings, saveSideOpen } from '../lib/storage';
   import {
     DEFAULT_SIZES,
     FAVICON_SIZES,
@@ -39,28 +44,66 @@
     packMeta,
     toEngineOptions,
   } from '../lib/settings';
+  import { explain, friendly } from '../lib/messages';
 
   let {
     file,
     onback,
-    batch,
+    editing,
+    onopenitem,
+    onnext,
   }: {
     file: File;
     onback: () => void;
-    /** Several pictures to turn into icons with the same settings; `file` is the one shown. */
-    batch?: { items: BatchItem[]; archive: string; notes: string[] };
+    /** Pictures chosen from the queue panel for the next turn; this icon is kept in the queue first. */
+    onnext: (files: File[]) => void;
+    /** An icon of the queue that is being edited again, with the settings it was made with. */
+    editing?: { id: number; settings: Settings };
+    /** Opens another icon of the queue (this one is saved first). */
+    onopenitem?: (item: QueueItem) => void;
   } = $props();
 
-  type Backdrop = 'checker' | 'light' | 'dark' | 'gray';
-  const BACKDROPS: Backdrop[] = ['checker', 'light', 'dark', 'gray'];
+  // A surface is one of the named ones, 'picker' (the color being picked) or a kept color like '#3b82f6'.
+  type Backdrop = string;
+  const NAMED: Backdrop[] = ['checker', 'light', 'dark', 'gray'];
+  const MAX_KEPT = 7;
+  const VIEWS = [
+    { id: 'icon', icon: 'view' },
+    { id: 'compare', icon: 'compare' },
+    { id: 'pixels', icon: 'grid' },
+  ] as const;
 
   // What was chosen last time is the starting point (see storage.ts).
-  let settings = $state<Settings>(loadSettings());
+  // (The editor is made anew for every icon, so only the first value of `editing` matters.)
+  // svelte-ignore state_referenced_locally
+  let settings = $state<Settings>(editing ? structuredClone($state.snapshot(editing.settings)) : loadSettings());
+  // The crop frame an icon from the queue comes back with; the effect below clears
+  // `settings.crop` until the picture is open, so it is noted here first.
+  // svelte-ignore state_referenced_locally
+  const startCrop: Rect | null = settings.crop ? { ...settings.crop } : null;
   let opened = $state<Opened>();
   let openFailure = $state('');
   let originalUrl = $state('');
 
   let backdrop = $state<Backdrop>('checker');
+  let customColor = $state('#3b82f6');
+  // Colors picked before stay as swatches of their own (up to MAX_KEPT).
+  let keptColors = $state<string[]>([]);
+  // The surface under the mouse is shown at once; a click keeps it.
+  let hovered = $state<Backdrop | null>(null);
+  let shown = $derived(hovered ?? backdrop);
+  let surface = $derived(
+    shown === 'picker' ? `background:${customColor}` : shown.startsWith('#') ? `background:${shown}` : undefined,
+  );
+  let surfaceClass = $derived(NAMED.includes(shown) ? shown : 'custom');
+
+  // The picker was closed with a color: it becomes a swatch, unless it is there already or the row is full.
+  function keepColor() {
+    const color = customColor.toLowerCase();
+    if (keptColors.includes(color) || keptColors.length >= MAX_KEPT) return;
+    keptColors = [...keptColors, color];
+    backdrop = color;
+  }
   let view = $state<'icon' | 'compare' | 'pixels'>('icon');
   let converted = $state<Converted>();
   let tiles = $state<{ size: number; url: string }[]>([]);
@@ -77,16 +120,40 @@
   // again while the engine was busy) is thrown away instead of shown.
   let latest = 0;
 
-  // The picture shown, kept so it can be opened again after a batch has used the engine.
-  let previewBytes = new Uint8Array();
-  // A batch run is going on: the engine is busy with it, so the preview waits.
-  let running = $state(false);
-  let progress = $state<{ done: number; total: number; name: string } | null>(null);
-  let results = $state<{ name: string; ok: boolean; message: string }[]>([]);
+  // The icon of the queue this picture is (an icon that was opened from it, or added from here).
+  // svelte-ignore state_referenced_locally
+  let editId = $state<number | undefined>(editing?.id);
+  // Changes to that icon go into the queue on their own, unless this is switched off.
+  let autoSave = $state(loadAutoSave());
+  // The settings as they were when the queue last got this icon (null until the first conversion of a turn).
+  let savedSignature = $state<string | null>(null);
+  let signature = $derived(JSON.stringify($state.snapshot(settings)));
+  let dirty = $derived(editId !== undefined && savedSignature !== null && signature !== savedSignature);
+  let saving = $state(false);
 
   // The crop frame. It is `settings.crop` only while crop is on and the frame
   // is smaller than the picture; the frame itself is kept while it is off.
   let cropOn = $state(false);
+  // The crop frame is being set in the preview (the "mask"): the picture is shown with the frame on it.
+  let masking = $state(false);
+  // Locked: the frame stays and the picture is moved under it. Unlocked: the frame has handles.
+  let cropLocked = $state(true);
+  // The detailed controls are folded away until asked for.
+  let advanced = $state(false);
+  // The settings beside the preview can be folded to a slim row of icons, for a wider preview.
+  let sideOpen = $state(loadSideOpen());
+  let flashExpand = $state(false);
+  function setSide(open: boolean) {
+    sideOpen = open;
+    saveSideOpen(open);
+  }
+  function openAdvanced() {
+    advanced = true;
+    setSide(true);
+  }
+  // Picking the color to remove: the pixel view is shown, without the background
+  // removal (or the color would already be gone), and a click on a pixel takes it.
+  let picking = $state(false);
   let cropAspect = $state<AspectChoice>('free');
   let frame = $state<Rect>({ x: 0, y: 0, width: 1, height: 1 });
   let picture = $derived(opened ? { width: opened.width, height: opened.height } : undefined);
@@ -99,11 +166,12 @@
     originalUrl = URL.createObjectURL(file);
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
-      previewBytes = bytes.slice();
       opened = await openPicture(bytes, file.name);
-      frame = fullRect(opened);
+      // An icon from the queue comes back with its crop frame.
+      frame = startCrop ? { ...startCrop } : fullRect(opened);
+      cropOn = startCrop !== null;
     } catch (error) {
-      openFailure = error instanceof Error ? error.message : String(error);
+      openFailure = explain(error);
     }
   });
 
@@ -129,10 +197,14 @@
   // Make the icon again whenever a setting changes - after a short pause, so
   // dragging a slider does not start a conversion for every pixel it moves.
   $effect(() => {
-    if (!opened || running) return;
+    if (!opened) return;
     // The website package has a favicon.ico of fixed sizes, and an Apple icon.
-    const favicon = settings.format === 'favicon' && !batch;
-    const options = toEngineOptions(favicon ? { ...settings, sizes: FAVICON_SIZES } : settings);
+    const favicon = settings.format === 'favicon';
+    const options = toEngineOptions({
+      ...settings,
+      ...(favicon ? { sizes: FAVICON_SIZES } : {}),
+      removeBackground: settings.removeBackground && !picking,
+    });
     const apple = settings.appleBackground;
     if (!favicon && settings.sizes.length === 0) {
       converted = undefined;
@@ -144,11 +216,11 @@
     working = true;
     const timer = setTimeout(async () => {
       try {
-        const result = await convert(options);
+        const result = await convertLatest(options);
         if (mine !== latest) return;
         let appleImage: Uint8Array | undefined;
         if (favicon) {
-          appleImage = (await convert({ ...options, format: 'png', sizes: [180], flatten: apple })).bytes;
+          appleImage = (await convertLatest({ ...options, format: 'png', sizes: [180], flatten: apple })).bytes;
         }
         if (mine !== latest) return;
         converted = result;
@@ -158,17 +230,12 @@
         convertFailure = '';
       } catch (error) {
         if (mine !== latest) return;
-        convertFailure = error instanceof Error ? error.message : String(error);
+        convertFailure = explain(error);
       } finally {
         if (mine === latest) working = false;
       }
     }, 120);
     return () => clearTimeout(timer);
-  });
-
-  // A batch makes icons, not website packages.
-  $effect(() => {
-    if (batch && settings.format === 'favicon') settings.format = 'ico';
   });
 
   // The lines for the page's head, for the colors as they are now (the package
@@ -190,8 +257,9 @@
   }
 
   // Remember the settings for the next visit.
+  // (Not while an icon of the queue is edited: that one has its own settings.)
   $effect(() => {
-    saveSettings($state.snapshot(settings));
+    if (!editing) saveSettings($state.snapshot(settings));
   });
 
   function usePreset(preset: Preset) {
@@ -200,9 +268,94 @@
     settings = { ...withPreset($state.snapshot(settings), preset), crop };
   }
 
-  function resetSettings() {
-    settings = { ...defaultSettings(), crop: settings.crop };
+  // Everything back to how the page starts, the crop frame included.
+  let siteDialog = $state<HTMLDialogElement>();
+  let confirmingReset = $state(false);
+  let keepResetButton = $state<HTMLButtonElement>();
+
+  function askReset() {
+    confirmingReset = true;
+    void tick().then(() => keepResetButton?.focus());
   }
+
+  function resetSettings() {
+    settings = defaultSettings();
+    keptColors = [];
+    customColor = '#3b82f6';
+    backdrop = 'checker';
+    confirmingReset = false;
+  }
+
+  let isDefault = $derived(
+    keptColors.length === 0 && JSON.stringify($state.snapshot(settings)) === JSON.stringify(defaultSettings()),
+  );
+
+  function startPicking() {
+    picking = true;
+    view = 'pixels';
+    document.getElementById('preview-title')?.scrollIntoView({ block: 'nearest' });
+  }
+
+  // A click on a pixel: its color is the one to remove, and the removal is on.
+  function usePicked(color: string) {
+    settings.backgroundColor = color;
+    settings.backgroundAuto = false;
+    settings.removeBackground = true;
+    // After picking, show the icon again; from the plain pixel view, stay there.
+    if (picking) view = 'icon';
+    picking = false;
+    showBackgroundSettings();
+  }
+
+  // Show where the color went: open the advanced editor, bring the background
+  // settings into view and let them flash once.
+  let flashBackground = $state(false);
+  async function showBackgroundSettings() {
+    advanced = true;
+    sideOpen = true;
+    await tick();
+    document.getElementById('background-settings')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    flashBackground = false;
+    await tick();
+    flashBackground = true;
+    setTimeout(() => (flashBackground = false), 1600);
+  }
+
+  // Leaving the pixel view ends the picking.
+  $effect(() => {
+    if (view !== 'pixels') picking = false;
+  });
+
+  // The settings were folded away by starting the crop (and are opened again when it ends).
+  let foldedByCrop = false;
+
+  function endMask() {
+    masking = false;
+    if (foldedByCrop) setSide(true);
+    foldedByCrop = false;
+  }
+
+  function toggleMask() {
+    if (masking) return endMask();
+    masking = true;
+    cropOn = true;
+    view = 'icon';
+    // The preview gets the room; the way back to the settings lights up once.
+    foldedByCrop = sideOpen;
+    if (sideOpen) {
+      setSide(false);
+      flashExpand = true;
+      setTimeout(() => (flashExpand = false), 1800);
+    }
+  }
+
+  // Another view ends the mask.
+  $effect(() => {
+    if (view !== 'icon') {
+      masking = false;
+      foldedByCrop = false;
+    }
+  });
 
   function chooseAspect(choice: AspectChoice) {
     cropAspect = choice;
@@ -215,45 +368,96 @@
     frame = clampRect({ ...frame, [field]: value }, picture);
   }
 
-  async function convertAll() {
-    if (!batch || running) return;
-    running = true;
-    results = [];
-    const format = settings.format === 'favicon' ? 'ico' : settings.format;
-    const options = toEngineOptions({ ...$state.snapshot(settings), crop: null }, format);
-    const made: { name: string; bytes: Uint8Array }[] = [];
+  // What the icon is made of, as the queue keeps it; nothing if there is nothing to keep.
+  async function madeForQueue() {
+    if (!converted || settings.format === 'favicon') return undefined;
+    const format = settings.format;
+    const bytes = format === 'ico' ? converted.bytes : (await convert(toEngineOptions(settings, 'icns'))).bytes;
+    return { file, settings: $state.snapshot(settings) as Settings, format, bytes, preview: converted.bytes };
+  }
+
+  // Keep this icon in the queue and go back to choose the next picture.
+  async function addToQueue() {
+    const made = await madeForQueue();
+    if (!made) return;
+    editId = queue.add(file.name, made).id;
+  }
+
+  // Save the changes to the icon of the queue that is being edited.
+  async function saveEditing(announce = true) {
+    if (editId === undefined) return;
+    const now = signature;
+    saving = true;
     try {
-      for (const [at, item] of batch.items.entries()) {
-        progress = { done: at, total: batch.items.length, name: item.name };
-        try {
-          await openPicture(await item.load(), item.name);
-          const result = await convert(options);
-          made.push({
-            name: outputName(made.map((m) => m.name), item.name, format),
-            bytes: result.bytes,
-          });
-          results.push({
-            name: item.name,
-            ok: true,
-            message: result.warnings.length > 0 ? t('batch.warnings', { count: result.warnings.length }) : '',
-          });
-        } catch (error) {
-          results.push({ name: item.name, ok: false, message: error instanceof Error ? error.message : String(error) });
-        }
-      }
-      progress = { done: batch.items.length, total: batch.items.length, name: '' };
-      if (made.length > 0) {
-        saveBytes(await buildZip(made), `${batch.archive}_icons.zip`, ZIP_TYPE);
+      const made = await madeForQueue();
+      if (made) {
+        queue.update(editId, made, announce);
+        savedSignature = now;
       }
     } finally {
-      // The engine goes back to the picture that is shown.
-      try {
-        await openPicture(previewBytes.slice(), file.name);
-      } catch {
-        // The preview picture opened before, so this does not fail in practice.
-      }
-      running = false;
+      saving = false;
     }
+  }
+
+  // With auto-save, each change is in the queue shortly after the preview has been made again.
+  $effect(() => {
+    if (editId === undefined || !converted || working) return;
+    const now = signature;
+    if (savedSignature === null) {
+      savedSignature = now;
+      return;
+    }
+    if (!autoSave || now === savedSignature) return;
+    const timer = setTimeout(() => void saveEditing(false), 300);
+    return () => clearTimeout(timer);
+  });
+
+  // What reads the queue (a download, say) first asks for the last changes to be put into it:
+  // it waits for the preview to be made again, then saves at once instead of after the pause.
+  let idleWaiters: (() => void)[] = [];
+  $effect(() => {
+    if (!working) idleWaiters.splice(0).forEach((resolve) => resolve());
+  });
+  const untilIdle = () => (working ? new Promise<void>((resolve) => idleWaiters.push(resolve)) : Promise.resolve());
+  onMount(() => {
+    queue.setFlusher(async () => {
+      if (editId === undefined || !autoSave) return;
+      await untilIdle();
+      if (dirty) await saveEditing(false);
+    });
+    return () => queue.setFlusher(null);
+  });
+
+  // Before leaving the icon being edited: save its changes (auto-save), or ask when they would be lost.
+  async function settle(announce: boolean): Promise<boolean> {
+    if (editId === undefined) return true;
+    if (autoSave) {
+      await saveEditing(announce);
+      return true;
+    }
+    return !dirty || confirm(t('queue.leave_unsaved', { name: queue.find(editId)?.fileName ?? file.name }));
+  }
+
+  // The next picture comes: this icon is kept in the queue first (added, or updated).
+  async function nextPicture(files: File[]) {
+    if (editId !== undefined) {
+      if (!(await settle(false))) return;
+    } else {
+      const made = await madeForQueue();
+      if (made) queue.add(file.name, made);
+    }
+    onnext(files);
+  }
+
+  // Going back, or to another icon of the queue, keeps the changes of the one being edited.
+  async function leave() {
+    if (!(await settle(true))) return;
+    onback();
+  }
+
+  async function jump(item: QueueItem) {
+    if (!(await settle(false))) return;
+    onopenitem?.(item);
   }
 
   async function downloadPngZip() {
@@ -272,7 +476,7 @@
         snippet = pack.snippet;
         saveBytes(pack.zip, downloadName(file.name, 'favicon'), ZIP_TYPE);
       } catch (error) {
-        convertFailure = error instanceof Error ? error.message : String(error);
+        convertFailure = explain(error);
       } finally {
         packing = false;
       }
@@ -295,42 +499,173 @@
 
 {#if openFailure}
   <p class="failure" role="alert">{t('state.failed', { reason: openFailure })}</p>
-  <button type="button" onclick={onback}>{t('state.back')}</button>
+  <button type="button" onclick={onback}><Icon name="back" />{t('state.back')}</button>
 {:else if !opened}
   <p class="working" role="status">{t('state.opening', { name: file.name })}</p>
 {:else}
+  <!-- On a wide window the queue (and its note) is a column to the left of the editor. -->
+  <div class="workspace" class:with-queue={queue.items.length > 0}>
   <div class="bar">
-    <button type="button" class="quiet" onclick={onback}>← {t('state.back')}</button>
+    <button type="button" class="quiet" onclick={leave}><Icon name="back" />{t('state.back')}</button>
     <span class="file">{file.name}</span>
+    <figure class="original">
+      <img src={originalUrl} alt={t('editor.source')} />
+      <figcaption>
+        {opened.vector
+          ? t('editor.source_vector', { width: opened.width, height: opened.height })
+          : t('editor.source_size', { width: opened.width, height: opened.height })}
+      </figcaption>
+    </figure>
+    <button type="button" class="outline reset" onclick={askReset} disabled={isDefault} title={t('editor.reset_hint')}>
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+      {t('editor.reset')}
+    </button>
   </div>
 
-  <div class="editor">
+  {#if confirmingReset}
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+    <div class="confirm" role="group" aria-label={t('editor.reset')} onkeydown={(e) => e.key === 'Escape' && (confirmingReset = false)}>
+      <p>{t('editor.reset_ask')}</p>
+      <button type="button" class="danger" onclick={resetSettings}><Icon name="reset" />{t('editor.reset_yes')}</button>
+      <button type="button" class="outline" bind:this={keepResetButton} onclick={() => (confirmingReset = false)}><Icon name="close" />{t('editor.reset_no')}</button>
+    </div>
+  {/if}
+
+  {#if editId !== undefined}
+    <div class="editing-note" role="status">
+      <span>{t('queue.editing_note', { name: queue.find(editId)?.fileName ?? file.name })}</span>
+      <label class="autosave">
+        <input type="checkbox" bind:checked={autoSave} onchange={() => saveAutoSave(autoSave)} />
+        {t('queue.autosave')}
+      </label>
+      <span class="save-state" class:pending={dirty || saving}>
+        {dirty || saving ? (autoSave ? t('queue.saving') : t('queue.unsaved')) : t('queue.saved')}
+      </span>
+    </div>
+  {/if}
+
+  <div class="main">
+  <section class="download">
+    <div class="download-row">
+      <fieldset class="formats">
+        <legend class="sr-only">{t('download.format')}</legend>
+        <label title={t('download.ico_hint')}><input type="radio" name="format" value="ico" bind:group={settings.format} /> {t('download.ico')}</label>
+        <label title={t('download.icns_hint')}><input type="radio" name="format" value="icns" bind:group={settings.format} /> {t('download.icns')}</label>
+        <label title={t('download.favicon_hint')}><input type="radio" name="format" value="favicon" bind:group={settings.format} onchange={() => siteDialog?.showModal()} /> {t('download.favicon')}</label>
+        {#if settings.format === 'favicon'}
+          <button type="button" class="gear" title={t('site.configure')} aria-label={t('site.configure')} onclick={() => siteDialog?.showModal()}>
+            <Icon name="gear" size={16} />
+          </button>
+        {/if}
+      </fieldset>
+      <div class="download-actions">
+        {#if settings.format !== 'favicon'}
+          <button type="button" class="outline icon-button" title={t('download.png_zip')} aria-label={t('download.png_zip')} onclick={downloadPngZip} disabled={!converted || working}>
+            <Icon name="archive" />
+          </button>
+        {/if}
+        {#if editId !== undefined}
+          <button
+            type="button"
+            class="outline icon-button"
+            onclick={() => saveEditing()}
+            disabled={!converted || working || packing || settings.format === 'favicon'}
+            title={settings.format === 'favicon' ? t('queue.add_favicon') : t('queue.update')}
+            aria-label={t('queue.update')}
+          >
+            <Icon name="queueAdd" />
+          </button>
+        {/if}
+        <button
+          type="button"
+          class="outline icon-button"
+          onclick={addToQueue}
+          disabled={!converted || working || packing || settings.format === 'favicon'}
+          title={settings.format === 'favicon' ? t('queue.add_favicon') : editId !== undefined ? t('queue.add_new') : t('queue.add_hint')}
+          aria-label={editId !== undefined ? t('queue.add_new') : t('queue.add')}
+        >
+          <Icon name={editId !== undefined ? 'plus' : 'queueAdd'} />
+        </button>
+        <button type="button" class="primary" onclick={download} disabled={!converted || working || packing}>
+          <Icon name="download" />
+          {packing ? t('site.building') : t('download.button', { name: downloadName(file.name, settings.format) })}
+        </button>
+      </div>
+    </div>
+    {#if settings.format === 'icns'}<p class="hint">{t('download.icns_note')}</p>{/if}
+  </section>
+  <div class="editor" class:folded={!sideOpen}>
     <section class="preview" aria-labelledby="preview-title">
       <h2 id="preview-title">{t('editor.preview')}</h2>
 
-      <div class="backdrops" role="radiogroup" aria-label={t('editor.background')}>
-        {#each BACKDROPS as choice (choice)}
-          <label class:chosen={backdrop === choice}>
-            <input type="radio" name="backdrop" value={choice} bind:group={backdrop} />
-            {t(`editor.bg_${choice}`)}
+      <div class="views-row">
+      <div class="views" role="radiogroup" aria-label={t('editor.view')}>
+        {#each VIEWS as choice (choice.id)}
+          <label class:chosen={view === choice.id}>
+            <input type="radio" name="view" value={choice.id} bind:group={view} />
+            <Icon name={choice.icon} />
+            {t(`editor.view_${choice.id}`)}
+          </label>
+        {/each}
+      </div>
+      {#if !opened.vector && picture && view === 'icon'}
+        <button
+          type="button"
+          class="chip crop-toggle"
+          class:chosen={masking}
+          aria-pressed={masking}
+          title={t('crop.use')}
+          onclick={toggleMask}
+        >
+          <Icon name="crop" size={16} />
+          {t('crop.button')}
+          {#if settings.crop && !masking}<span class="dot" aria-label={t('crop.active')}></span>{/if}
+        </button>
+      {/if}
+      </div>
+
+      <div class="preview-body">
+      <div class="swatches" role="group" aria-label={t('editor.background')} onpointerleave={() => (hovered = null)}>
+        {#each [...NAMED, ...keptColors, 'picker'] as choice (choice)}
+          {@const name = choice === 'picker' ? t('editor.bg_custom') : choice.startsWith('#') ? choice : t(`editor.bg_${choice}`)}
+          <label
+            class:chosen={backdrop === choice}
+            title={name}
+            onpointerenter={() => (hovered = choice)}
+            onfocusin={() => (hovered = choice)}
+            onfocusout={() => (hovered = null)}
+          >
+            <input type="radio" name="backdrop" value={choice} aria-label={name} bind:group={backdrop} />
+            <span class="sw {NAMED.includes(choice) ? choice : 'custom'}" style={choice === 'picker' ? `background:${customColor}` : choice.startsWith('#') ? `background:${choice}` : undefined}>
+              {#if choice === 'picker'}
+                <input
+                  type="color"
+                  class="sw-color"
+                  aria-label={t('editor.bg_custom_pick')}
+                  bind:value={customColor}
+                  oninput={() => (backdrop = 'picker')}
+                  onchange={keepColor}
+                />
+              {/if}
+            </span>
           </label>
         {/each}
       </div>
 
-      <div class="chips views" role="radiogroup" aria-label={t('editor.view')}>
-        {#each ['icon', 'compare', 'pixels'] as choice (choice)}
-          <label class:chosen={view === choice}>
-            <input type="radio" name="view" value={choice} bind:group={view} />
-            {t(`editor.view_${choice}`)}
-          </label>
-        {/each}
-      </div>
-
-      <div class="stage {backdrop}" aria-live="polite">
+      <div class="preview-main">
+      <div class="stage {surfaceClass}" style={surface} aria-live="polite">
         {#if settings.sizes.length === 0}
           <p class="note">{t('editor.no_sizes')}</p>
+        {:else if masking && view === 'icon' && picture}
+          <CropTool src={originalUrl} size={picture} bind:rect={frame} aspect={aspectValue(cropAspect)} locked={cropLocked} />
         {:else if converted && tiles.length > 0 && view === 'pixels'}
-          <PixelInspector bytes={converted.bytes} sizes={tiles.map((tile) => tile.size)} />
+          <PixelInspector
+            bytes={converted.bytes}
+            sizes={tiles.map((tile) => tile.size)}
+            {picking}
+            onuse={usePicked}
+            oncancel={() => (picking = false)}
+          />
         {:else if largest && view === 'compare' && picture}
           <Compare before={originalUrl} after={largest.url} {picture} crop={settings.crop} />
         {:else if largest}
@@ -341,8 +676,54 @@
         {/if}
       </div>
 
+      {#if masking && view === 'icon' && picture}
+        <div class="mask">
+          <h3 class="mask-title">{t('crop.use')}</h3>
+          <div class="mask-grid">
+    <div class="chips aspects" role="radiogroup" aria-label={t('crop.aspect')}>
+      <button
+        type="button"
+        class="chip lock-toggle"
+        class:chosen={!cropLocked}
+        aria-pressed={!cropLocked}
+        title={t(cropLocked ? 'crop.lock_on' : 'crop.lock_off')}
+        aria-label={t(cropLocked ? 'crop.lock_on' : 'crop.lock_off')}
+        onclick={() => (cropLocked = !cropLocked)}
+      >
+        <Icon name={cropLocked ? 'lock' : 'unlock'} size={16} />
+      </button>
+      {#each ASPECTS as choice (choice)}
+        <label class:chosen={cropAspect === choice} title={choice === 'free' ? t('crop.aspect_free') : choice}>
+          <input type="radio" name="crop-aspect" value={choice} checked={cropAspect === choice} onchange={() => chooseAspect(choice)} />
+          {choice === 'free' ? t('crop.aspect_free') : choice}
+        </label>
+      {/each}
+    </div>
+    <div class="numbers sides">
+      {#each [['x', 'crop.x', 'cropLeft'], ['y', 'crop.y', 'cropTop'], ['width', 'crop.width', 'cropWidth'], ['height', 'crop.height', 'cropHeight']] as [field, label, icon] (field)}
+        <label title={t(`${label}_hint`)}>
+          <span><Icon name={icon as IconName} size={22} />{t(label)}</span>
+          <input
+            type="number"
+            min="0"
+            max={field === 'x' || field === 'width' ? picture.width : picture.height}
+            value={frame[field as keyof Rect]}
+            onchange={(e) => setFrame(field as keyof Rect, e.currentTarget.valueAsNumber)}
+          />
+        </label>
+      {/each}
+    </div>
+          </div>
+          <p class="hint">{t(cropLocked ? 'crop.hint' : 'crop.hint_unlocked')}</p>
+          <div class="mask-actions">
+            <button type="button" class="primary small" onclick={endMask}><Icon name="check" size={16} />{t('crop.done')}</button>
+            <button type="button" class="quiet small" onclick={() => (frame = fullRect(picture))} disabled={isFull(frame, picture)}><Icon name="reset" size={16} />{t('crop.reset')}</button>
+          </div>
+        </div>
+      {/if}
+
       {#if smaller.length > 0}
-        <ul class="tiles {backdrop}">
+        <ul class="tiles {surfaceClass}" style={surface}>
           {#each smaller as tile (tile.size)}
             <li>
               <img src={tile.url} alt="" width={tile.size} height={tile.size} />
@@ -351,6 +732,8 @@
           {/each}
         </ul>
       {/if}
+      </div>
+      </div>
       {#if tiles.length > 0}<p class="hint">{t('editor.preview_note')}</p>{/if}
 
       {#if working}<p class="hint" role="status">{t('editor.working')}</p>{/if}
@@ -361,22 +744,19 @@
         <h3>{t('editor.warnings')}</h3>
         <ul class="findings warn">
           {#each converted.warnings as warning}
-            <li>{warning.replace(/^Warning:\s*/, '')}</li>
+            <li>{friendly(warning)}</li>
           {/each}
         </ul>
       {/if}
     </section>
 
+    {#if sideOpen}
     <section class="controls" aria-label={t('controls.look')}>
-      <figure class="original">
-        <img src={originalUrl} alt={t('editor.source')} />
-        <figcaption>
-          {opened.vector
-            ? t('editor.source_vector', { width: opened.width, height: opened.height })
-            : t('editor.source_size', { width: opened.width, height: opened.height })}
-        </figcaption>
-      </figure>
-
+      <div class="side-head">
+        <button type="button" class="quiet small" title={t('side.collapse')} aria-label={t('side.collapse')} onclick={() => setSide(false)}>
+          <Icon name="collapse" size={16} />
+        </button>
+      </div>
       <fieldset class="presets">
         <legend>{t('presets.title')}</legend>
         {#each [{ label: 'presets.use', list: USE_PRESETS }, { label: 'presets.style', list: STYLE_PRESETS }] as group (group.label)}
@@ -390,62 +770,27 @@
                   class:chosen={isActive(settings, preset)}
                   aria-pressed={isActive(settings, preset)}
                   title={t(`preset.${preset.id}_hint`)}
-                  onclick={() => usePreset(preset)}>{t(`preset.${preset.id}`)}</button
+                  onclick={() => usePreset(preset)}
                 >
+                  <Icon name={preset.id as IconName} size={16} />
+                  {t(`preset.${preset.id}`)}
+                </button>
               {/each}
             </div>
           </div>
         {/each}
         <div class="preset-foot">
-          <button type="button" class="quiet" onclick={resetSettings}>{t('presets.reset')}</button>
-          <span class="hint">{t('presets.remembered')}</span>
+          {#if !editing}<span class="hint">{t('presets.remembered')}</span>{/if}
         </div>
       </fieldset>
 
-      {#if !batch && !opened.vector && picture}
-        <fieldset class:empty={!cropOn}>
-          <legend>
-            <label><input type="checkbox" bind:checked={cropOn} /> {t('crop.use')}</label>
-          </legend>
-          {#if cropOn}
-            <div class="chips" role="radiogroup" aria-label={t('crop.aspect')}>
-              {#each ASPECTS as choice (choice)}
-                <label class:chosen={cropAspect === choice}>
-                  <input
-                    type="radio"
-                    name="crop-aspect"
-                    value={choice}
-                    checked={cropAspect === choice}
-                    onchange={() => chooseAspect(choice)}
-                  />
-                  {choice === 'free' ? t('crop.aspect_free') : choice}
-                </label>
-              {/each}
-            </div>
-            <CropTool src={originalUrl} size={picture} bind:rect={frame} aspect={aspectValue(cropAspect)} />
-            <p class="hint">{t('crop.hint')}</p>
-            <div class="numbers">
-              {#each [['x', 'crop.x'], ['y', 'crop.y'], ['width', 'crop.width'], ['height', 'crop.height']] as [field, label] (field)}
-                <label>
-                  <span>{t(label)}</span>
-                  <input
-                    type="number"
-                    min="0"
-                    max={field === 'x' || field === 'width' ? picture.width : picture.height}
-                    value={frame[field as keyof Rect]}
-                    onchange={(e) => setFrame(field as keyof Rect, e.currentTarget.valueAsNumber)}
-                  />
-                </label>
-              {/each}
-            </div>
-            <button type="button" class="quiet" onclick={() => (frame = fullRect(picture))} disabled={isFull(frame, picture)}>
-              {t('crop.reset')}
-            </button>
-          {/if}
-        </fieldset>
-      {/if}
-
-      {#if settings.format !== 'favicon' || batch}
+      <details class="advanced" bind:open={advanced}>
+        <summary>
+          <span>{t('advanced.title')}</span>
+          <small>{t('advanced.hint')}</small>
+        </summary>
+        <div class="advanced-body">
+      {#if settings.format !== 'favicon'}
       <fieldset>
         <legend>{t('controls.sizes')}</legend>
         <div class="checks">
@@ -459,10 +804,41 @@
           class="quiet"
           onclick={() => (settings.sizes = [...DEFAULT_SIZES])}
           disabled={[...settings.sizes].sort((a, b) => a - b).join() === DEFAULT_SIZES.join()}
-          >{t('controls.sizes_reset')}</button
-        >
+          ><Icon name="reset" />{t('controls.sizes_reset')}</button>
       </fieldset>
       {/if}
+
+      <fieldset id="background-settings" class:empty={!settings.removeBackground} class:flash={flashBackground}>
+        <legend>
+          <label><input type="checkbox" bind:checked={settings.removeBackground} /> {t('controls.background')}</label>
+        </legend>
+        {#if settings.removeBackground}
+          <label><input type="checkbox" bind:checked={settings.backgroundAuto} /> {t('controls.bg_auto')}</label>
+          {#if !settings.backgroundAuto}
+            <label class="select">
+              <span>{t('controls.bg_color')}</span>
+              <input type="color" bind:value={settings.backgroundColor} />
+            </label>
+          {/if}
+          <div class="pick-row">
+            <button type="button" class="outline" onclick={startPicking} disabled={settings.sizes.length === 0}>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m2 22 1-1h3l9-9"/><path d="M3 21v-3l9-9"/><path d="m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3z"/></svg>
+              {t('picker.open')}
+            </button>
+          </div>
+          <label class="slider">
+            <span>{t('controls.tolerance')}</span>
+            <input type="range" min="0" max="100" bind:value={settings.tolerance} />
+            <output>{settings.tolerance}</output>
+          </label>
+          <p class="hint">{t('controls.tolerance_hint')}</p>
+          <label class="slider">
+            <span>{t('controls.feather')}</span>
+            <input type="range" min="0" max="100" bind:value={settings.feather} />
+            <output>{settings.feather}%</output>
+          </label>
+        {/if}
+      </fieldset>
 
       <fieldset>
         <legend>{t('controls.look')}</legend>
@@ -491,46 +867,42 @@
         <label><input type="checkbox" bind:checked={settings.trim} /> {t('controls.trim')}</label>
       </fieldset>
 
-      <fieldset class:empty={!settings.removeBackground}>
-        <legend>
-          <label><input type="checkbox" bind:checked={settings.removeBackground} /> {t('controls.background')}</label>
-        </legend>
-        {#if settings.removeBackground}
-          <label><input type="checkbox" bind:checked={settings.backgroundAuto} /> {t('controls.bg_auto')}</label>
-          {#if !settings.backgroundAuto}
-            <label class="select">
-              <span>{t('controls.bg_color')}</span>
-              <input type="color" bind:value={settings.backgroundColor} />
-            </label>
-          {/if}
-          <label class="slider">
-            <span>{t('controls.tolerance')}</span>
-            <input type="range" min="0" max="100" bind:value={settings.tolerance} />
-            <output>{settings.tolerance}</output>
-          </label>
-          <p class="hint">{t('controls.tolerance_hint')}</p>
-          <label class="slider">
-            <span>{t('controls.feather')}</span>
-            <input type="range" min="0" max="100" bind:value={settings.feather} />
-            <output>{settings.feather}%</output>
-          </label>
-        {/if}
-      </fieldset>
+        </div>
+      </details>
     </section>
+    {:else}
+    <aside class="rail" aria-label={t('controls.look')}>
+      <button type="button" class="icon-button outline" class:flash-blue={flashExpand} title={t('side.expand')} aria-label={t('side.expand')} onclick={() => setSide(true)}>
+        <Icon name="expand" size={16} />
+      </button>
+      {#each [USE_PRESETS, STYLE_PRESETS] as list, i (i)}
+        <span class="rail-sep" aria-hidden="true"></span>
+        {#each list as preset (preset.id)}
+          <button
+            type="button"
+            class="icon-button rail-button"
+            class:chosen={isActive(settings, preset)}
+            aria-pressed={isActive(settings, preset)}
+            title={t(`preset.${preset.id}`)}
+            aria-label={t(`preset.${preset.id}`)}
+            onclick={() => usePreset(preset)}
+          >
+            <Icon name={preset.id as IconName} size={16} />
+          </button>
+        {/each}
+      {/each}
+      <span class="rail-sep" aria-hidden="true"></span>
+      <button type="button" class="icon-button rail-button" title={t('advanced.title')} aria-label={t('advanced.title')} onclick={openAdvanced}>
+        <Icon name="sliders" size={16} />
+      </button>
+    </aside>
+    {/if}
   </div>
 
-  <section class="download">
-    <fieldset class="formats">
-      <legend>{t('download.format')}</legend>
-      <label><input type="radio" name="format" value="ico" bind:group={settings.format} /> {t('download.ico')}</label>
-      <label><input type="radio" name="format" value="icns" bind:group={settings.format} /> {t('download.icns')}</label>
-      {#if !batch}
-        <label><input type="radio" name="format" value="favicon" bind:group={settings.format} /> {t('download.favicon')}</label>
-      {/if}
-    </fieldset>
-    {#if settings.format === 'favicon' && !batch}
+  </div>
+  <dialog class="site-dialog" bind:this={siteDialog} aria-labelledby="site-title" onclick={(e) => e.target === siteDialog && siteDialog?.close()}>
       <div class="site">
-        <h3>{t('site.title')}</h3>
+        <h3 id="site-title">{t('site.title')}</h3>
         <p class="hint">{t('site.contents', { svg: opened.vector ? t('site.svg') : '' })}</p>
         <label class="field">
           <span>{t('site.name')}</span>
@@ -554,43 +926,13 @@
         {/if}
         <p class="hint">{t('site.snippet')}</p>
         <pre class="snippet">{snippet}</pre>
-        <button type="button" class="quiet" onclick={copySnippet}>{copied ? t('site.copied') : t('site.copy')}</button>
+        <button type="button" class="quiet" onclick={copySnippet}><Icon name="copy" />{copied ? t('site.copied') : t('site.copy')}</button>
       </div>
-    {/if}
-    {#if batch}
-      <button type="button" class="primary" onclick={convertAll} disabled={running || settings.sizes.length === 0}>
-        {t('batch.convert', { count: batch.items.length })}
-      </button>
-      {#if settings.format === 'icns'}<p class="hint">{t('download.icns_note')}</p>{/if}
-      <p class="hint">{t('batch.preview')}</p>
-      {#each batch.notes as note}<p class="hint">{note}</p>{/each}
-      {#if progress}
-        <progress max={progress.total} value={progress.done} aria-label={t('batch.progress')}></progress>
-        <p class="hint" role="status">
-          {progress.name
-            ? t('batch.working', { done: progress.done + 1, total: progress.total, name: progress.name })
-            : t('batch.finished', { count: results.filter((r) => r.ok).length, failed: results.filter((r) => !r.ok).length })}
-        </p>
-      {/if}
-      {#if results.length > 0}
-        <ul class="results">
-          {#each results as result}
-            <li class:bad={!result.ok}>
-              {result.ok ? '✓' : '✗'} {result.name}{#if result.message}{' - '}{result.message}{/if}
-            </li>
-          {/each}
-        </ul>
-      {/if}
-    {:else}
-      <button type="button" class="primary" onclick={download} disabled={!converted || working || packing}>
-        {packing ? t('site.building') : t('download.button', { name: downloadName(file.name, settings.format) })}
-      </button>
-      {#if settings.format !== 'favicon'}
-        <button type="button" onclick={downloadPngZip} disabled={!converted || working}>
-          {t('download.png_zip')}
-        </button>
-      {/if}
-      {#if settings.format === 'icns'}<p class="hint">{t('download.icns_note')}</p>{/if}
-    {/if}
-  </section>
+    <div class="dialog-actions">
+      <button type="button" class="primary" onclick={() => siteDialog?.close()}><Icon name="check" />{t('site.done')}</button>
+    </div>
+  </dialog>
+  <DropOverlay onfiles={nextPicture} label={t('queue.drop')} />
+  <Queue activeId={editId} onopen={jump} onnext={nextPicture} onpicture={nextPicture} />
+  </div>
 {/if}

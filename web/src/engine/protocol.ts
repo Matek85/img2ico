@@ -18,7 +18,6 @@ export type Request =
   | { id: number; op: 'describe'; bytes: Uint8Array }
   | { id: number; op: 'extract'; bytes: Uint8Array; index: number }
   | { id: number; op: 'select'; bytes: Uint8Array; indices: number[] }
-  | { id: number; op: 'merge'; files: { name: string; bytes: Uint8Array }[] }
   | { id: number; op: 'faviconPack'; options: EngineOptions; meta: { name: string; themeColor: string; appleBackground: string } }
   | { id: number; op: 'faviconSnippet'; hasSvg: boolean; themeColor: string }
   | { id: number; op: 'zipOpen'; bytes: Uint8Array }

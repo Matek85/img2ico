@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from './Icon.svelte';
   import { t } from '../i18n';
 
   let { onfiles }: { onfiles: (files: File[]) => void } = $props();
@@ -40,9 +41,10 @@
   ondragleave={() => (dragging = false)}
   ondrop={onDrop}
 >
+  <svg class="up" viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 8.5a4 4 0 0 1-.5 9.5"/><path d="M12 21v-9m0 0-3 3m3-3 3 3"/></svg>
   <p class="prompt">{dragging ? t('drop.active') : t('drop.prompt')}</p>
   <p class="or">{t('drop.or')}</p>
-  <button type="button" onclick={() => input?.click()}>{t('drop.choose')}</button>
+  <button type="button" class="choose" onclick={() => input?.click()}><Icon name="upload" />{t('drop.choose')}</button>
   <input
     bind:this={input}
     type="file"

@@ -1,31 +1,48 @@
 /* Colours are variables so the dark theme is one block. The theme follows the
-   system setting; there is nothing to switch yet. */
+   system setting; there is nothing to switch yet. --accent is a fill (buttons)
+   with --accent-text on it; --link is blue as text on the page background. */
 :root {
   color-scheme: light dark;
-  --bg: #f7f7f9;
+  --bg: #f4f7fc;
   --surface: #ffffff;
-  --text: #1c1c22;
-  --muted: #5d5d6b;
-  --border: #d4d4de;
-  --accent: #3b5bdb;
+  --text: #0f172a;
+  --muted: #526078;
+  --border: #d5dcea;
+  --accent: #2563eb;
+  --accent-hover: #1d4fd8;
   --accent-text: #ffffff;
+  --link: #1d4fd8;
+  --tint: #e4ecfd;
+  --hero-from: #dbe7ff;
   --ok: #1b7f3b;
   --warn: #946200;
   --bad: #b3261e;
+  --on-bad: #ffffff;
+  --warn-bg: #fff3d6;
+  --warn-text: #7a4b00;
+  --shadow: 0 10px 30px rgba(30, 64, 175, 0.12);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #14141a;
-    --surface: #1d1d26;
-    --text: #ececf2;
-    --muted: #a3a3b3;
-    --border: #3a3a48;
-    --accent: #8ba4ff;
-    --accent-text: #10131f;
+    --bg: #0e1118;
+    --surface: #161b26;
+    --text: #eef2fa;
+    --muted: #9ba6bb;
+    --border: #283042;
+    --accent: #2f6df0;
+    --accent-hover: #4a82f5;
+    --accent-text: #ffffff;
+    --link: #7fa5ff;
+    --tint: #1b2740;
+    --hero-from: #16264a;
     --ok: #5fd68a;
     --warn: #f0c060;
     --bad: #ff8a80;
+    --on-bad: #3b0a06;
+    --warn-bg: #3a2a08;
+    --warn-text: #ffd27a;
+    --shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
   }
 }
 
@@ -37,13 +54,8 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font: 16px/1.5 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-}
-
-main {
-  max-width: 40rem;
-  margin: 0 auto;
-  padding: 2rem 1rem 3rem;
+  /* Source Sans (called Source Sans Pro before version 3), delivered with the page. */
+  font: 17px/1.5 'Source Sans 3 Variable', 'Source Sans Pro', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 
 h1 {
@@ -61,7 +73,6 @@ h3 {
   font-size: 1rem;
 }
 
-.tagline,
 .meta,
 .hint,
 .or,
@@ -69,11 +80,6 @@ footer {
   color: var(--muted);
 }
 
-.tagline {
-  margin: 0.25rem 0 1.5rem;
-}
-
-.drop,
 .result {
   background: var(--surface);
   border: 2px dashed var(--border);
@@ -86,15 +92,6 @@ footer {
   border-style: solid;
   padding: 1.5rem;
   text-align: left;
-}
-
-.drop.active {
-  border-color: var(--accent);
-}
-
-.prompt {
-  margin: 0;
-  font-size: 1.15rem;
 }
 
 .or {
@@ -157,6 +154,7 @@ button:hover {
 
 footer {
   margin-top: 2rem;
+  padding-bottom: 3rem;
   font-size: 0.875rem;
   text-align: center;
 }
@@ -171,17 +169,516 @@ footer p {
   }
 }
 
-/* --- the editor ------------------------------------------------------- */
+/* --- the page around the app ------------------------------------------ */
 
-main.wide {
+.shell {
+  max-width: 64rem;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+.part {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+body.wide .part {
   max-width: 64rem;
 }
+
+a {
+  color: var(--link);
+}
+
+.topbar {
+  background: var(--hero-from);
+}
+
+.topbar .shell {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 4rem;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: var(--text);
+  font-size: 1.35rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.brand img {
+  border-radius: 50%;
+}
+
+.topbar nav {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.topbar nav > a {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.topbar nav a,
+.menu summary {
+  color: var(--text);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.topbar nav > a:hover,
+.menu summary:hover {
+  text-decoration: underline;
+}
+
+.menu {
+  position: relative;
+}
+
+.menu summary {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.menu summary::after {
+  content: '';
+  width: 0.45rem;
+  height: 0.45rem;
+  margin-top: -0.2rem;
+  border: solid currentColor;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+  transition: transform 0.15s;
+}
+
+.menu[open] summary::after {
+  margin-top: 0.15rem;
+  transform: rotate(-135deg);
+}
+
+.menu-list {
+  position: absolute;
+  right: 0;
+  z-index: 10;
+  display: grid;
+  min-width: 13rem;
+  margin-top: 0.75rem;
+  padding: 0.4rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  box-shadow: var(--shadow);
+}
+
+.menu-list a {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 0.5rem;
+  white-space: nowrap;
+}
+
+.menu-list a:hover,
+.menu-list a:focus-visible {
+  background: var(--tint);
+  text-decoration: none;
+}
+
+/* The letters sit higher in their line than the middle of the line, so the
+   logos are raised by that much to share one center line with the text. */
+.topbar nav svg,
+.menu-list svg {
+  flex-shrink: 0;
+  transform: translateY(-0.1em);
+}
+
+.menu-list svg {
+  color: var(--muted);
+}
+
+.menu-list .all {
+  margin-top: 0.25rem;
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 0.5rem 0.5rem;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.hero {
+  padding: 1.5rem 0 7rem;
+  background: linear-gradient(var(--hero-from), var(--bg));
+}
+
+.hero .shell {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2rem;
+}
+
+.hero h1 {
+  font-size: clamp(2rem, 5vw, 3.1rem);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.lead {
+  max-width: 36rem;
+  margin: 1rem 0 0;
+  font-size: 1.125rem;
+  color: var(--muted);
+}
+
+/* One picture after another turns into an icon: it shrinks and rounds off,
+   fans out into the sizes of the icon file, and its label changes from the
+   picture type to the icon type. Each scene takes a fifth of the loop. The
+   styles without animation are the finished state, which people who prefer
+   no motion see (of the first scene only). */
+.hero-art {
+  position: relative;
+  flex-shrink: 0;
+  width: 23rem;
+  height: 12rem;
+}
+
+.scene {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+}
+
+.scene:not(:first-child) {
+  display: none;
+}
+
+.hero-art .frame {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 8.5rem;
+  height: 8.5rem;
+}
+
+.hero-art .pic,
+.hero-art .sizes i {
+  background: var(--art);
+  box-shadow: var(--shadow);
+}
+
+.hero-art .pic {
+  width: 6.5rem;
+  height: 6.5rem;
+  border-radius: 1.4rem;
+}
+
+.hero-art .tag {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  display: grid;
+  transform: translateX(-50%);
+  padding: 0.15rem 0.7rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+}
+
+.hero-art .tag b {
+  grid-area: 1 / 1;
+  text-align: center;
+}
+
+.hero-art .tag .from {
+  opacity: 0;
+}
+
+.hero-art .sizes {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.45rem;
+}
+
+.hero-art .sizes i {
+  display: block;
+  border-radius: 22%;
+}
+
+.hero-art .sizes i:nth-child(1) { width: 3.4rem; height: 3.4rem; }
+.hero-art .sizes i:nth-child(2) { width: 2.5rem; height: 2.5rem; }
+.hero-art .sizes i:nth-child(3) { width: 1.8rem; height: 1.8rem; }
+.hero-art .sizes i:nth-child(4) { width: 1.2rem; height: 1.2rem; }
+.hero-art .sizes i:nth-child(5) { width: 0.8rem; height: 0.8rem; }
+
+.art1 { --art: radial-gradient(circle at 72% 28%, #ffd66b 0 15%, transparent 16%), linear-gradient(160deg, #5b9bff, #1e3a8a); }
+.art2 { --art: radial-gradient(circle at 30% 68%, #fff1a8 0 14%, transparent 15%), linear-gradient(#ff9a62, #7b2ff7); }
+.art3 { --art: radial-gradient(circle, #fff 0 22%, transparent 23%), conic-gradient(from 30deg, #22d3ee, #6366f1, #d946ef, #22d3ee); }
+.art4 { --art: radial-gradient(circle at 50% 50%, #fff 0 12%, transparent 13%), repeating-linear-gradient(45deg, #34d399 0 0.6rem, #059669 0.6rem 1.2rem); }
+.art5 { --art: radial-gradient(circle at 35% 35%, #fff 0 10%, transparent 11%), linear-gradient(135deg, #2dd4bf, #2563eb); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .scene,
+  .scene:not(:first-child) {
+    display: flex;
+    opacity: 0;
+    animation: scene-life 20s infinite;
+    animation-delay: calc(var(--i) * 4s);
+  }
+
+  .hero-art .pic {
+    animation: pic-morph 20s infinite backwards;
+    animation-delay: calc(var(--i) * 4s);
+  }
+
+  .hero-art .tag .from {
+    animation: tag-from 20s infinite backwards;
+    animation-delay: calc(var(--i) * 4s);
+  }
+
+  .hero-art .tag .to {
+    animation: tag-to 20s infinite backwards;
+    animation-delay: calc(var(--i) * 4s);
+  }
+
+  .hero-art .sizes i {
+    animation: size-pop 20s infinite backwards;
+    animation-delay: calc(var(--i) * 4s + var(--n) * 0.12s);
+  }
+
+  .hero-art .sizes i:nth-child(1) { --n: 0; }
+  .hero-art .sizes i:nth-child(2) { --n: 1; }
+  .hero-art .sizes i:nth-child(3) { --n: 2; }
+  .hero-art .sizes i:nth-child(4) { --n: 3; }
+  .hero-art .sizes i:nth-child(5) { --n: 4; }
+}
+
+@keyframes scene-life {
+  0% { opacity: 0; }
+  1.5% { opacity: 1; }
+  18.5% { opacity: 1; }
+  20%, 100% { opacity: 0; }
+}
+
+/* The picture comes in wide, then shrinks to an app-icon square. */
+@keyframes pic-morph {
+  0% { width: 9rem; height: 6.4rem; border-radius: 0.5rem; transform: scale(0.85) rotate(-3deg); }
+  2.5%, 8% { width: 9rem; height: 6.4rem; border-radius: 0.5rem; transform: none; }
+  13%, 100% { width: 6.5rem; height: 6.5rem; border-radius: 1.4rem; transform: none; }
+}
+
+@keyframes tag-from {
+  0%, 9% { opacity: 1; }
+  11%, 100% { opacity: 0; }
+}
+
+@keyframes tag-to {
+  0%, 10% { opacity: 0; }
+  12%, 100% { opacity: 1; }
+}
+
+/* The sizes pop up one after another, largest first. */
+@keyframes size-pop {
+  0%, 10% { opacity: 0; transform: translateX(-1.5rem) scale(0.3); }
+  14%, 100% { opacity: 1; transform: none; }
+}
+
+/* The start page has the big heading; while working, it shrinks to a title. */
+body.working .hero {
+  padding: 0.75rem 0 1rem;
+  background: none;
+}
+
+body.working .hero .lead,
+body.working .hero-art {
+  display: none;
+}
+
+body.working .hero h1 {
+  font-size: 1.25rem;
+  letter-spacing: 0;
+}
+
+main.part {
+  min-height: 12rem;
+}
+
+/* The drop area is a card that overlaps the heading's background. */
+.drop {
+  margin-top: -5rem;
+  padding: 2.25rem 1.5rem 2rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  box-shadow: var(--shadow);
+  text-align: center;
+}
+
+.drop.active {
+  border-color: var(--accent);
+  outline: 3px solid var(--tint);
+  background: var(--tint);
+}
+
+.drop .up {
+  color: var(--accent);
+}
+
+.prompt {
+  margin: 0.25rem 0 0;
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+
+.drop button.choose {
+  padding: 0.85rem 2rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.drop .hint:first-of-type {
+  margin-top: 1.5rem;
+}
+
+.about {
+  margin-top: 3rem;
+}
+
+.about h2 {
+  margin: 2.5rem 0 1rem;
+  font-size: 1.5rem;
+}
+
+.about > p {
+  max-width: 46rem;
+  margin: 0.5rem 0;
+  color: var(--muted);
+}
+
+.about ul,
+.about ol {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+
+.about li {
+  position: relative;
+  padding: 1rem 1.1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+}
+
+.about ol li {
+  padding-top: 3.2rem;
+  counter-increment: step;
+}
+
+.about ol li::before {
+  content: counter(step);
+  position: absolute;
+  top: 1rem;
+  left: 1.1rem;
+  display: grid;
+  place-items: center;
+  width: 1.7rem;
+  height: 1.7rem;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.qas {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  gap: 1rem;
+}
+
+.qa {
+  padding: 1rem 1.25rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+}
+
+.qa h3 {
+  margin: 0 0 0.35rem;
+}
+
+.qa p {
+  margin: 0;
+  color: var(--muted);
+}
+
+footer {
+  margin-top: 3rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border);
+}
+
+@media (max-width: 40rem) {
+  .hero-art {
+    display: none;
+  }
+  .hero {
+    padding-bottom: 6rem;
+  }
+}
+
+/* --- the editor ------------------------------------------------------- */
 
 .bar {
   display: flex;
   align-items: center;
   gap: 1rem;
   margin-bottom: 1rem;
+}
+
+.bar .reset {
+  margin-left: auto;
+}
+
+button.outline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.4rem 0.9rem;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+button.outline:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--link);
+  filter: none;
 }
 
 .bar .file {
@@ -193,7 +690,7 @@ main.wide {
 
 button.quiet {
   background: transparent;
-  color: var(--accent);
+  color: var(--link);
   padding: 0.35rem 0.5rem;
 }
 
@@ -242,6 +739,158 @@ button:disabled {
 .controls {
   display: grid;
   gap: 1rem;
+}
+
+/* Picking the color to remove, in the pixel view. The bar and any message stay
+   at the top of the screen while the preview is scrolled. */
+.inspector-top {
+  position: sticky;
+  top: 0.5rem;
+  z-index: 5;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.pickbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.6rem 0.9rem;
+  background: var(--tint);
+  border: 1px solid var(--accent);
+  border-radius: 0.5rem;
+  box-shadow: var(--shadow);
+}
+
+.pickbar p {
+  margin: 0;
+  font-weight: 600;
+}
+
+.notice {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: var(--warn-bg);
+  color: var(--warn-text);
+  border: 2px solid var(--warn-text);
+  border-radius: 0.5rem;
+  box-shadow: var(--shadow);
+  font-weight: 600;
+  animation: notice-in 0.35s ease-out;
+}
+
+.notice svg {
+  flex-shrink: 0;
+}
+
+.notice p {
+  flex: 1;
+  margin: 0;
+}
+
+.notice button {
+  color: inherit;
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+@keyframes notice-in {
+  0% { opacity: 0; transform: translateY(-0.5rem) scale(0.98); }
+  50% { transform: translateX(0.3rem); }
+  100% { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notice {
+    animation: none;
+  }
+}
+
+.inspector .values .remove {
+  margin-left: auto;
+  padding: 0.4rem 0.9rem;
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+/* The settings that just changed because of a click elsewhere flash once. */
+.controls fieldset.flash {
+  animation: flash-border 1.6s ease-out;
+}
+
+@keyframes flash-border {
+  0%, 40% { box-shadow: 0 0 0 3px var(--accent); }
+  100% { box-shadow: 0 0 0 3px transparent; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .controls fieldset.flash {
+    animation: none;
+  }
+}
+
+.inspector.picking .surface {
+  cursor: crosshair;
+}
+/* The detailed controls: one card that opens up. */
+.advanced {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+}
+
+.advanced summary {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 0 0.75rem;
+  padding: 0.9rem 1.25rem;
+  list-style: none;
+  cursor: pointer;
+}
+
+.advanced summary::-webkit-details-marker {
+  display: none;
+}
+
+.advanced summary span {
+  font-weight: 600;
+}
+
+.advanced summary small {
+  grid-column: 1;
+  color: var(--muted);
+}
+
+.advanced summary::after {
+  content: '';
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  width: 0.55rem;
+  height: 0.55rem;
+  margin-top: -0.25rem;
+  border: solid var(--muted);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+  transition: transform 0.15s;
+}
+
+.advanced[open] summary::after {
+  margin-top: 0.2rem;
+  transform: rotate(-135deg);
+}
+
+.advanced summary:hover span {
+  color: var(--link);
+}
+
+.advanced-body {
+  display: grid;
+  gap: 1rem;
+  padding: 0.25rem 1rem 1rem;
 }
 
 .controls fieldset {
@@ -473,30 +1122,6 @@ h3 {
 
 /* --- the crop frame ----------------------------------------------------- */
 
-.crop-stage {
-  position: relative;
-  line-height: 0;
-  overflow: hidden;
-  border-radius: 0.35rem;
-  user-select: none;
-  touch-action: none;
-}
-
-.crop-stage img {
-  width: 100%;
-  height: auto;
-  display: block;
-}
-
-.crop-stage .frame {
-  position: absolute;
-  border: 2px solid #fff;
-  outline: 1px solid rgba(0, 0, 0, 0.6);
-  /* Dims everything outside the frame. */
-  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55);
-  cursor: move;
-}
-
 .handle {
   position: absolute;
   width: 14px;
@@ -575,6 +1200,7 @@ h3 {
 .compare {
   width: min(100%, 24rem);
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.5rem;
 }
 
@@ -633,9 +1259,14 @@ h3 {
   right: 0.4rem;
 }
 
+.compare .slider input {
+  min-width: 0;
+  width: 100%;
+}
+
 .compare .slider {
   display: grid;
-  grid-template-columns: 5rem 1fr 3rem;
+  grid-template-columns: auto minmax(0, 1fr) 3rem;
   align-items: center;
   gap: 0.5rem;
   background: var(--surface);
@@ -841,8 +1472,7 @@ h3 {
 
 /* --- looking into an .ico file ------------------------------------------------ */
 
-.images-panel,
-.merge-panel {
+.images-panel {
   margin-top: 1.5rem;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -850,8 +1480,7 @@ h3 {
   padding: 1rem 1.25rem;
 }
 
-.images-panel h2,
-.merge-panel h2 {
+.images-panel h2 {
   font-size: 1rem;
   margin: 0 0 0.75rem;
 }
@@ -899,8 +1528,7 @@ h3 {
   color: var(--muted);
 }
 
-.images-panel .hint,
-.merge-panel .hint {
+.images-panel .hint {
   font-size: 0.85rem;
   margin: 0.5rem 0;
 }
@@ -913,15 +1541,6 @@ h3 {
   margin-top: 0.75rem;
 }
 
-.others {
-  margin: 0.5rem 0;
-  padding-left: 1.25rem;
-}
-
-.others button {
-  margin-left: 0.5rem;
-}
-
 .result + .images-panel {
   margin-top: 1rem;
 }
@@ -932,20 +1551,6 @@ h3 {
   flex-basis: 100%;
   height: 0.6rem;
   accent-color: var(--accent);
-}
-
-.results {
-  flex-basis: 100%;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  max-height: 14rem;
-  overflow: auto;
-  font-size: 0.9rem;
-}
-
-.results li.bad {
-  color: var(--bad);
 }
 
 /* --- the website package ----------------------------------------------------- */
@@ -1003,4 +1608,1294 @@ h3 {
   font-size: 0.8rem;
   line-height: 1.4;
   user-select: all;
+}
+
+/* --- the queue of icons -------------------------------------------------------- */
+
+.queue {
+  margin-top: 1.5rem;
+  padding: 1rem 1.25rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+}
+
+.queue.flash {
+  animation: flash-border 1.6s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .queue.flash {
+    animation: none;
+  }
+}
+
+.queue h2 {
+  margin: 0 0 0.75rem;
+}
+
+.queue-list {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.queue-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.4rem 0.6rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+}
+
+.queue-list img,
+.queue-list .blank {
+  flex: none;
+  width: 2.5rem;
+  height: 2.5rem;
+  object-fit: contain;
+  background: repeating-conic-gradient(#c8c8d0 0 25%, #f2f2f6 0 50%) 0 0 / 10px 10px;
+  border-radius: 0.3rem;
+}
+
+.queue-list .what {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+}
+
+.queue-list .what strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.queue-list .what .hint {
+  margin: 0;
+}
+
+.queue-list .item-buttons {
+  display: flex;
+  gap: 0.1rem;
+}
+
+.queue-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.queue > .hint {
+  margin: 0.75rem 0 0;
+}
+
+.hint.next {
+  margin: 1rem 0 0;
+  text-align: center;
+}
+
+.queue-list li.active {
+  border-color: var(--accent);
+  background: var(--tint);
+}
+
+.queue-list .pick {
+  flex: none;
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+.queue-list .open {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.queue-list .open:disabled {
+  opacity: 1;
+  cursor: default;
+}
+
+.queue-list .open:not(:disabled):hover strong {
+  color: var(--link);
+  text-decoration: underline;
+}
+
+.queue-compare {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.6rem;
+  margin-top: 1rem;
+  padding: 0.75rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+}
+
+.queue-compare-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.queue-compare-head h3 {
+  margin: 0;
+  min-width: 0;
+  font-size: 0.95rem;
+  overflow-wrap: anywhere;
+}
+
+.queue-compare .backdrops {
+  margin: 0;
+}
+
+/* the comparison fits the width it is given */
+.queue-compare .stage {
+  display: block;
+  min-height: 0;
+  padding: 0.5rem;
+}
+
+.queue-compare .compare {
+  width: 100%;
+}
+
+.queue-compare .tag {
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.queue-note {
+  margin-top: 0.5rem;
+}
+
+.editing-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 1.25rem;
+  margin: 0 0 1rem;
+  padding: 0.6rem 0.9rem;
+  background: var(--tint);
+  border: 1px solid var(--accent);
+  border-radius: 0.5rem;
+}
+
+.queue-next {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.queue-next .hint {
+  margin: 0;
+}
+
+.filling {
+  display: grid;
+  gap: 0.5rem;
+  padding: 2rem 1.5rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  box-shadow: var(--shadow);
+  text-align: center;
+}
+
+.filling h2 {
+  margin: 0;
+}
+
+.filling progress {
+  width: 100%;
+}
+
+/* An icon with several images: pick from them (a small queue inside the queue). */
+.queue-list li.fresh {
+  animation: flash-border 1.8s ease-out;
+}
+
+.pick-images {
+  white-space: nowrap;
+}
+
+.subqueue {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 0.6rem;
+}
+
+.subqueue .hint {
+  margin: 0;
+}
+
+.sub-images {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sub-images li {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.3rem 0.5rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+}
+
+.sub-images img {
+  flex: none;
+  object-fit: contain;
+  background: repeating-conic-gradient(#c8c8d0 0 25%, #f2f2f6 0 50%) 0 0 / 10px 10px;
+  border-radius: 0.25rem;
+}
+
+.sub-images .what {
+  display: grid;
+  flex: 1;
+}
+
+.sub-images .what .hint {
+  margin: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .queue-list li.fresh {
+    animation: none;
+  }
+}
+
+/* A question before something cannot be undone. */
+.confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-top: 0.75rem;
+  padding: 0.7rem 1rem;
+  background: var(--warn-bg);
+  color: var(--warn-text);
+  border: 2px solid var(--warn-text);
+  border-radius: 0.5rem;
+}
+
+.confirm p {
+  flex: 1 1 14rem;
+  margin: 0;
+  font-weight: 600;
+}
+
+button.danger {
+  background: var(--bad);
+  color: var(--on-bad);
+}
+
+button.danger:hover {
+  filter: brightness(1.1);
+}
+
+.editing-note .autosave {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.editing-note .save-state {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.editing-note .save-state.pending {
+  color: var(--warn-text);
+  font-weight: 600;
+}
+
+/* Small square buttons with a line icon (the hint is in the title). */
+button.icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border-radius: 0.4rem;
+}
+
+button.icon-button.on {
+  background: var(--tint);
+  color: var(--link);
+}
+
+/* Buttons of the icon file view: the line icon sits before the text. */
+.images-panel button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+/* =========================================================================
+   One set of controls
+   Buttons are all the same height (--control); only their look differs:
+   filled (the main action), outline (a second action), quiet (a text link).
+   Chips and icon buttons are smaller on purpose. Fields have their own height.
+   ========================================================================= */
+
+:root {
+  --control: 2.5rem;
+  --control-small: 2rem;
+  --field: 2.25rem;
+}
+
+button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-height: var(--control);
+  padding: 0 1.1rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+button.primary {
+  padding: 0 1.1rem;
+}
+
+button.outline {
+  padding: 0 1rem;
+  font-weight: 500;
+}
+
+button.quiet {
+  padding: 0 0.75rem;
+  font-weight: 500;
+}
+
+button.chip {
+  min-height: var(--control-small);
+  padding: 0 0.8rem;
+  font-weight: 500;
+}
+
+button.icon-button {
+  min-height: var(--control-small);
+  width: var(--control-small);
+  padding: 0;
+}
+
+.drop button.choose {
+  min-height: 3rem;
+  padding: 0 1.75rem;
+}
+
+.bar .reset {
+  min-height: var(--control);
+}
+
+/* chips: the labels of the radio groups are as high as the chips */
+.chips label,
+.backdrops label,
+.formats label {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-small);
+  padding: 0 0.8rem;
+}
+
+/* fields */
+select,
+input[type='text'],
+input[type='number'] {
+  font: inherit;
+  min-height: var(--field);
+  padding: 0 0.6rem;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 0.45rem;
+}
+
+input[type='color'] {
+  width: 3.5rem;
+  height: var(--field);
+  padding: 0.15rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 0.45rem;
+  cursor: pointer;
+}
+
+input[type='checkbox'],
+input[type='radio'],
+input[type='range'] {
+  accent-color: var(--accent);
+}
+
+/* the settings: cards with their title inside */
+.controls fieldset {
+  display: flow-root;
+}
+
+.controls fieldset > legend {
+  float: left;
+  width: 100%;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.controls fieldset > legend + * {
+  clear: both;
+}
+
+.controls fieldset > :not(legend) + :not(legend) {
+  margin-top: 0.65rem;
+}
+
+.controls fieldset.empty {
+  padding-block: 0.7rem;
+}
+
+.controls fieldset.empty > legend {
+  margin: 0;
+}
+
+.controls fieldset > button.quiet,
+.controls fieldset > button.outline {
+  display: inline-flex;
+  margin-right: 0.5rem;
+}
+
+/* a text button under a card's content lines up with the text above it */
+.controls fieldset > button.quiet {
+  margin-left: -0.75rem;
+}
+
+.controls fieldset > .pick-row,
+.controls fieldset > .checks {
+  margin-top: 0.65rem;
+}
+
+/* the download card */
+.download {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.formats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.4rem;
+}
+
+.formats > legend {
+  float: none;
+  width: auto;
+  margin-right: 0.75rem;
+  padding: 0;
+  font-weight: 600;
+}
+
+.formats label {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+
+.formats label:has(input:checked) {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--accent);
+}
+
+.formats input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.formats label:has(input:focus-visible) {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.download-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.download > .hint {
+  margin: 0;
+}
+
+/* on a tall screen the preview stays in view while the settings are scrolled */
+@media (min-width: 52rem) and (min-height: 760px) {
+  .editor .preview {
+    position: sticky;
+    top: 1rem;
+    max-height: calc(100vh - 2rem);
+    overflow: auto;
+  }
+}
+
+/* =========================================================================
+   The queue beside the editor
+   On a wide window the queue (with its note) is a column at the left of the
+   editor; on a narrow one everything is stacked, the queue last.
+   ========================================================================= */
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.workspace > .queue {
+  container-type: inline-size;
+}
+
+@media (min-width: 80rem) {
+  body.queue-side .part,
+  body.queue-side .shell {
+    max-width: 88rem;
+  }
+
+  .workspace.with-queue {
+    grid-template-columns: 21rem minmax(0, 1fr);
+    grid-template-rows: auto auto 1fr;
+    column-gap: 1.5rem;
+  }
+
+  .workspace.with-queue > .bar {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+
+  .workspace.with-queue > .editing-note {
+    grid-column: 1;
+    grid-row: 2;
+    flex-direction: column;
+    align-items: flex-start;
+    margin-bottom: 1rem;
+  }
+
+  .workspace.with-queue > .editing-note .save-state {
+    margin-left: 0;
+  }
+
+  .workspace.with-queue > .main {
+    grid-column: 2;
+    grid-row: 2 / span 2;
+    min-width: 0;
+  }
+
+  .workspace.with-queue > .queue {
+    grid-column: 1;
+    grid-row: 3;
+    align-self: start;
+    position: sticky;
+    top: 1rem;
+    max-height: calc(100vh - 2rem);
+    overflow: auto;
+    margin-top: 0;
+  }
+
+  .workspace.with-queue .main .download {
+    margin-top: 1.5rem;
+  }
+}
+
+/* the queue's rows make room when their column is narrow */
+@container (max-width: 30rem) {
+  .queue-list li {
+    flex-wrap: wrap;
+  }
+
+  .queue-list .item-buttons {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .sub-images li {
+    flex-wrap: wrap;
+  }
+
+  .queue-actions .primary {
+    flex: 1 1 100%;
+  }
+}
+
+/* =========================================================================
+   Preview: a column of background swatches beside the picture, and the three
+   views as a segmented control with icons.
+   ========================================================================= */
+
+.preview .views {
+  display: inline-flex;
+  gap: 0.25rem;
+  margin-bottom: 0.9rem;
+  padding: 0.25rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 0.7rem;
+}
+
+.preview .views label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: var(--control-small);
+  padding: 0 0.85rem;
+  border-radius: 0.5rem;
+  color: var(--muted);
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.preview .views label:hover {
+  color: var(--text);
+  background: var(--tint);
+}
+
+.preview .views label.chosen {
+  background: var(--accent);
+  color: var(--accent-text);
+  box-shadow: var(--shadow);
+}
+
+.preview .views input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.preview .views label:has(input:focus-visible) {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.preview .views .icon {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+.preview-body {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: start;
+}
+
+.preview-main {
+  min-width: 0;
+}
+
+.swatches {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.4rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 0.7rem;
+}
+
+.swatches label {
+  display: block;
+  cursor: pointer;
+  border-radius: 0.5rem;
+}
+
+.swatches input[type='radio'] {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.swatches .sw {
+  display: block;
+  position: relative;
+  width: 2rem;
+  height: 2rem;
+  border: 2px solid var(--border);
+  border-radius: 0.5rem;
+  background-size: 8px 8px;
+  background-position: 0 0, 4px 4px;
+  overflow: hidden;
+}
+
+.swatches label:hover .sw {
+  border-color: var(--muted);
+}
+
+.swatches label.chosen .sw {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.swatches label:has(input[type='radio']:focus-visible) {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.swatches .sw.custom::after {
+  content: '';
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 0.55rem;
+  height: 0.55rem;
+  background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red);
+  border: 1px solid #fff;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.swatches .sw-color {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+/* =========================================================================
+   The download bar: one slim row above the preview. The file type on the
+   left, the actions on the right (the second ones as icons with hints).
+   ========================================================================= */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.main > .download {
+  margin: 0 0 1.25rem;
+  padding: 0.6rem 0.75rem;
+  gap: 0.6rem;
+}
+
+.download-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem 1rem;
+}
+
+.download-row .formats {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0.25rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 0.7rem;
+}
+
+.download-row .formats label {
+  border: 0;
+  border-radius: 0.5rem;
+  color: var(--muted);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.download-row .formats label:hover {
+  color: var(--text);
+  background: var(--tint);
+}
+
+.download-row .formats label:has(input:checked) {
+  color: var(--accent-text);
+  background: var(--accent);
+  box-shadow: var(--shadow);
+}
+
+.download-row .download-actions {
+  margin-left: auto;
+}
+
+.download-row .icon-button {
+  width: var(--control);
+  height: var(--control);
+}
+
+/* =========================================================================
+   The download bar stays at the top while the page is scrolled; the website
+   package settings are a dialog, reopened by the gear next to its type.
+   ========================================================================= */
+
+.main > .download {
+  position: sticky;
+  top: 0.5rem;
+  z-index: 5;
+  box-shadow: var(--shadow);
+}
+
+@media (min-width: 52rem) and (min-height: 760px) {
+  .editor .preview {
+    top: 5.5rem;
+    max-height: calc(100vh - 6.5rem);
+  }
+}
+
+.download-row .formats button.gear {
+  min-height: var(--control-small);
+  width: var(--control-small);
+  padding: 0;
+  margin-left: -0.3rem;
+  background: var(--accent);
+  color: var(--accent-text);
+  border: 0;
+  border-radius: 0.5rem;
+}
+
+.download-row .formats button.gear:hover {
+  filter: brightness(1.1);
+}
+
+.site-dialog {
+  width: min(34rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+  padding: 1.25rem 1.5rem;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 0.9rem;
+  box-shadow: 0 1.5rem 4rem rgba(0, 0, 0, 0.45);
+}
+
+.site-dialog::backdrop {
+  background: rgba(8, 12, 24, 0.6);
+}
+
+.site-dialog .site {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.site-dialog .site .field {
+  grid-template-columns: 11rem minmax(0, 1fr);
+}
+
+.site-dialog .dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 1rem;
+}
+
+/* The gear belongs to the chosen "Website ZIP": together they are one button. */
+.download-row .formats label:has(+ button.gear) {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  padding-right: 0.6rem;
+}
+
+.download-row .formats button.gear {
+  margin-left: -0.25rem;
+  width: 2.1rem;
+  border-radius: 0 0.5rem 0.5rem 0;
+  border-left: 1px solid rgba(255, 255, 255, 0.35);
+  box-shadow: var(--shadow);
+}
+
+/* Clearing the queue is a warning-colored link of its own row, centered under the download. */
+.queue-actions .primary {
+  flex: 1 1 100%;
+}
+
+.queue-actions button.clear {
+  flex: 1 1 100%;
+  color: var(--warn);
+}
+
+.queue-actions button.clear:hover {
+  background: var(--warn-bg);
+}
+
+/* While files are dragged over the page: a veil that says they will go to the queue. */
+.drop-veil {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  background: rgba(8, 12, 24, 0.6);
+  pointer-events: none;
+}
+
+.drop-veil p {
+  margin: 0;
+  padding: 1.5rem 2.5rem;
+  background: var(--surface);
+  color: var(--text);
+  border: 3px dashed var(--accent);
+  border-radius: 1rem;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+/* =========================================================================
+   The crop frame is set in the preview itself ("mask"): the Crop button next
+   to the views shows the picture with the frame, the tools sit under it.
+   ========================================================================= */
+
+.views-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.9rem;
+}
+
+.views-row .views {
+  margin-bottom: 0;
+}
+
+.crop-toggle {
+  min-height: var(--control);
+  padding: 0 1rem;
+  font-weight: 600;
+}
+
+.crop-toggle .dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  background: var(--accent);
+  border-radius: 50%;
+}
+
+.crop-toggle.chosen .dot {
+  background: var(--accent-text);
+}
+
+
+button.small {
+  min-height: var(--control-small);
+  padding: 0 0.75rem;
+  font-size: 0.9rem;
+}
+
+
+/* =========================================================================
+   The settings beside the preview fold to a slim rail of icons: the preview
+   gets the room. The shapes of the crop box are one row.
+   ========================================================================= */
+
+.side-head {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: -0.5rem;
+}
+
+.editor.folded {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+}
+
+.rail-sep {
+  width: 1.5rem;
+  height: 1px;
+  background: var(--border);
+}
+
+.rail .rail-button.chosen {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--accent);
+}
+
+@media (max-width: 52rem) {
+  .editor.folded {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .rail {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .rail-sep {
+    width: 1px;
+    height: 1.5rem;
+  }
+}
+
+.rail .rail-button {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.rail .rail-button:hover {
+  background: var(--tint);
+}
+
+.rail .rail-button.chosen {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--accent);
+}
+
+/* The original picture and its size sit in the top bar, next to the file name. */
+.bar .original {
+  margin-left: auto;
+  gap: 0.6rem;
+}
+
+.bar .original img {
+  max-width: 3rem;
+  max-height: 2.25rem;
+}
+
+.bar .original + .reset {
+  margin-left: 0;
+}
+
+/* A thin line between the groups of the rail. */
+.rail-sep {
+  width: 100%;
+  height: 1px;
+  background: var(--muted);
+  opacity: 0.45;
+}
+
+@media (max-width: 52rem) {
+  .rail-sep {
+    width: 1px;
+    height: 1.5rem;
+  }
+}
+
+.bar {
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+}
+
+.bar button {
+  white-space: nowrap;
+}
+
+/* The arrow that brings the settings back lights up blue once when they fold away by themselves. */
+.rail .flash-blue {
+  animation: flash-blue 1.8s ease-out;
+}
+
+@keyframes flash-blue {
+  0%, 45% {
+    background: var(--accent);
+    color: var(--accent-text);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent);
+  }
+  100% {
+    box-shadow: 0 0 0 3px transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rail .flash-blue {
+    animation: none;
+  }
+}
+
+/* Zooming in the crop: the picture grows inside a window that scrolls. */
+
+/* The crop view: a box of fixed size, the frame in its middle, the picture under it. */
+.crop-view {
+  position: relative;
+  width: 100%;
+  height: min(32rem, 70vh);
+  overflow: hidden;
+  border-radius: 0.35rem;
+  user-select: none;
+  touch-action: none;
+}
+
+.crop-view img {
+  position: absolute;
+  max-width: none;
+  pointer-events: none;
+}
+
+.crop-pane {
+  position: absolute;
+  inset: 0;
+  cursor: grab;
+}
+
+.crop-pane:active {
+  cursor: grabbing;
+}
+
+.crop-frame {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px solid #fff;
+  outline: 1px solid rgba(0, 0, 0, 0.6);
+  /* Dims everything outside the frame. */
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+}
+
+.crop-pane:focus-visible .crop-frame {
+  border-color: var(--accent);
+}
+
+.stage:has(.crop-view) {
+  padding: 0;
+  align-items: stretch;
+}
+
+/* Unlocked: the frame has handles and is dragged; the rest of the box does nothing. */
+.crop-view.unlocked .crop-pane {
+  cursor: default;
+}
+
+.crop-view.unlocked .crop-frame {
+  pointer-events: auto;
+  cursor: move;
+}
+
+.crop-view .crop-frame .handle {
+  pointer-events: auto;
+}
+
+.aspects .lock-toggle {
+  min-width: var(--control-small);
+  padding: 0;
+  justify-content: center;
+}
+
+/* =========================================================================
+   The crop box under the picture: the lock and the shapes on the left, the four
+   measures (two by two, each with a small drawing of what it sets) on the right,
+   the buttons at the end.
+   ========================================================================= */
+
+.mask {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0.75rem 0;
+  padding: 0.75rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+}
+
+.mask-title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.mask .hint {
+  margin: 0;
+}
+
+.mask-grid {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem 1.25rem;
+}
+
+.mask .aspects,
+.mask .numbers {
+  padding: 0.4rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+}
+
+.mask .aspects label {
+  padding: 0.2rem 0.75rem;
+}
+
+.mask .numbers {
+  display: grid;
+  grid-template-columns: repeat(2, auto);
+  gap: 0.5rem 0.9rem;
+}
+
+.mask .numbers label {
+  display: grid !important;
+  gap: 0.15rem;
+}
+
+.mask .numbers label > span {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.mask .numbers label > span svg {
+  flex: none;
+  color: var(--accent);
+}
+
+.mask .numbers input {
+  width: 5.2rem;
+  min-height: var(--control-small);
+}
+
+.mask-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
 }

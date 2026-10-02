@@ -8,12 +8,17 @@
     after,
     picture,
     crop,
+    beforeLabel,
+    afterLabel,
   }: {
     /** The original picture's address, and the icon image's. */
     before: string;
     after: string;
     picture: Size;
     crop: Rect | null;
+    /** Names for the two sides; "Before" and "After" when not given. */
+    beforeLabel?: string;
+    afterLabel?: string;
   } = $props();
 
   /** Where the divider is, 0 (all "after") to 100 (all "before"), in percent. */
@@ -31,6 +36,9 @@
       `width:${(layout.width / UNITS) * 100}%;height:${(layout.height / UNITS) * 100}%`,
   );
   let beforeStyle = $derived(`clip-path:inset(0 ${100 - position}% 0 0)`);
+  // Each side shows only its own picture: where the original is transparent or
+  // smaller than the icon, the icon must not shine through behind it.
+  let afterStyle = $derived(`clip-path:inset(0 0 0 ${position}%)`);
 
   function place(event: PointerEvent) {
     if (!box) return;
@@ -47,6 +55,20 @@
   function move(event: PointerEvent) {
     if (dragging) place(event);
   }
+
+  // The mouse wheel moves the divider while the pointer is over the preview
+  // box (a notch is about 2 percent); outside it the page scrolls as usual.
+  $effect(() => {
+    const area = box?.closest<HTMLElement>('.preview') ?? box;
+    if (!area) return;
+    const onWheel = (event: WheelEvent) => {
+      if (event.ctrlKey || event.deltaY === 0) return;
+      event.preventDefault();
+      position = Math.min(Math.max(position + event.deltaY * 0.02, 0), 100);
+    };
+    area.addEventListener('wheel', onWheel, { passive: false });
+    return () => area.removeEventListener('wheel', onWheel);
+  });
 </script>
 
 <div class="compare">
@@ -59,17 +81,17 @@
     onpointerup={() => (dragging = false)}
     onpointercancel={() => (dragging = false)}
   >
-    <img class="after" src={after} alt="" draggable="false" />
+    <img class="after" src={after} alt="" draggable="false" style={afterStyle} />
     <div class="before" style={beforeStyle}>
       <img src={before} alt="" draggable="false" style={beforeImageStyle} />
     </div>
     <div class="divider" style="left:{position}%"></div>
-    <span class="tag left">{t('compare.before')}</span>
-    <span class="tag right">{t('compare.after')}</span>
+    <span class="tag left">{beforeLabel ?? t('compare.before')}</span>
+    <span class="tag right">{afterLabel ?? t('compare.after')}</span>
   </div>
   <label class="slider">
     <span>{t('compare.divider')}</span>
-    <input type="range" min="0" max="100" bind:value={position} />
-    <output>{position}%</output>
+    <input type="range" min="0" max="100" step="any" bind:value={position} />
+    <output>{Math.round(position)}%</output>
   </label>
 </div>
