@@ -73,17 +73,39 @@
       } else if (files.length === 1) {
         view = { kind: 'editor', file: files[0] };
       } else {
-        const pictures = files.filter((file) => isQueueName(file.name));
-        if (pictures.length === 0) {
-          problem = t('batch.none');
-          return;
-        }
-        const notes = pictures.length < files.length ? [t('batch.ignored', { count: files.length - pictures.length })] : [];
-        const items = pictures.map((file) => ({
-          name: file.name,
-          load: async () => new Uint8Array(await file.arrayBuffer()),
-        }));
-        await fillQueue(items, notes);
+        await queueFiles(files);
+      }
+    } catch (error) {
+      problem = t('state.failed', { reason: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  // Several files at once: pictures become icons in the queue, .ico files go in as they are.
+  async function queueFiles(files: File[]) {
+    const pictures = files.filter((file) => isQueueName(file.name));
+    if (pictures.length === 0) {
+      problem = t('batch.none');
+      // A queue that is shown (beside the editor) says so, too: the start page is not.
+      if (queue.items.length > 0) queue.setProblems([t('batch.none')]);
+      return;
+    }
+    const notes = pictures.length < files.length ? [t('batch.ignored', { count: files.length - pictures.length })] : [];
+    const items = pictures.map((file) => ({
+      name: file.name,
+      load: async () => new Uint8Array(await file.arrayBuffer()),
+    }));
+    await fillQueue(items, notes);
+  }
+
+  // "Add the next picture": whatever is chosen is in the queue at once (even a single picture),
+  // and the first picture opens in the editor as the icon being edited.
+  async function chooseNext(files: File[]) {
+    problem = '';
+    try {
+      if (files.length === 1 && isZipName(files[0].name)) {
+        await chooseZip(files[0]);
+      } else {
+        await queueFiles(files);
       }
     } catch (error) {
       problem = t('state.failed', { reason: error instanceof Error ? error.message : String(error) });
@@ -206,7 +228,7 @@
   <Queue onopen={openFromQueue} />
 {:else if view.kind === 'editor'}
   {#key view}
-    <Editor file={view.file} editing={view.editing} onopenitem={openFromQueue} onnext={choose} onback={back} />
+    <Editor file={view.file} editing={view.editing} onopenitem={openFromQueue} onnext={chooseNext} onback={back} />
   {/key}
 {:else if view.kind === 'filling'}
   <section class="filling" role="status">
