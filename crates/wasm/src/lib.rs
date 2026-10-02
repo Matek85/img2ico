@@ -17,7 +17,8 @@ use img2ico_core::icon::{
 };
 use img2ico_core::layout::{CropRect, FitMode, Layout, MAX_CORNER_RADIUS};
 use img2ico_core::source::{
-    Artwork, decode_source_bytes, extract_gif_frame_from_bytes, is_gif_bytes,
+    Artwork, GifFrame, decode_gif_frames_from_bytes, decode_source_bytes,
+    extract_gif_frame_from_bytes, is_gif_bytes,
 };
 use img2ico_core::validate::{Severity, validate_bytes};
 use img2ico_core::vector::{VectorImage, is_svg};
@@ -361,6 +362,66 @@ pub fn select_images(bytes: &[u8], indices: &[u32]) -> Result<Vec<u8>, String> {
     write_dir(&select(&dir, &indices, "the icon file")?)
 }
 
+/// The frames of an animated GIF, held in memory so the page can show them one
+/// after another and choose one (counted from 0 here).
+#[wasm_bindgen]
+pub struct GifFrames {
+    frames: Vec<GifFrame>,
+}
+
+#[wasm_bindgen]
+impl GifFrames {
+    /// Decodes every frame of the GIF in `bytes`.
+    pub fn open(bytes: &[u8], name: &str) -> Result<GifFrames, JsError> {
+        decode_gif_frames_from_bytes(bytes, name, WEB_MAX_PIXELS)
+            .map(|frames| GifFrames { frames })
+            .map_err(|message| JsError::new(&message))
+    }
+
+    /// How many frames the GIF has.
+    pub fn count(&self) -> usize {
+        self.frames.len()
+    }
+
+    /// The width in pixels, the same for every frame.
+    pub fn width(&self) -> u32 {
+        self.frames.first().map_or(0, |frame| frame.image.width())
+    }
+
+    /// The height in pixels, the same for every frame.
+    pub fn height(&self) -> u32 {
+        self.frames.first().map_or(0, |frame| frame.image.height())
+    }
+
+    /// How long frame `index` is shown, in milliseconds.
+    pub fn delay_ms(&self, index: usize) -> u32 {
+        self.frames.get(index).map_or(100, |frame| frame.delay_ms)
+    }
+
+    /// Frame `index` as a PNG, to show it.
+    pub fn frame_png(&self, index: usize) -> Result<Vec<u8>, JsError> {
+        gif_frame_png(&self.frames, index).map_err(|message| JsError::new(&message))
+    }
+}
+
+/// `GifFrames::frame_png` without the JavaScript error type.
+pub fn gif_frame_png(frames: &[GifFrame], index: usize) -> Result<Vec<u8>, String> {
+    use image::{DynamicImage, ImageFormat};
+    use std::io::Cursor;
+    let frame = frames.get(index).ok_or_else(|| {
+        format!(
+            "The GIF has {} frame(s); there is no frame number {}.",
+            frames.len(),
+            index + 1
+        )
+    })?;
+    let mut bytes = Cursor::new(Vec::new());
+    DynamicImage::ImageRgba8(frame.image.clone())
+        .write_to(&mut bytes, ImageFormat::Png)
+        .map_err(|e| e.to_string())?;
+    Ok(bytes.into_inner())
+}
+
 /// A picture that has been opened and can be converted again and again with
 /// different options, without decoding it each time.
 #[wasm_bindgen]
@@ -398,6 +459,19 @@ impl Source {
                 picture,
             })
             .map_err(|message| JsError::new(&message))
+    }
+
+    /// The picture that is frame `index` (from 0) of an animated GIF that was
+    /// read with `GifFrames::open`.
+    pub fn from_gif_frame(frames: &GifFrames, index: usize) -> Result<Source, JsError> {
+        frames
+            .frames
+            .get(index)
+            .map(|frame| Source {
+                picture: Picture::Raster(frame.image.clone()),
+                svg: None,
+            })
+            .ok_or_else(|| JsError::new("That frame does not exist."))
     }
 
     /// The width in pixels (for an SVG: its width in units, rounded).
@@ -819,6 +893,27 @@ mod tests {
             .write_to(&mut bytes, ImageFormat::Png)
             .unwrap();
         bytes.into_inner()
+    }
+
+    #[test]
+    fn the_frames_of_a_gif_can_be_shown_and_one_of_them_opened() {
+        use image::codecs::gif::GifEncoder;
+        let mut gif = Cursor::new(Vec::new());
+        {
+            let mut encoder = GifEncoder::new(&mut gif);
+            for color in [[255, 0, 0, 255], [0, 0, 255, 255], [0, 255, 0, 255]] {
+                encoder
+                    .encode_frame(image::Frame::new(RgbaImage::from_pixel(5, 3, Rgba(color))))
+                    .unwrap();
+            }
+        }
+        let frames = decode_gif_frames_from_bytes(&gif.into_inner(), "a.gif", 0).unwrap();
+        assert_eq!(frames.len(), 3);
+        let png = gif_frame_png(&frames, 1).unwrap();
+        let second = image::load_from_memory(&png).unwrap().into_rgba8();
+        assert_eq!(second.dimensions(), (5, 3));
+        assert_eq!(second.get_pixel(0, 0).0, [0, 0, 255, 255]);
+        assert!(gif_frame_png(&frames, 3).unwrap_err().contains("3 frame"));
     }
 
     fn source(bytes: &[u8]) -> Source {
