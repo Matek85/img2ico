@@ -2576,3 +2576,18 @@ input[type='range'] {
   justify-content: flex-end;
   margin-top: 1rem;
 }
+
+/* The gear belongs to the chosen "Website ZIP": together they are one button. */
+.download-row .formats label:has(+ button.gear) {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  padding-right: 0.6rem;
+}
+
+.download-row .formats button.gear {
+  margin-left: -0.25rem;
+  width: 2.1rem;
+  border-radius: 0 0.5rem 0.5rem 0;
+  border-left: 1px solid rgba(255, 255, 255, 0.35);
+  box-shadow: var(--shadow);
+}
