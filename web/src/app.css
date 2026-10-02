@@ -2591,3 +2591,17 @@ input[type='range'] {
   border-left: 1px solid rgba(255, 255, 255, 0.35);
   box-shadow: var(--shadow);
 }
+
+/* Clearing the queue is a warning-colored link of its own row, centered under the download. */
+.queue-actions .primary {
+  flex: 1 1 100%;
+}
+
+.queue-actions button.clear {
+  flex: 1 1 100%;
+  color: var(--warn);
+}
+
+.queue-actions button.clear:hover {
+  background: var(--warn-bg);
+}

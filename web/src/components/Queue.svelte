@@ -359,12 +359,12 @@
 
     <div class="queue-actions">
       {#if queue.items.length === 1}
-        <button type="button" class="primary" onclick={downloadOne}>{t('queue.single', { name: queue.items[0].fileName })}</button>
+        <button type="button" class="primary" onclick={downloadOne}><Icon name="download" />{t('queue.single', { name: queue.items[0].fileName })}</button>
       {:else}
-        <button type="button" class="primary" onclick={downloadZip} disabled={working}>{t('queue.zip')}</button>
+        <button type="button" class="primary" onclick={downloadZip} disabled={working}><Icon name="archive" />{t('queue.zip')}</button>
       {/if}
       {#if !confirmClear}
-        <button type="button" class="quiet" onclick={() => (confirmClear = true)}>{t('queue.clear')}</button>
+        <button type="button" class="quiet clear" onclick={() => (confirmClear = true)}><Icon name="trash" />{t('queue.clear')}</button>
       {/if}
     </div>
     {#if confirmClear}
