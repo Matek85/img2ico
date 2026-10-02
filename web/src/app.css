@@ -1820,3 +1820,34 @@ h3 {
   border: 1px solid var(--accent);
   border-radius: 0.5rem;
 }
+
+.queue-next {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.queue-next .hint {
+  margin: 0;
+}
+
+.filling {
+  display: grid;
+  gap: 0.5rem;
+  padding: 2rem 1.5rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  box-shadow: var(--shadow);
+  text-align: center;
+}
+
+.filling h2 {
+  margin: 0;
+}
+
+.filling progress {
+  width: 100%;
+}

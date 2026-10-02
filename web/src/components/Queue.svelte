@@ -10,12 +10,17 @@
   let {
     activeId,
     onopen,
+    onnext,
   }: {
     /** The icon being edited just now, if any. */
     activeId?: number;
     /** Opens an icon of the queue for editing. */
     onopen?: (item: QueueItem) => void;
+    /** Chooses the next picture(s), from inside the editor. */
+    onnext?: (files: File[]) => void;
   } = $props();
+
+  let picker = $state<HTMLInputElement>();
 
   let root = $state<HTMLElement>();
   let flash = $state(false);
@@ -35,12 +40,35 @@
   }
 
   // When icons were just added or changed, show the queue: scroll to it and let it flash once.
-  onMount(() => {
-    if (!queue.takeNotice()) return;
+  function announce() {
     root?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    flash = true;
-    setTimeout(() => (flash = false), 1600);
+    flash = false;
+    requestAnimationFrame(() => {
+      flash = true;
+      setTimeout(() => (flash = false), 1600);
+    });
+  }
+
+  // Changes made while the queue is shown (from the editor next to it) ...
+  let seen = queue.ticks;
+  $effect(() => {
+    const now = queue.ticks;
+    if (now === seen) return;
+    seen = now;
+    queue.takeNotice();
+    announce();
   });
+
+  // ... and changes made before it was shown (the page the editor went back to).
+  onMount(() => {
+    if (queue.takeNotice()) announce();
+  });
+
+  function chosen() {
+    const files = Array.from(picker?.files ?? []);
+    if (picker) picker.value = '';
+    if (files.length > 0) onnext?.(files);
+  }
 
   async function run(job: () => Promise<void>) {
     working = true;
@@ -150,6 +178,14 @@
       </div>
     {/if}
 
+    {#if onnext}
+      <div class="queue-next">
+        <button type="button" class="outline" onclick={() => picker?.click()}>+ {t('queue.next_button')}</button>
+        <span class="hint">{t('queue.next_hint')}</span>
+        <input bind:this={picker} type="file" accept="image/*,.svg,.icns,.zip" multiple hidden onchange={chosen} />
+      </div>
+    {/if}
+
     <div class="queue-actions">
       {#if queue.items.length === 1}
         <button type="button" class="primary" onclick={downloadOne}>{t('queue.single', { name: queue.items[0].fileName })}</button>
@@ -161,6 +197,15 @@
     </div>
     {#if queue.items.length > 1}
       <p class="hint">{queue.canCombine ? t('queue.combine_hint') : t('queue.combine_icns')}</p>
+    {/if}
+    {#if queue.problems.length > 0}
+      <div class="findings warn" role="status">
+        <p>{t('queue.problems')}</p>
+        <ul>
+          {#each queue.problems as problem}<li>{problem}</li>{/each}
+        </ul>
+        <button type="button" class="quiet" onclick={() => queue.setProblems([])}>{t('picker.dismiss')}</button>
+      </div>
     {/if}
     {#if failure}<p class="failure" role="alert">{failure}</p>{/if}
     {#if notes.length > 0}

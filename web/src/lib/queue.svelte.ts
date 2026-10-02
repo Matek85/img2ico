@@ -38,6 +38,10 @@ let items = $state<QueueItem[]>([]);
 let nextId = 1;
 // Set when something was added or changed, until the queue is shown (see takeNotice).
 let notice = false;
+// Counts the additions and changes, so a queue that is already shown can flash.
+let ticks = $state(0);
+// What could not be added, or was left out, when pictures were added in bulk.
+let problems = $state<string[]>([]);
 
 function release(item: QueueItem) {
   if (item.thumb) URL.revokeObjectURL(item.thumb);
@@ -66,6 +70,18 @@ export const queue = {
     return canCombine(items.map((item) => item.format));
   },
 
+  get ticks(): number {
+    return ticks;
+  },
+
+  get problems(): string[] {
+    return problems;
+  },
+
+  setProblems(list: string[]) {
+    problems = list;
+  },
+
   find(id: number): QueueItem | undefined {
     return items.find((item) => item.id === id);
   },
@@ -84,6 +100,7 @@ export const queue = {
     };
     items = [...items, item];
     notice = true;
+    ticks += 1;
     return item;
   },
 
@@ -95,7 +112,10 @@ export const queue = {
     const others = items.filter((item) => item.id !== id).map((item) => item.fileName);
     const fileName = made.format === old.format ? old.fileName : outputName(others, old.picture, made.format);
     items = items.map((item) => (item.id === id ? { ...item, ...parts(made), fileName } : item));
-    if (announce) notice = true;
+    if (announce) {
+      notice = true;
+      ticks += 1;
+    }
   },
 
   remove(id: number) {
@@ -115,6 +135,7 @@ export const queue = {
   clear() {
     items.forEach(release);
     items = [];
+    problems = [];
   },
 
   /** True once after something was added or changed: the page then shows where it went. */

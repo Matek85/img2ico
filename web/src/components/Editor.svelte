@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount, tick } from 'svelte';
   import {
-    buildZip,
     closePicture,
     convert,
     faviconPack,
@@ -27,7 +26,7 @@
   } from '../lib/crop';
   import { type IconEntry, iconEntries } from '../lib/ico';
   import { type Preset, STYLE_PRESETS, USE_PRESETS, isActive, withPreset } from '../lib/presets';
-  import { type BatchItem, outputName, stemOf } from '../lib/batch';
+  import { stemOf } from '../lib/batch';
   import { ICNS_TYPE, ICO_TYPE, ZIP_TYPE, saveBytes } from '../lib/download';
   import { type QueueItem, queue } from '../lib/queue.svelte';
   import { loadSettings, saveSettings } from '../lib/storage';
@@ -45,18 +44,18 @@
   let {
     file,
     onback,
-    batch,
     editing,
     onopenitem,
+    onnext,
   }: {
     file: File;
     onback: () => void;
+    /** Pictures chosen from the queue panel for the next turn; this icon is kept in the queue first. */
+    onnext: (files: File[]) => void;
     /** An icon of the queue that is being edited again, with the settings it was made with. */
     editing?: { id: number; settings: Settings };
     /** Opens another icon of the queue (this one is saved first). */
     onopenitem?: (item: QueueItem) => void;
-    /** Several pictures to turn into icons with the same settings; `file` is the one shown. */
-    batch?: { items: BatchItem[]; archive: string; notes: string[] };
   } = $props();
 
   type Backdrop = 'checker' | 'light' | 'dark' | 'gray';
@@ -91,12 +90,9 @@
   // again while the engine was busy) is thrown away instead of shown.
   let latest = 0;
 
-  // The picture shown, kept so it can be opened again after a batch has used the engine.
-  let previewBytes = new Uint8Array();
-  // A batch run is going on: the engine is busy with it, so the preview waits.
-  let running = $state(false);
-  let progress = $state<{ done: number; total: number; name: string } | null>(null);
-  let results = $state<{ name: string; ok: boolean; message: string }[]>([]);
+  // The icon of the queue this picture is (an icon that was opened from it, or added from here).
+  // svelte-ignore state_referenced_locally
+  let editId = $state<number | undefined>(editing?.id);
 
   // The crop frame. It is `settings.crop` only while crop is on and the frame
   // is smaller than the picture; the frame itself is kept while it is off.
@@ -118,7 +114,6 @@
     originalUrl = URL.createObjectURL(file);
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
-      previewBytes = bytes.slice();
       opened = await openPicture(bytes, file.name);
       // An icon from the queue comes back with its crop frame.
       frame = startCrop ? { ...startCrop } : fullRect(opened);
@@ -150,9 +145,9 @@
   // Make the icon again whenever a setting changes - after a short pause, so
   // dragging a slider does not start a conversion for every pixel it moves.
   $effect(() => {
-    if (!opened || running) return;
+    if (!opened) return;
     // The website package has a favicon.ico of fixed sizes, and an Apple icon.
-    const favicon = settings.format === 'favicon' && !batch;
+    const favicon = settings.format === 'favicon';
     const options = toEngineOptions({
       ...settings,
       ...(favicon ? { sizes: FAVICON_SIZES } : {}),
@@ -189,11 +184,6 @@
       }
     }, 120);
     return () => clearTimeout(timer);
-  });
-
-  // A batch makes icons, not website packages.
-  $effect(() => {
-    if (batch && settings.format === 'favicon') settings.format = 'ico';
   });
 
   // The lines for the page's head, for the colors as they are now (the package
@@ -279,47 +269,6 @@
     frame = clampRect({ ...frame, [field]: value }, picture);
   }
 
-  async function convertAll() {
-    if (!batch || running) return;
-    running = true;
-    results = [];
-    const format = settings.format === 'favicon' ? 'ico' : settings.format;
-    const options = toEngineOptions({ ...$state.snapshot(settings), crop: null }, format);
-    const made: { name: string; bytes: Uint8Array }[] = [];
-    try {
-      for (const [at, item] of batch.items.entries()) {
-        progress = { done: at, total: batch.items.length, name: item.name };
-        try {
-          await openPicture(await item.load(), item.name);
-          const result = await convert(options);
-          made.push({
-            name: outputName(made.map((m) => m.name), item.name, format),
-            bytes: result.bytes,
-          });
-          results.push({
-            name: item.name,
-            ok: true,
-            message: result.warnings.length > 0 ? t('batch.warnings', { count: result.warnings.length }) : '',
-          });
-        } catch (error) {
-          results.push({ name: item.name, ok: false, message: error instanceof Error ? error.message : String(error) });
-        }
-      }
-      progress = { done: batch.items.length, total: batch.items.length, name: '' };
-      if (made.length > 0) {
-        saveBytes(await buildZip(made), `${batch.archive}_icons.zip`, ZIP_TYPE);
-      }
-    } finally {
-      // The engine goes back to the picture that is shown.
-      try {
-        await openPicture(previewBytes.slice(), file.name);
-      } catch {
-        // The preview picture opened before, so this does not fail in practice.
-      }
-      running = false;
-    }
-  }
-
   // What the icon is made of, as the queue keeps it; nothing if there is nothing to keep.
   async function madeForQueue() {
     if (!converted || settings.format === 'favicon') return undefined;
@@ -332,20 +281,25 @@
   async function addToQueue() {
     const made = await madeForQueue();
     if (!made) return;
-    queue.add(file.name, made);
-    onback();
+    editId = queue.add(file.name, made).id;
   }
 
   // Save the changes to the icon of the queue that is being edited.
   async function saveEditing(announce = true) {
-    if (!editing) return;
+    if (editId === undefined) return;
     const made = await madeForQueue();
-    if (made) queue.update(editing.id, made, announce);
+    if (made) queue.update(editId, made, announce);
   }
 
-  async function updateInQueue() {
-    await saveEditing();
-    onback();
+  // The next picture comes: this icon is kept in the queue first (added, or updated).
+  async function nextPicture(files: File[]) {
+    if (editId !== undefined) {
+      await saveEditing(false);
+    } else {
+      const made = await madeForQueue();
+      if (made) queue.add(file.name, made);
+    }
+    onnext(files);
   }
 
   // Going back, or to another icon of the queue, keeps the changes of the one being edited.
@@ -411,8 +365,8 @@
     </button>
   </div>
 
-  {#if editing}
-    <p class="editing-note" role="status">{t('queue.editing_note', { name: queue.find(editing.id)?.fileName ?? file.name })}</p>
+  {#if editId !== undefined}
+    <p class="editing-note" role="status">{t('queue.editing_note', { name: queue.find(editId)?.fileName ?? file.name })}</p>
   {/if}
 
   <div class="editor">
@@ -524,7 +478,7 @@
           <small>{t('advanced.hint')}</small>
         </summary>
         <div class="advanced-body">
-      {#if !batch && !opened.vector && picture}
+      {#if !opened.vector && picture}
         <fieldset class:empty={!cropOn}>
           <legend>
             <label><input type="checkbox" bind:checked={cropOn} /> {t('crop.use')}</label>
@@ -567,7 +521,7 @@
         </fieldset>
       {/if}
 
-      {#if settings.format !== 'favicon' || batch}
+      {#if settings.format !== 'favicon'}
       <fieldset>
         <legend>{t('controls.sizes')}</legend>
         <div class="checks">
@@ -655,11 +609,9 @@
       <legend>{t('download.format')}</legend>
       <label><input type="radio" name="format" value="ico" bind:group={settings.format} /> {t('download.ico')}</label>
       <label><input type="radio" name="format" value="icns" bind:group={settings.format} /> {t('download.icns')}</label>
-      {#if !batch}
-        <label><input type="radio" name="format" value="favicon" bind:group={settings.format} /> {t('download.favicon')}</label>
-      {/if}
+      <label><input type="radio" name="format" value="favicon" bind:group={settings.format} /> {t('download.favicon')}</label>
     </fieldset>
-    {#if settings.format === 'favicon' && !batch}
+    {#if settings.format === 'favicon'}
       <div class="site">
         <h3>{t('site.title')}</h3>
         <p class="hint">{t('site.contents', { svg: opened.vector ? t('site.svg') : '' })}</p>
@@ -688,31 +640,6 @@
         <button type="button" class="quiet" onclick={copySnippet}>{copied ? t('site.copied') : t('site.copy')}</button>
       </div>
     {/if}
-    {#if batch}
-      <button type="button" class="primary" onclick={convertAll} disabled={running || settings.sizes.length === 0}>
-        {t('batch.convert', { count: batch.items.length })}
-      </button>
-      {#if settings.format === 'icns'}<p class="hint">{t('download.icns_note')}</p>{/if}
-      <p class="hint">{t('batch.preview')}</p>
-      {#each batch.notes as note}<p class="hint">{note}</p>{/each}
-      {#if progress}
-        <progress max={progress.total} value={progress.done} aria-label={t('batch.progress')}></progress>
-        <p class="hint" role="status">
-          {progress.name
-            ? t('batch.working', { done: progress.done + 1, total: progress.total, name: progress.name })
-            : t('batch.finished', { count: results.filter((r) => r.ok).length, failed: results.filter((r) => !r.ok).length })}
-        </p>
-      {/if}
-      {#if results.length > 0}
-        <ul class="results">
-          {#each results as result}
-            <li class:bad={!result.ok}>
-              {result.ok ? '✓' : '✗'} {result.name}{#if result.message}{' - '}{result.message}{/if}
-            </li>
-          {/each}
-        </ul>
-      {/if}
-    {:else}
       <button type="button" class="primary" onclick={download} disabled={!converted || working || packing}>
         {packing ? t('site.building') : t('download.button', { name: downloadName(file.name, settings.format) })}
       </button>
@@ -721,11 +648,11 @@
           {t('download.png_zip')}
         </button>
       {/if}
-      {#if editing}
+      {#if editId !== undefined}
         <button
           type="button"
           class="outline"
-          onclick={updateInQueue}
+          onclick={() => saveEditing()}
           disabled={!converted || working || packing || settings.format === 'favicon'}
           title={settings.format === 'favicon' ? t('queue.add_favicon') : t('queue.add_hint')}
         >
@@ -739,10 +666,9 @@
         disabled={!converted || working || packing || settings.format === 'favicon'}
         title={settings.format === 'favicon' ? t('queue.add_favicon') : t('queue.add_hint')}
       >
-        {editing ? t('queue.add_new') : t('queue.add')}
+        {editId !== undefined ? t('queue.add_new') : t('queue.add')}
       </button>
       {#if settings.format === 'icns'}<p class="hint">{t('download.icns_note')}</p>{/if}
-    {/if}
   </section>
-  {#if !batch}<Queue activeId={editing?.id} onopen={jump} />{/if}
+  <Queue activeId={editId} onopen={jump} onnext={nextPicture} />
 {/if}

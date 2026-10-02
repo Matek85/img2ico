@@ -5,16 +5,17 @@
   import IconFile from './components/IconFile.svelte';
   import Queue from './components/Queue.svelte';
   import { type QueueItem, queue } from './lib/queue.svelte';
-  import type { Settings } from './lib/settings';
-  import { engineVersion, openZip, readZipFile } from './engine/client';
+  import { type Settings, toEngineOptions } from './lib/settings';
+  import { loadSettings } from './lib/storage';
+  import { closePicture, convert, engineVersion, openPicture, openZip, readZipFile } from './engine/client';
   import { t } from './i18n';
-  import { type BatchItem, MAX_BATCH, baseName, isIconName, isPictureName, isZipName, stemOf } from './lib/batch';
+  import { type BatchItem, MAX_BATCH, baseName, isIconName, isPictureName, isZipName } from './lib/batch';
 
   type View =
     | { kind: 'start' }
     | { kind: 'editor'; file: File; editing?: { id: number; settings: Settings } }
     | { kind: 'validate'; file: File }
-    | { kind: 'batch'; file: File; items: BatchItem[]; archive: string; notes: string[] };
+    | { kind: 'filling' };
 
   let view = $state<View>({ kind: 'start' });
 
@@ -42,7 +43,7 @@
   $effect(() => {
     const about = document.getElementById('about');
     if (about) about.hidden = view.kind !== 'start';
-    document.body.classList.toggle('wide', view.kind === 'editor' || view.kind === 'batch');
+    document.body.classList.toggle('wide', view.kind === 'editor');
     document.body.classList.toggle('working', view.kind !== 'start');
   });
 
@@ -50,8 +51,8 @@
 
   /**
    * What was dropped decides what happens: one icon file is looked into; one
-   * picture is turned into an icon; a ZIP, or several pictures, are turned into
-   * icons all at once.
+   * picture is opened in the editor; a ZIP, or several pictures, are turned into
+   * icons all at once and put in the queue, where each can be opened and changed.
    */
   async function choose(files: File[]) {
     problem = '';
@@ -73,15 +74,11 @@
           name: file.name,
           load: async () => new Uint8Array(await file.arrayBuffer()),
         }));
-        view = { kind: 'batch', file: pictures[0], items: items.slice(0, MAX_BATCH), archive: 'icons', notes: tooMany(items.length, notes) };
+        await fillQueue(items, notes);
       }
     } catch (error) {
       problem = t('state.failed', { reason: error instanceof Error ? error.message : String(error) });
     }
-  }
-
-  function tooMany(count: number, notes: string[]): string[] {
-    return count > MAX_BATCH ? [...notes, t('batch.too_many', { max: MAX_BATCH })] : notes;
   }
 
   async function chooseZip(zip: File) {
@@ -91,14 +88,60 @@
       problem = t('batch.empty_zip');
       return;
     }
-    const items: BatchItem[] = pictures.slice(0, MAX_BATCH).map((entry) => ({
+    const items: BatchItem[] = pictures.map((entry) => ({
       name: entry.name,
       load: () => readZipFile(entry.index),
     }));
-    const first = new File([await items[0].load() as BlobPart], baseName(items[0].name));
     const skipped = listed.length - pictures.length;
-    const notes = skipped > 0 ? [t('batch.ignored', { count: skipped })] : [];
-    view = { kind: 'batch', file: first, items, archive: stemOf(zip.name), notes: tooMany(pictures.length, notes) };
+    await fillQueue(items, skipped > 0 ? [t('batch.ignored', { count: skipped })] : []);
+  }
+
+  // How far the making of the queue has come.
+  let filling = $state<{ done: number; total: number; name: string } | null>(null);
+
+  /**
+   * Turns each picture into an icon with the settings used last and puts it in
+   * the queue; then the first of them is opened in the editor. What failed is
+   * listed with the queue.
+   */
+  async function fillQueue(all: BatchItem[], notes: string[]) {
+    const items = all.slice(0, MAX_BATCH);
+    const problems = all.length > MAX_BATCH ? [...notes, t('batch.too_many', { max: MAX_BATCH })] : [...notes];
+    view = { kind: 'filling' };
+    const remembered = loadSettings();
+    const settings: Settings = { ...remembered, crop: null, format: remembered.format === 'icns' ? 'icns' : 'ico' };
+    let first: QueueItem | undefined;
+    try {
+      for (const [at, item] of items.entries()) {
+        filling = { done: at, total: items.length, name: item.name };
+        try {
+          const bytes = await item.load();
+          await openPicture(bytes.slice(), item.name);
+          const preview = await convert(toEngineOptions(settings, 'ico'));
+          const out = settings.format === 'icns' ? (await convert(toEngineOptions(settings, 'icns'))).bytes : preview.bytes;
+          const added = queue.add(baseName(item.name), {
+            file: new File([bytes as BlobPart], baseName(item.name)),
+            settings,
+            format: settings.format === 'icns' ? 'icns' : 'ico',
+            bytes: out,
+            preview: preview.bytes,
+          });
+          first ??= added;
+        } catch (error) {
+          problems.push(`${item.name}: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+    } finally {
+      await closePicture().catch(() => {});
+      filling = null;
+    }
+    queue.setProblems(problems);
+    if (first) {
+      openFromQueue(first);
+    } else {
+      view = { kind: 'start' };
+      problem = t('batch.none');
+    }
   }
 
   function back() {
@@ -130,12 +173,16 @@
   <Queue onopen={openFromQueue} />
 {:else if view.kind === 'editor'}
   {#key view}
-    <Editor file={view.file} editing={view.editing} onopenitem={openFromQueue} onback={back} />
+    <Editor file={view.file} editing={view.editing} onopenitem={openFromQueue} onnext={choose} onback={back} />
   {/key}
-{:else if view.kind === 'batch'}
-  {#key view.items}
-    <Editor file={view.file} batch={{ items: view.items, archive: view.archive, notes: view.notes }} onback={back} />
-  {/key}
+{:else if view.kind === 'filling'}
+  <section class="filling" role="status">
+    <h2>{t('queue.filling')}</h2>
+    {#if filling}
+      <progress max={filling.total} value={filling.done} aria-label={t('batch.progress')}></progress>
+      <p class="hint">{t('batch.working', { done: filling.done + 1, total: filling.total, name: filling.name })}</p>
+    {/if}
+  </section>
 {:else}
   {#key view.file}
     <IconFile file={view.file} onback={back} />
