@@ -29,10 +29,17 @@ export const en = {
   'editor.bg_light': 'Light',
   'editor.bg_dark': 'Dark',
   'editor.bg_gray': 'Gray',
+  'editor.view': 'Show',
+  'editor.view_icon': 'The icon',
+  'editor.view_compare': 'Before and after',
   'editor.working': 'Updating …',
   'editor.no_sizes': 'Choose at least one size to see the icon.',
   'editor.warnings': 'Notes',
   'editor.convert_failed': 'The icon could not be made: {reason}',
+
+  'compare.before': 'Before',
+  'compare.after': 'After',
+  'compare.divider': 'Divider',
 
   'controls.sizes': 'Sizes',
   'controls.sizes_reset': 'Use the standard sizes',

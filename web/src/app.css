@@ -565,3 +565,82 @@ h3 {
   width: 100%;
   min-width: 0;
 }
+
+/* --- before / after ------------------------------------------------------ */
+
+.views {
+  margin-bottom: 0.75rem;
+}
+
+.compare {
+  width: min(100%, 24rem);
+  display: grid;
+  gap: 0.5rem;
+}
+
+.compare .box {
+  position: relative;
+  aspect-ratio: 1;
+  overflow: hidden;
+  cursor: ew-resize;
+  touch-action: none;
+  user-select: none;
+}
+
+.compare .after,
+.compare .before {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.compare .after {
+  object-fit: contain;
+}
+
+.compare .before img {
+  position: absolute;
+}
+
+.compare .divider {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+
+.compare .tag {
+  position: absolute;
+  top: 0.4rem;
+  font-size: 0.75rem;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 0.2rem;
+  padding: 0 0.35rem;
+  pointer-events: none;
+}
+
+.compare .tag.left {
+  left: 0.4rem;
+}
+
+.compare .tag.right {
+  right: 0.4rem;
+}
+
+.compare .slider {
+  display: grid;
+  grid-template-columns: 5rem 1fr 3rem;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--surface);
+  color: var(--text);
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.35rem;
+  font-size: 0.85rem;
+}
