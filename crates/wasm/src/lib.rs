@@ -9,7 +9,10 @@ use img2ico_core::convert::{
     convert_raster, convert_vector,
 };
 use img2ico_core::diag;
-use img2ico_core::icon::read_entry;
+use img2ico_core::icon::{
+    alpha_share, alpha_summary, entry_png, merge, missing_windows_sizes, read_dir, read_entry,
+    select, write_dir,
+};
 use img2ico_core::layout::{CropRect, FitMode, Layout, MAX_CORNER_RADIUS};
 use img2ico_core::source::{
     Artwork, decode_source_bytes, extract_gif_frame_from_bytes, is_gif_bytes,
@@ -104,6 +107,137 @@ pub fn icon_pixels(bytes: &[u8], index: usize) -> Result<IconPixels, JsError> {
             rgba: image.rgba,
         })
         .map_err(|message| JsError::new(&message))
+}
+
+/// Describes the images of an .ico file as JSON text:
+/// `{ images: [{ index, width, height, bits_per_pixel, format, bytes, alpha,
+/// non_opaque_share }], missing_windows_sizes: [...] }`.
+#[wasm_bindgen]
+pub fn icon_describe(bytes: &[u8]) -> Result<String, JsError> {
+    describe_icon(bytes).map_err(|message| JsError::new(&message))
+}
+
+/// Image number `index` (from 0) of an .ico file as the bytes of a PNG file.
+#[wasm_bindgen]
+pub fn icon_extract_png(bytes: &[u8], index: usize) -> Result<Vec<u8>, JsError> {
+    extract_png(bytes, index).map_err(|message| JsError::new(&message))
+}
+
+/// A new .ico file with only the images at `indices` (in that order).
+#[wasm_bindgen]
+pub fn icon_select(bytes: &[u8], indices: &[u32]) -> Result<Vec<u8>, JsError> {
+    select_images(bytes, indices).map_err(|message| JsError::new(&message))
+}
+
+/// Collects several .ico files and merges them into one. If two files hold the
+/// same size, the first wins and the others are reported as warnings.
+#[wasm_bindgen]
+pub struct Merger {
+    files: Vec<(String, ico::IconDir)>,
+}
+
+#[wasm_bindgen]
+impl Merger {
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> Merger {
+        Merger { files: Vec::new() }
+    }
+
+    /// Adds an .ico file. `name` is how it is called in messages.
+    pub fn add(&mut self, bytes: &[u8], name: &str) -> Result<(), JsError> {
+        let dir = read_dir(bytes, name).map_err(|message| JsError::new(&message))?;
+        self.files.push((name.to_string(), dir));
+        Ok(())
+    }
+
+    /// The merged file; `warnings` of the result say which images were left out.
+    pub fn merge(&self) -> Result<Output, JsError> {
+        self.merge_files().map_err(|message| JsError::new(&message))
+    }
+}
+
+impl Default for Merger {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Merger {
+    /// `merge` without the JavaScript error type, so it can be tested.
+    pub fn merge_files(&self) -> Result<Output, String> {
+        if self.files.len() < 2 {
+            return Err("Merging needs at least two icon files.".to_string());
+        }
+        let sources: Vec<(&str, &ico::IconDir)> = self
+            .files
+            .iter()
+            .map(|(name, dir)| (name.as_str(), dir))
+            .collect();
+        let (merged, skipped) = merge(&sources)?;
+        Ok(Output {
+            sizes: merged.entries().iter().map(|e| e.width()).collect(),
+            bytes: write_dir(&merged)?,
+            warnings: skipped
+                .iter()
+                .map(|image| {
+                    format!(
+                        "Skipped {}x{} from '{}': that size is already in the merged file.",
+                        image.width, image.height, image.source
+                    )
+                })
+                .collect(),
+        })
+    }
+}
+
+/// `icon_describe` without the JavaScript error type.
+pub fn describe_icon(bytes: &[u8]) -> Result<String, String> {
+    let dir = read_dir(bytes, "the icon file")?;
+    let present: std::collections::HashSet<u32> = dir.entries().iter().map(|e| e.width()).collect();
+    let images: Vec<Value> = dir
+        .entries()
+        .iter()
+        .enumerate()
+        .map(|(index, entry)| {
+            serde_json::json!({
+                "index": index,
+                "width": entry.width(),
+                "height": entry.height(),
+                "bits_per_pixel": entry.bits_per_pixel(),
+                "format": if entry.is_png() { "PNG" } else { "BMP" },
+                "bytes": entry.data().len(),
+                "alpha": alpha_summary(entry),
+                "non_opaque_share": alpha_share(entry),
+            })
+        })
+        .collect();
+    Ok(serde_json::json!({
+        "images": images,
+        "missing_windows_sizes": missing_windows_sizes(&present),
+    })
+    .to_string())
+}
+
+/// `icon_extract_png` without the JavaScript error type.
+pub fn extract_png(bytes: &[u8], index: usize) -> Result<Vec<u8>, String> {
+    let dir = read_dir(bytes, "the icon file")?;
+    let entry = dir.entries().get(index).ok_or_else(|| {
+        format!(
+            "The icon file has {} image(s); there is no image number {index}.",
+            dir.entries().len()
+        )
+    })?;
+    entry_png(entry, "the icon file")
+}
+
+/// `icon_select` without the JavaScript error type.
+pub fn select_images(bytes: &[u8], indices: &[u32]) -> Result<Vec<u8>, String> {
+    if indices.is_empty() {
+        return Err("Choose at least one image.".to_string());
+    }
+    let dir = read_dir(bytes, "the icon file")?;
+    let indices: Vec<usize> = indices.iter().map(|&i| i as usize).collect();
+    write_dir(&select(&dir, &indices, "the icon file")?)
 }
 
 /// A picture that has been opened and can be converted again and again with
@@ -537,6 +671,71 @@ mod tests {
         assert_eq!((image.width(), image.height()), (16, 16));
         assert_eq!(image.rgba().len(), 16 * 16 * 4);
         assert_eq!(icon_pixels(&output.bytes, 1).ok().unwrap().width(), 32);
+    }
+
+    fn icon_of(sizes: &[u32]) -> Vec<u8> {
+        source(&png(64, 64))
+            .convert_with(&format!("{{\"sizes\": {sizes:?}}}"))
+            .unwrap()
+            .bytes
+    }
+
+    #[test]
+    fn an_icon_file_is_described() {
+        let json: Value =
+            serde_json::from_str(&describe_icon(&icon_of(&[16, 32])).unwrap()).unwrap();
+        assert_eq!(json["images"].as_array().unwrap().len(), 2);
+        assert_eq!(json["images"][1]["width"], 32);
+        assert_eq!(json["images"][0]["format"], "PNG");
+        assert!(
+            json["missing_windows_sizes"]
+                .as_array()
+                .unwrap()
+                .contains(&Value::from(48))
+        );
+        assert!(describe_icon(b"nope").is_err());
+    }
+
+    #[test]
+    fn an_image_is_taken_out_as_png_or_selected() {
+        let bytes = icon_of(&[16, 32, 48]);
+        assert!(
+            extract_png(&bytes, 1)
+                .unwrap()
+                .starts_with(&[0x89, b'P', b'N', b'G'])
+        );
+        assert!(
+            extract_png(&bytes, 3)
+                .unwrap_err()
+                .contains("no image number 3")
+        );
+        let picked = select_images(&bytes, &[2, 0]).unwrap();
+        assert_eq!(read_dir(&picked, "x").unwrap().entries().len(), 2);
+        assert!(select_images(&bytes, &[]).is_err());
+        assert!(
+            select_images(&bytes, &[7])
+                .unwrap_err()
+                .contains("out of range")
+        );
+    }
+
+    #[test]
+    fn icon_files_are_merged_and_duplicates_reported() {
+        let mut merger = Merger::new();
+        assert!(merger.merge_files().is_err(), "nothing to merge yet");
+        merger.files.push((
+            "a.ico".to_string(),
+            read_dir(&icon_of(&[16, 32]), "a").unwrap(),
+        ));
+        merger.files.push((
+            "b.ico".to_string(),
+            read_dir(&icon_of(&[32, 48]), "b").unwrap(),
+        ));
+        let merged = merger.merge_files().unwrap();
+        assert_eq!(merged.sizes, vec![16, 32, 48]);
+        assert_eq!(merged.warnings.len(), 1);
+        assert!(merged.warnings[0].contains("32x32 from 'b.ico'"));
+        assert!(validate_bytes(&merged.bytes).is_valid());
     }
 
     #[test]
