@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canCombine, moveItem, sizesText } from './queue';
+import { canCombine, moveItem, overlaps, sizesText } from './queue';
 
 describe('moving an item of the queue', () => {
   it('moves it up or down by one place', () => {
@@ -28,5 +28,25 @@ describe('combining icons', () => {
   it('lists the sizes', () => {
     expect(sizesText([16, 32, 256])).toBe('16, 32, 256');
     expect(sizesText([])).toBe('');
+  });
+});
+
+describe('what combining leaves out', () => {
+  it('lists, from the second icon on, the sizes already there', () => {
+    const found = overlaps([
+      { name: 'a.ico', sizes: [16, 32, 48] },
+      { name: 'b.ico', sizes: [32, 64] },
+      { name: 'c.ico', sizes: [16, 32, 48, 64] },
+    ]);
+    expect(found).toEqual([
+      { name: 'b.ico', left: [32], total: 2 },
+      { name: 'c.ico', left: [16, 32, 48, 64], total: 4 },
+    ]);
+  });
+
+  it('has nothing to say when the sizes do not collide, or for the first icon alone', () => {
+    expect(overlaps([{ name: 'a.ico', sizes: [16, 32] }, { name: 'b.ico', sizes: [48, 256] }])).toEqual([]);
+    expect(overlaps([{ name: 'a.ico', sizes: [16, 16, 32] }])).toEqual([]);
+    expect(overlaps([])).toEqual([]);
   });
 });

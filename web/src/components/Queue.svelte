@@ -4,7 +4,7 @@
   import { t } from '../i18n';
   import { ICNS_TYPE, ICO_TYPE, ZIP_TYPE, saveBytes } from '../lib/download';
   import { type QueueItem, queue } from '../lib/queue.svelte';
-  import { sizesText } from '../lib/queue';
+  import { overlaps, sizesText } from '../lib/queue';
   import { stemOf } from '../lib/batch';
   import Compare from './Compare.svelte';
 
@@ -45,6 +45,10 @@
   let selected = $state<number[]>([]);
   let backdrop = $state<'checker' | 'light' | 'dark' | 'gray'>('checker');
   const BACKDROPS = ['checker', 'light', 'dark', 'gray'] as const;
+  // What combining would leave out: an .ico holds one image per size.
+  let clashes = $derived(
+    queue.canCombine ? overlaps(queue.items.map((item) => ({ name: item.fileName, sizes: item.sizes }))) : [],
+  );
   let pair = $derived(selected.map((id) => queue.find(id)).filter((item): item is QueueItem => item !== undefined));
   let comparing = $derived(pair.length === 2 ? pair : null);
 
@@ -346,6 +350,21 @@
     {/if}
     {#if queue.items.length > 1}
       <p class="hint">{queue.canCombine ? t('queue.combine_hint') : t('queue.combine_icns')}</p>
+    {/if}
+    {#if clashes.length > 0}
+      <div class="findings warn clashes" role="note">
+        <p>{t('queue.overlap_intro')}</p>
+        <ul>
+          {#each clashes as clash}
+            <li>
+              {clash.left.length === clash.total
+                ? t('queue.overlap_all', { name: clash.name })
+                : t('queue.overlap_some', { name: clash.name, skipped: clash.left.length, total: clash.total, sizes: sizesText(clash.left) })}
+            </li>
+          {/each}
+        </ul>
+        <p>{t('queue.overlap_zip')}</p>
+      </div>
     {/if}
     {#if queue.problems.length > 0}
       <div class="findings warn" role="status">
