@@ -53,7 +53,7 @@ mod util;
 
 // The modules that moved to the shared core keep their old names here, so the
 // rest of the program still says `crate::resize::...` and so on.
-use img2ico_core::{chroma_key, icns, layout, resize, vector};
+use img2ico_core::{chroma_key, icns, layout, vector};
 
 use clap::Parser;
 use cli::Args;

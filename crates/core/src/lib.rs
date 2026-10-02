@@ -8,6 +8,7 @@
 //! access and operating-system threads.
 
 pub mod chroma_key;
+pub mod convert;
 pub mod diag;
 pub mod icns;
 pub mod layout;

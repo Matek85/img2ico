@@ -9,21 +9,14 @@
 // and the bookkeeping after it (the progress lines, the summary, the
 // --report file).
 
-use crate::chroma_key::{
-    FoundRegion, apply_chroma_key_feathered, detect_background_color, find_isolated_regions,
-    format_hex, parse_hex_color, warn_about_removal_extent,
-};
+use crate::chroma_key::{FoundRegion, parse_hex_color};
 use crate::cli::{Args, OutputFormat};
 use crate::gif::{extract_gif_frame_limited, is_gif, is_gif_bytes};
-use crate::icns::{encode_icns, icns_sizes};
-use crate::layout::{Layout, Trimmed, auto_sizes, crop, make_icon, parse_crop, trim_transparent};
+use crate::icns::icns_sizes;
+use crate::layout::{Layout, parse_crop};
 use crate::plan::{Job, Naming, check_batch_options, check_folder_options, plan_jobs, single_job};
 use crate::report::{
     FileRecord, ReportFormat, Status, Summary, human_duration, human_size, write_report,
-};
-use crate::resize::{
-    AlphaMode, apply_grayscale, has_transparency, premultiply, warn_about_thin_content,
-    warn_about_upscaling,
 };
 use crate::select::{Filter, NamePattern, Source, expand_inputs};
 use crate::settings::{
@@ -32,10 +25,14 @@ use crate::settings::{
 use crate::source::{Artwork, decode_source_bytes, open_source, peek_pixels};
 use crate::util::{
     Budget, available_threads, check_overwrite, enter_file_context, file_prefix, for_each_ordered,
-    parallel_map, parse_seed, same_file, warn, warnings_so_far,
+    parse_seed, same_file, warn, warnings_so_far,
 };
 use crate::vector::VectorImage;
 use image::RgbaImage;
+use img2ico_core::convert::{
+    Background, BackgroundMode, Format, MAX_ICO_SIZE, Notes, Options, Sizes, analyze_raster,
+    convert_raster, convert_vector as convert_drawing, vector_refusal,
+};
 use std::io::{IsTerminal, Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -43,14 +40,6 @@ use std::time::{Duration, Instant};
 /// The sizes used when neither --sizes, a config file nor --preset says
 /// otherwise.
 const DEFAULT_SIZES: &str = "16,32,48,64,128,256";
-
-/// ICO files officially only support edge lengths up to 256px.
-const MAX_ICO_SIZE: u32 = 256;
-
-/// A source with fewer pixels than this is scaled to its icon sizes one after
-/// the other even when more threads are allowed: the sizes are done in a
-/// few milliseconds then, and starting threads would cost more than it saves.
-const PARALLEL_SIZES_MIN_PIXELS: u64 = 250_000;
 
 /// How many threads this run works with. An explicit --jobs (or `jobs` in a
 /// settings file) is taken as given, 0 meaning one per processor. Without
@@ -679,7 +668,7 @@ fn convert_one(
     // it doesn't write a file, so it shouldn't need to know or care where
     // one WOULD have gone.
     let load_started = Instant::now();
-    let mut source = match load_source_image(input_path, resolved)? {
+    let source = match load_source_image(input_path, resolved)? {
         Loaded::Raster(image) => image,
         Loaded::Vector(drawing) => {
             return convert_vector(
@@ -699,118 +688,49 @@ fn convert_one(
         load_started.elapsed()
     ));
 
-    // The background color, if the options name one: given as a hex code, or
-    // detected from the image border with "auto".
-    let background = resolve_background(&source, resolved)?;
+    // What the conversion needs to know, from the settings. The sizes and the
+    // seed points are filled in below, once it is clear that there is
+    // something to convert (a --find preview needs neither).
+    let notes = CliNotes(resolved);
+    let mut options = options_of(resolved, replacement, use_icns, threads)?;
 
-    // --find: look for regions matching this color that the border-based
-    // flood fill in apply_chroma_key can't reach on its own (the same
-    // situation --seed manually solves, just discovered automatically).
-    // Without --auto-apply, this is the ENTIRE effect of --find: print
-    // the suggestions and stop, without converting anything (and without
+    // The background color, if the options name one: given as a hex code, or
+    // detected from the image border with "auto". With --find, also the
+    // regions of that color the border-based flood fill can't reach on its
+    // own (the same situation --seed manually solves, just discovered
+    // automatically).
+    let analysis = analyze_raster(&source, &options, &notes)?;
+
+    // Without --auto-apply, printing the suggestions is the ENTIRE effect of
+    // --find: the run stops there, without converting anything (and without
     // --out-toml writing anything either - nothing was actually decided
     // about the FINAL settings yet in that case).
-    let mut discovered_seeds: Vec<(u32, u32)> = Vec::new();
-    if let Some(target) = background.as_ref().filter(|target| target.flag == "--find") {
-        let regions = find_regions(&source, target, resolved);
-        print_found_regions(&target.label, &regions, !resolved.auto_apply);
+    if let Some(target) = analysis
+        .target
+        .as_ref()
+        .filter(|target| target.flag == "--find")
+    {
+        print_found_regions(&target.label, &analysis.regions, !resolved.auto_apply);
 
         if !resolved.auto_apply {
-            if !regions.is_empty() {
+            if !analysis.regions.is_empty() {
                 println!(
                     "Re-run with these as --seed values, or add --auto-apply to use them automatically."
                 );
             }
             return Ok(Outcome::Previewed);
         }
-
-        discovered_seeds = regions.into_iter().map(|r| r.seed).collect();
     }
 
-    let mut sizes = prepare_output(job, resolved, use_icns, to_stdout)?;
-
-    remove_background(
-        &mut source,
-        resolved,
-        replacement,
-        discovered_seeds,
-        background.as_ref(),
-    )?;
-
-    // The part of the image that is wanted: --crop first, then --trim, which
-    // works on what is left. Both come after the background removal, so
-    // --seed positions still refer to the whole image and --trim finds the
-    // transparent margin a removed background leaves.
-    if let Some(text) = resolved.crop {
-        source = crop(&source, parse_crop(text)?)?;
-        resolved.note(format_args!(
-            "{}cropped to {}x{} pixels",
-            file_prefix(),
-            source.width(),
-            source.height()
-        ));
-    }
-    if resolved.trim {
-        trim_source(&mut source, resolved);
+    let sizes = prepare_output(job, resolved, use_icns, to_stdout)?;
+    options.sizes = sizes_of(resolved, sizes);
+    if let Some(background) = options.background.as_mut() {
+        background.seeds = parse_seeds(resolved.seeds)?;
     }
 
-    // --grayscale runs LAST, after any --chroma-key/--replace-color
-    // processing above - so it uniformly affects the final colors,
-    // including a --replace-color color if both were combined, rather
-    // than leaving a confusing "everything except the replaced background
-    // is grayscale" exception.
-    if resolved.grayscale {
-        apply_grayscale(&mut source);
-    }
-
-    // Computed ONCE here and passed down to every make_square_icon call
-    // (for every single icon size) instead of re-checking per size - see
-    // has_transparency()'s doc comment for why this matters.
-    let has_alpha = has_transparency(&source);
-    // A source with transparency is multiplied with its alpha ONCE, here -
-    // not once per icon size, which for a large image is a full copy each
-    // time (see resize.rs). The sizes are then scaled from that.
-    let alpha_mode = if has_alpha {
-        premultiply(&mut source);
-        AlphaMode::Premultiplied
-    } else {
-        AlphaMode::Opaque
-    };
-
-    // --sizes auto can only be settled now: it depends on how big the image
-    // is after --crop and --trim.
-    if wants_auto_sizes(resolved) {
-        sizes = auto_sizes(&sizes, source.width().max(source.height()));
-        resolved.note(format_args!(
-            "{}sizes auto: {sizes:?} (source {}x{} pixels)",
-            file_prefix(),
-            source.width(),
-            source.height()
-        ));
-    }
-
-    warn_about_small_source(&source, use_icns, &sizes, resolved);
-
-    // .icns branches off here (whether from an explicit --output-format
-    // icns or from the platform-based default): it has its own container
-    // format (see write_icns) and doesn't use the ICO-specific --sizes
-    // list at all.
-    let layout = layout_of(resolved);
-    let render = |size: u32| make_icon(&source, size, &layout, alpha_mode);
-    // A small source is scaled so quickly that threads would not pay.
-    let size_threads =
-        if u64::from(source.width()) * u64::from(source.height()) >= PARALLEL_SIZES_MIN_PIXELS {
-            threads
-        } else {
-            1
-        };
-    let (icon_bytes, written_sizes) = if use_icns {
-        (encode_icns(&render, size_threads)?, icns_sizes())
-    } else {
-        encode_ico(&render, &sizes, resolved, size_threads)?
-    };
-    write_output(output_path, &icon_bytes, use_icns)?;
-    let bytes = icon_bytes.len() as u64;
+    let converted = convert_raster(source, &options, &analysis, &notes)?;
+    write_output(output_path, &converted.bytes, use_icns)?;
+    let bytes = converted.bytes.len() as u64;
 
     resolved.note(format_args!(
         "{}finished in {:.1?}",
@@ -819,8 +739,75 @@ fn convert_one(
     ));
     Ok(Outcome::Converted {
         bytes,
-        sizes: written_sizes,
+        sizes: converted.sizes,
     })
+}
+
+/// Where the commentary of a conversion goes: the run's own lines to its
+/// output (see `say!`), the verbose ones to standard error.
+struct CliNotes<'a, 'b>(&'a ResolvedSettings<'b>);
+
+impl Notes for CliNotes<'_, '_> {
+    fn say(&self, line: &str) {
+        say!("{line}");
+    }
+
+    fn verbose(&self, line: &str) {
+        self.0.note(line);
+    }
+
+    fn verbose_enabled(&self) -> bool {
+        self.0.verbose
+    }
+}
+
+/// The conversion's options from the settings. The sizes start empty and the
+/// seed points unparsed (see `convert_one`); `replacement` is the color from
+/// --replace-color, already parsed.
+fn options_of(
+    resolved: &ResolvedSettings,
+    replacement: Option<[u8; 3]>,
+    use_icns: bool,
+    threads: usize,
+) -> Result<Options, String> {
+    let background = match (resolved.chroma_key, resolved.find) {
+        (Some(spec), _) => Some((BackgroundMode::ChromaKey, spec)),
+        (None, Some(spec)) => Some((
+            BackgroundMode::Find {
+                min_size: resolved.find_min_size,
+            },
+            spec,
+        )),
+        (None, None) => None,
+    };
+    Ok(Options {
+        format: if use_icns { Format::Icns } else { Format::Ico },
+        sizes: Sizes::Fixed(Vec::new()),
+        layout: layout_of(resolved),
+        background: background.map(|(mode, spec)| Background {
+            mode,
+            spec: spec.trim().to_string(),
+            tolerance: resolved.tolerance,
+            feather: resolved.feather,
+            seeds: Vec::new(),
+            replacement,
+        }),
+        grayscale: resolved.grayscale,
+        crop: resolved.crop.map(parse_crop).transpose()?,
+        trim: resolved.trim,
+        threads,
+        silent: resolved.silent,
+    })
+}
+
+/// The sizes from `prepare_output`, as the conversion wants them: fixed, or
+/// `--sizes auto` - settled once the source's size is known.
+fn sizes_of(resolved: &ResolvedSettings, sizes: Vec<u32>) -> Sizes {
+    if wants_auto_sizes(resolved) {
+        Sizes::Auto(sizes)
+    } else {
+        Sizes::Fixed(sizes)
+    }
 }
 
 /// How the picture is laid onto the icon canvas, from the settings.
@@ -839,38 +826,6 @@ fn wants_auto_sizes(resolved: &ResolvedSettings) -> bool {
         && resolved
             .sizes
             .is_some_and(|sizes| sizes.trim().eq_ignore_ascii_case("auto"))
-}
-
-/// --trim for a raster image: cut off the transparent margin, or say why
-/// nothing was cut.
-fn trim_source(source: &mut RgbaImage, resolved: &ResolvedSettings) {
-    match trim_transparent(source) {
-        Trimmed::Cut(cut) => {
-            resolved.note(format_args!(
-                "{}trimmed from {}x{} to {}x{} pixels",
-                file_prefix(),
-                source.width(),
-                source.height(),
-                cut.width(),
-                cut.height()
-            ));
-            *source = cut;
-        }
-        Trimmed::NothingToCut => warn(
-            resolved.silent,
-            format_args!(
-                "Warning: {}--trim found no transparent margin to cut - the image has content up to its edges. For a solid-color background, remove it first (--chroma-key).",
-                file_prefix()
-            ),
-        ),
-        Trimmed::Empty => warn(
-            resolved.silent,
-            format_args!(
-                "Warning: {}--trim found nothing to keep - the image is completely transparent.",
-                file_prefix()
-            ),
-        ),
-    }
 }
 
 /// The output side of a conversion, shared by raster and vector sources:
@@ -920,10 +875,6 @@ fn prepare_output(
     Ok(sizes)
 }
 
-/// The size an SVG is rendered at to detect and check the background color
-/// once for all sizes.
-const VECTOR_REFERENCE_SIZE: u32 = 256;
-
 /// Converts an SVG: instead of loading one picture and scaling it down, the
 /// drawing is rendered anew at every size of the icon. A background color can
 /// still be removed (from every rendered size); the options that name pixel
@@ -958,59 +909,16 @@ fn convert_vector(
         None
     };
     if let Some(option) = unsupported {
-        return Err(format!(
-            "{option} does not apply to an SVG: it names pixel positions, and an SVG is drawn anew at every size. Use --chroma-key to remove a background color, --trim to cut the empty margin, or convert to a raster image first."
-        ));
+        return Err(vector_refusal(option));
     }
 
     let sizes = prepare_output(job, resolved, use_icns, to_stdout)?;
     // --sizes auto: a drawing has no resolution to stay below, so it gets
     // all the default sizes (what prepare_output returned for "auto").
-    let layout = layout_of(resolved);
-
-    // A background color (--chroma-key, also "auto") is removed from every
-    // rendered size. The color is settled - and the removal checked and
-    // reported - once, on a reference rendering; the sizes then each get
-    // the same color without repeating the messages.
-    let background = if resolved.chroma_key.is_some() {
-        let mut reference = drawing.render(VECTOR_REFERENCE_SIZE, &layout, resolved.trim);
-        let target = resolve_background(&reference, resolved)?;
-        remove_background(
-            &mut reference,
-            resolved,
-            replacement,
-            Vec::new(),
-            target.as_ref(),
-        )?;
-        target
-    } else {
-        None
-    };
-
-    let render = |size: u32| {
-        let mut square = drawing.render(size, &layout, resolved.trim);
-        if let Some(target) = &background {
-            apply_chroma_key_feathered(
-                &mut square,
-                target.color,
-                resolved.tolerance,
-                resolved.feather,
-                &[],
-                replacement,
-                true,
-            );
-        }
-        if resolved.grayscale {
-            apply_grayscale(&mut square);
-        }
-        square
-    };
-    let (icon_bytes, written_sizes) = if use_icns {
-        (encode_icns(&render, threads)?, icns_sizes())
-    } else {
-        encode_ico(&render, &sizes, resolved, threads)?
-    };
-    write_output(output_path, &icon_bytes, use_icns)?;
+    let mut options = options_of(resolved, replacement, use_icns, threads)?;
+    options.sizes = Sizes::Fixed(sizes);
+    let converted = convert_drawing(drawing, &options, &CliNotes(resolved))?;
+    write_output(output_path, &converted.bytes, use_icns)?;
 
     resolved.note(format_args!(
         "{}finished in {:.1?}",
@@ -1018,8 +926,8 @@ fn convert_vector(
         started.elapsed()
     ));
     Ok(Outcome::Converted {
-        bytes: icon_bytes.len() as u64,
-        sizes: written_sizes,
+        bytes: converted.bytes.len() as u64,
+        sizes: converted.sizes,
     })
 }
 
@@ -1149,80 +1057,6 @@ enum Loaded {
     Vector(VectorImage),
 }
 
-/// The background color of a run and how to refer to it.
-#[derive(Debug)]
-struct BackgroundTarget {
-    /// The option that named it: `--chroma-key` or `--find`.
-    flag: &'static str,
-    color: [u8; 3],
-    /// What to call the color in messages: the hex code as the user wrote
-    /// it, or `#RRGGBB` for a detected one.
-    label: String,
-}
-
-/// Works out the background color of this run, if --chroma-key or --find
-/// names one: a hex code is parsed, and "auto" is detected from the border
-/// of `source` (and announced, so it can be passed explicitly next time).
-/// In a batch every file detects its own.
-fn resolve_background(
-    source: &RgbaImage,
-    resolved: &ResolvedSettings,
-) -> Result<Option<BackgroundTarget>, String> {
-    // The two are mutually exclusive (see check_color_options), so at most
-    // one of them names the background color.
-    let (flag, spec) = match (resolved.chroma_key, resolved.find) {
-        (Some(spec), _) => ("--chroma-key", spec.trim()),
-        (None, Some(spec)) => ("--find", spec.trim()),
-        (None, None) => return Ok(None),
-    };
-
-    if !spec.eq_ignore_ascii_case("auto") {
-        let color = parse_hex_color(spec).map_err(|e| format!("Invalid {flag} value: {e}"))?;
-        return Ok(Some(BackgroundTarget {
-            flag,
-            color,
-            label: spec.to_string(),
-        }));
-    }
-
-    let started = Instant::now();
-    let found = detect_background_color(source, resolved.tolerance)?;
-    let label = format_hex(found.color);
-    if !resolved.silent {
-        say!(
-            "{}Detected background color {label} ({:.0}% of the image border). To use it explicitly: {flag} {}",
-            file_prefix(),
-            found.coverage * 100.0,
-            label.trim_start_matches('#')
-        );
-    }
-    resolved.note(format_args!(
-        "{}background detection took {:.1?}",
-        file_prefix(),
-        started.elapsed()
-    ));
-    Ok(Some(BackgroundTarget {
-        flag,
-        color: found.color,
-        label,
-    }))
-}
-
-/// Runs --find's region discovery on the source image.
-fn find_regions(
-    source: &RgbaImage,
-    target: &BackgroundTarget,
-    resolved: &ResolvedSettings,
-) -> Vec<FoundRegion> {
-    find_isolated_regions(
-        source,
-        target.color,
-        resolved.tolerance,
-        resolved.find_min_size,
-        resolved.silent,
-    )
-}
-
 /// Prints --find's report: how many regions were found and, for each, a
 /// ready-to-use --seed value.
 ///
@@ -1320,167 +1154,12 @@ fn parse_seeds(seeds: &[String]) -> Result<Vec<(u32, u32)>, String> {
         .collect()
 }
 
-/// Applies the actual chroma-key removal/replacement, if a `background`
-/// color was named: --chroma-key (with whatever manual --seed values were
-/// given), or --find --auto-apply (the manual --seed values PLUS the
-/// automatically `discovered` regions from the --find preview, combined).
-/// Does nothing without one. `replacement` (from --replace-color) is passed
-/// through to both. Warns if almost nothing, or almost everything, matched.
-fn remove_background(
-    img: &mut RgbaImage,
-    resolved: &ResolvedSettings,
-    replacement: Option<[u8; 3]>,
-    discovered: Vec<(u32, u32)>,
-    background: Option<&BackgroundTarget>,
-) -> Result<(), String> {
-    // The --find case only gets here with --auto-apply - the plain preview
-    // already returned.
-    let Some(target) = background else {
-        return Ok(());
-    };
-
-    let started = Instant::now();
-    let mut seeds = parse_seeds(resolved.seeds)?;
-    seeds.extend(discovered);
-    let affected = apply_chroma_key_feathered(
-        img,
-        target.color,
-        resolved.tolerance,
-        resolved.feather,
-        &seeds,
-        replacement,
-        resolved.silent,
-    );
-    warn_about_removal_extent(
-        affected,
-        img.width() as usize * img.height() as usize,
-        &target.label,
-        resolved.silent,
-    );
-    resolved.note(format_args!(
-        "background removal ({} {}, {} seed point(s), feather {}%) took {:.1?}",
-        target.flag,
-        target.label,
-        seeds.len(),
-        resolved.feather,
-        started.elapsed()
-    ));
-    Ok(())
-}
-
-/// A heads-up (not an error - upscaling still produces a valid icon, just
-/// a softer one) if any requested size exceeds what the source image
-/// actually has to offer, or would leave only a sliver of content.
-/// Resizing up can't invent detail that isn't there; Lanczos3 (what
-/// make_square_icon uses) makes that smooth rather than blocky, but it's
-/// still fundamentally a guess, not real detail.
-fn warn_about_small_source(
-    source: &RgbaImage,
-    use_icns: bool,
-    ico_sizes: &[u32],
-    resolved: &ResolvedSettings,
-) {
-    let (width, height) = source.dimensions();
-    let icns_list;
-    let sizes = if use_icns {
-        icns_list = icns_sizes();
-        &icns_list
-    } else {
-        ico_sizes
-    };
-    warn_about_upscaling(width, height, sizes, resolved.silent);
-    warn_about_thin_content(width, height, resolved.padding, sizes, resolved.silent);
-}
-
-/// Builds the .ico: one square icon per requested size, all PNG-encoded, all
-/// together in one file's bytes - and the sizes that went into it.
-fn encode_ico(
-    render: &(dyn Fn(u32) -> RgbaImage + Sync),
-    sizes: &[u32],
-    resolved: &ResolvedSettings,
-    threads: usize,
-) -> Result<(Vec<u8>, Vec<u32>), String> {
-    // An IconDir collects all the resolutions that will be written
-    // together into ONE .ico file at the end.
-    let mut icon_dir = ico::IconDir::new(ico::ResourceType::Icon);
-    let mut written = Vec::with_capacity(sizes.len());
-
-    // Sizes an .ico cannot hold are named and left out first - in one thread,
-    // so the messages keep naming the right file.
-    let valid: Vec<u32> = sizes
-        .iter()
-        .copied()
-        .filter(|&size| {
-            let fits = size != 0 && size <= MAX_ICO_SIZE;
-            if !fits {
-                warn(
-                    resolved.silent,
-                    format_args!(
-                        "{}Skipping size {size} (valid range: 1-{MAX_ICO_SIZE}).",
-                        file_prefix()
-                    ),
-                );
-            }
-            fits
-        })
-        .collect();
-
-    // Scaling and PNG-encoding a size depends on nothing but the source, so
-    // the sizes can be made at the same time; the entries are collected in
-    // the order of the sizes either way.
-    let entries = parallel_map(&valid, threads, |&size| {
-        let square = render(size);
-        let (w, h) = square.dimensions();
-
-        // into_raw() gives us the raw pixel bytes in RGBA order (red,
-        // green, blue, alpha, red, green, blue, alpha, ...) - exactly the
-        // format the ico crate expects as input.
-        let icon_image = ico::IconImage::from_rgba_data(w, h, square.into_raw());
-
-        // IMPORTANT: we deliberately force PNG encoding for EVERY size,
-        // instead of trusting the default "IconDirEntry::encode()" method.
-        // Reason: ico::encode() internally decides via a heuristic between
-        // PNG and the old BMP format (for compatibility with very old
-        // Windows versions). For small and/or fully opaque images it
-        // chooses BMP - and that means:
-        //   - only a 1-bit transparency mask (a pixel is either fully
-        //     visible or fully invisible, no more soft edges)
-        //   - often only 8-bit color depth (256-color palette instead of
-        //     true color), which causes visible color banding/"pixelation"
-        // PNG, on the other hand, keeps full color depth and, whenever the
-        // image has any transparency, a clean alpha channel - exactly what
-        // was required for "transparency as a feature". PNG-in-ICO has been
-        // supported by Windows since Vista (2007), so it's safe for
-        // practically any use case.
-        ico::IconDirEntry::encode_as_png(&icon_image)
-            .map_err(|e| format!("Could not encode size {size}: {e}"))
-    });
-
-    for (&size, entry) in valid.iter().zip(entries) {
-        let entry = entry?;
-        resolved.note(format_args!(
-            "{}{size}x{size}: {} bytes",
-            file_prefix(),
-            entry.data().len()
-        ));
-        icon_dir.add_entry(entry);
-        written.push(size);
-    }
-
-    // Write all the collected resolutions into one buffer.
-    let mut buffer = Vec::new();
-    icon_dir
-        .write(&mut buffer)
-        .map_err(|e| format!("Error writing ICO file: {e}"))?;
-
-    Ok((buffer, written))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::config::Settings;
     use clap::Parser;
+    use img2ico_core::convert::{BackgroundTarget, remove_background};
 
     fn parsed(extra: &[&str]) -> Args {
         let mut full = vec!["img2ico", "in.png"];
@@ -1511,15 +1190,37 @@ mod tests {
 
     // --- background color ------------------------------------------------------------
 
+    /// The background color the settings name, found as a conversion finds it.
+    fn resolve_background(
+        img: &RgbaImage,
+        resolved: &ResolvedSettings,
+    ) -> Result<Option<BackgroundTarget>, String> {
+        let options = options_of(resolved, None, false, 1)?;
+        Ok(analyze_raster(img, &options, &CliNotes(resolved))?.target)
+    }
+
     /// What a conversion does for the background: name the color, then remove it.
+    /// `discovered` are extra seed points, as --find would have found them.
     fn remove(
         img: &mut RgbaImage,
         resolved: &ResolvedSettings,
         replacement: Option<[u8; 3]>,
         discovered: Vec<(u32, u32)>,
     ) -> Result<(), String> {
-        let background = resolve_background(img, resolved)?;
-        remove_background(img, resolved, replacement, discovered, background.as_ref())
+        let notes = CliNotes(resolved);
+        let mut options = options_of(resolved, replacement, false, 1)?;
+        if let Some(background) = options.background.as_mut() {
+            background.seeds = parse_seeds(resolved.seeds)?;
+        }
+        let mut analysis = analyze_raster(img, &options, &notes)?;
+        analysis.regions = discovered
+            .into_iter()
+            .map(|seed| FoundRegion {
+                pixel_count: 1,
+                seed,
+            })
+            .collect();
+        remove_background(img, &options, &analysis, &notes)
     }
 
     #[test]

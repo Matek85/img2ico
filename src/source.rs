@@ -236,7 +236,7 @@ mod tests {
     fn an_icns_file_opens_as_its_largest_image() {
         let dir = tempfile::tempdir().unwrap();
         let bytes = crate::icns::encode_icns(
-            &|size| crate::resize::make_square_icon(&sample(), size, 0, false),
+            &|size| img2ico_core::resize::make_square_icon(&sample(), size, 0, false),
             1,
         )
         .unwrap();
