@@ -10,6 +10,8 @@ import {
   fitAspect,
   fullRect,
   isFull,
+  panRect,
+  zoomRect,
 } from './crop';
 
 const bounds = { width: 200, height: 100 };
@@ -151,5 +153,47 @@ describe('fitAspect', () => {
   it('makes a wide frame of a tall one', () => {
     const rect = fitAspect({ x: 0, y: 0, width: 50, height: 100 }, 2, bounds);
     expect(rect).toEqual({ x: 0, y: 38, width: 50, height: 25 });
+  });
+});
+
+describe('zooming the frame', () => {
+  const bounds = { width: 1280, height: 720 };
+  const square = { x: 280, y: 0, width: 720, height: 720 };
+
+  it('keeps the shape and the point under the mouse', () => {
+    const zoomed = zoomRect(square, 0.5, 0.5, 0.5, bounds);
+    expect(zoomed.width).toBe(360);
+    expect(zoomed.height).toBe(360);
+    // the centre of the frame is still the centre
+    expect(zoomed.x + zoomed.width / 2).toBe(square.x + square.width / 2);
+    expect(zoomed.y + zoomed.height / 2).toBe(square.y + square.height / 2);
+  });
+
+  it('keeps the corner that is pointed at', () => {
+    const zoomed = zoomRect(square, 0.5, 0, 0, bounds);
+    expect(zoomed.x).toBe(square.x);
+    expect(zoomed.y).toBe(square.y);
+  });
+
+  it('does not grow past the picture, and stays inside it', () => {
+    const out = zoomRect(square, 3, 0.5, 0.5, bounds);
+    expect(out).toEqual({ x: 280, y: 0, width: 720, height: 720 });
+    const corner = zoomRect({ x: 1000, y: 500, width: 280, height: 220 }, 4, 1, 1, bounds);
+    expect(corner.x + corner.width).toBeLessThanOrEqual(1280);
+    expect(corner.y + corner.height).toBeLessThanOrEqual(720);
+  });
+
+  it('does not shrink to nothing', () => {
+    const tiny = zoomRect(square, 0.001, 0.5, 0.5, bounds);
+    expect(tiny.width).toBeGreaterThanOrEqual(4);
+    expect(tiny.height).toBeGreaterThanOrEqual(4);
+  });
+});
+
+describe('moving the frame over the picture', () => {
+  it('moves it and keeps it inside', () => {
+    const bounds = { width: 100, height: 100 };
+    expect(panRect({ x: 10, y: 10, width: 50, height: 50 }, 5, -3, bounds)).toEqual({ x: 15, y: 7, width: 50, height: 50 });
+    expect(panRect({ x: 10, y: 10, width: 50, height: 50 }, 500, -500, bounds)).toEqual({ x: 50, y: 0, width: 50, height: 50 });
   });
 });

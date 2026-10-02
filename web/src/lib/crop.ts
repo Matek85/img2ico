@@ -128,3 +128,25 @@ export function dragRect(
   const y = north ? anchorY - height : south ? anchorY : anchorY - height / 2;
   return clampRect({ x, y, width, height }, bounds);
 }
+
+/**
+ * The frame after zooming by `factor` (below 1 zooms in: the frame covers less
+ * of the picture). The point of the frame at (`ax`, `ay`), as fractions of its
+ * width and height, stays where it is on the screen - the point under the mouse.
+ * The shape of the frame stays the same, and it never grows past the picture.
+ */
+export function zoomRect(rect: Rect, factor: number, ax: number, ay: number, bounds: Size): Rect {
+  const ratio = rect.width / rect.height;
+  const biggest = Math.min(bounds.width, bounds.height * ratio);
+  const smallest = Math.max(MIN_EDGE, MIN_EDGE * ratio);
+  const width = Math.min(Math.max(rect.width * factor, smallest), biggest);
+  const height = width / ratio;
+  const x = rect.x + ax * (rect.width - width);
+  const y = rect.y + ay * (rect.height - height);
+  return clampRect({ x, y, width, height }, bounds);
+}
+
+/** The frame moved by (`dx`, `dy`) picture pixels, kept inside the picture. */
+export function panRect(rect: Rect, dx: number, dy: number, bounds: Size): Rect {
+  return clampRect({ ...rect, x: rect.x + dx, y: rect.y + dy }, bounds);
+}

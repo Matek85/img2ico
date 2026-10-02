@@ -3057,3 +3057,49 @@ button.small {
 .crop-viewport.zoomed .frame {
   cursor: move;
 }
+
+/* The crop view: a box of fixed size, the frame in its middle, the picture under it. */
+.crop-view {
+  position: relative;
+  width: 100%;
+  height: min(32rem, 70vh);
+  overflow: hidden;
+  border-radius: 0.35rem;
+  user-select: none;
+  touch-action: none;
+}
+
+.crop-view img {
+  position: absolute;
+  max-width: none;
+  pointer-events: none;
+}
+
+.crop-pane {
+  position: absolute;
+  inset: 0;
+  cursor: grab;
+}
+
+.crop-pane:active {
+  cursor: grabbing;
+}
+
+.crop-frame {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px solid #fff;
+  outline: 1px solid rgba(0, 0, 0, 0.6);
+  /* Dims everything outside the frame. */
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+}
+
+.crop-pane:focus-visible .crop-frame {
+  border-color: var(--accent);
+}
+
+.stage:has(.crop-view) {
+  padding: 0;
+  align-items: stretch;
+}
