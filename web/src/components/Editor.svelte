@@ -1,0 +1,272 @@
+<script lang="ts">
+  import { onDestroy, onMount } from 'svelte';
+  import { closePicture, convert, openPicture } from '../engine/client';
+  import type { Converted, Opened } from '../engine/protocol';
+  import { t } from '../i18n';
+  import { type IconEntry, iconEntries } from '../lib/ico';
+  import {
+    DEFAULT_SIZES,
+    SIZE_CHOICES,
+    type Settings,
+    defaultSettings,
+    downloadName,
+    toEngineOptions,
+  } from '../lib/settings';
+
+  let { file, onback }: { file: File; onback: () => void } = $props();
+
+  type Backdrop = 'checker' | 'light' | 'dark' | 'gray';
+  const BACKDROPS: Backdrop[] = ['checker', 'light', 'dark', 'gray'];
+
+  let settings = $state<Settings>(defaultSettings());
+  let opened = $state<Opened>();
+  let openFailure = $state('');
+  let originalUrl = $state('');
+
+  let backdrop = $state<Backdrop>('checker');
+  let converted = $state<Converted>();
+  let tiles = $state<{ size: number; url: string }[]>([]);
+  let working = $state(false);
+  let convertFailure = $state('');
+
+  // What the last conversion was made from, so a stale answer (a slider moved
+  // again while the engine was busy) is thrown away instead of shown.
+  let latest = 0;
+
+  onMount(async () => {
+    originalUrl = URL.createObjectURL(file);
+    try {
+      opened = await openPicture(new Uint8Array(await file.arrayBuffer()), file.name);
+    } catch (error) {
+      openFailure = error instanceof Error ? error.message : String(error);
+    }
+  });
+
+  onDestroy(() => {
+    if (originalUrl) URL.revokeObjectURL(originalUrl);
+    revoke(tiles);
+    closePicture().catch(() => {});
+  });
+
+  function revoke(list: { url: string }[]) {
+    for (const tile of list) URL.revokeObjectURL(tile.url);
+  }
+
+  function show(entries: IconEntry[]) {
+    revoke(tiles);
+    tiles = entries.map((entry) => ({
+      size: entry.size,
+      url: URL.createObjectURL(new Blob([entry.png as BlobPart], { type: 'image/png' })),
+    }));
+  }
+
+  // Make the icon again whenever a setting changes - after a short pause, so
+  // dragging a slider does not start a conversion for every pixel it moves.
+  $effect(() => {
+    if (!opened) return;
+    const options = toEngineOptions(settings);
+    if (settings.sizes.length === 0) {
+      converted = undefined;
+      show([]);
+      convertFailure = '';
+      return;
+    }
+    const mine = ++latest;
+    working = true;
+    const timer = setTimeout(async () => {
+      try {
+        const result = await convert(options);
+        if (mine !== latest) return;
+        converted = result;
+        show(iconEntries(result.bytes));
+        convertFailure = '';
+      } catch (error) {
+        if (mine !== latest) return;
+        convertFailure = error instanceof Error ? error.message : String(error);
+      } finally {
+        if (mine === latest) working = false;
+      }
+    }, 120);
+    return () => clearTimeout(timer);
+  });
+
+  async function download() {
+    let bytes: Uint8Array | undefined;
+    if (settings.format === 'ico') {
+      bytes = converted?.bytes;
+    } else {
+      bytes = (await convert(toEngineOptions(settings, 'icns'))).bytes;
+    }
+    if (!bytes) return;
+    const url = URL.createObjectURL(
+      new Blob([bytes as BlobPart], {
+        type: settings.format === 'ico' ? 'image/x-icon' : 'image/icns',
+      }),
+    );
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = downloadName(file.name, settings.format);
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  // The largest image is shown big; the others are shown at their real size.
+  let largest = $derived(tiles.length > 0 ? tiles[tiles.length - 1] : undefined);
+  let smaller = $derived(tiles.slice(0, -1));
+</script>
+
+{#if openFailure}
+  <p class="failure" role="alert">{t('state.failed', { reason: openFailure })}</p>
+  <button type="button" onclick={onback}>{t('state.back')}</button>
+{:else if !opened}
+  <p class="working" role="status">{t('state.opening', { name: file.name })}</p>
+{:else}
+  <div class="bar">
+    <button type="button" class="quiet" onclick={onback}>← {t('state.back')}</button>
+    <span class="file">{file.name}</span>
+  </div>
+
+  <div class="editor">
+    <section class="preview" aria-labelledby="preview-title">
+      <h2 id="preview-title">{t('editor.preview')}</h2>
+
+      <div class="backdrops" role="radiogroup" aria-label={t('editor.background')}>
+        {#each BACKDROPS as choice (choice)}
+          <label class:chosen={backdrop === choice}>
+            <input type="radio" name="backdrop" value={choice} bind:group={backdrop} />
+            {t(`editor.bg_${choice}`)}
+          </label>
+        {/each}
+      </div>
+
+      <div class="stage {backdrop}" aria-live="polite">
+        {#if settings.sizes.length === 0}
+          <p class="note">{t('editor.no_sizes')}</p>
+        {:else if largest}
+          <figure class="big">
+            <img src={largest.url} alt="" width={largest.size} height={largest.size} />
+            <figcaption>{largest.size}</figcaption>
+          </figure>
+        {/if}
+      </div>
+
+      {#if smaller.length > 0}
+        <ul class="tiles {backdrop}">
+          {#each smaller as tile (tile.size)}
+            <li>
+              <img src={tile.url} alt="" width={tile.size} height={tile.size} />
+              <span>{tile.size}</span>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+      {#if tiles.length > 0}<p class="hint">{t('editor.preview_note')}</p>{/if}
+
+      {#if working}<p class="hint" role="status">{t('editor.working')}</p>{/if}
+      {#if convertFailure}
+        <p class="failure" role="alert">{t('editor.convert_failed', { reason: convertFailure })}</p>
+      {/if}
+      {#if converted && converted.warnings.length > 0}
+        <h3>{t('editor.warnings')}</h3>
+        <ul class="findings warn">
+          {#each converted.warnings as warning}
+            <li>{warning.replace(/^Warning:\s*/, '')}</li>
+          {/each}
+        </ul>
+      {/if}
+    </section>
+
+    <section class="controls" aria-label={t('controls.look')}>
+      <figure class="original">
+        <img src={originalUrl} alt={t('editor.source')} />
+        <figcaption>
+          {opened.vector
+            ? t('editor.source_vector', { width: opened.width, height: opened.height })
+            : t('editor.source_size', { width: opened.width, height: opened.height })}
+        </figcaption>
+      </figure>
+
+      <fieldset>
+        <legend>{t('controls.sizes')}</legend>
+        <div class="checks">
+          {#each SIZE_CHOICES as size (size)}
+            <label><input type="checkbox" value={size} bind:group={settings.sizes} /> {size}</label>
+          {/each}
+        </div>
+        <p class="hint">{t('controls.sizes_hint')}</p>
+        <button
+          type="button"
+          class="quiet"
+          onclick={() => (settings.sizes = [...DEFAULT_SIZES])}
+          disabled={[...settings.sizes].sort((a, b) => a - b).join() === DEFAULT_SIZES.join()}
+          >{t('controls.sizes_reset')}</button
+        >
+      </fieldset>
+
+      <fieldset>
+        <legend>{t('controls.look')}</legend>
+
+        <label class="slider">
+          <span>{t('controls.padding')}</span>
+          <input type="range" min="0" max="40" bind:value={settings.padding} />
+          <output>{settings.padding}%</output>
+        </label>
+
+        <label class="slider">
+          <span>{t('controls.radius')}</span>
+          <input type="range" min="0" max="50" bind:value={settings.cornerRadius} />
+          <output>{settings.cornerRadius}%</output>
+        </label>
+
+        <label class="select">
+          <span>{t('controls.fit')}</span>
+          <select bind:value={settings.fit}>
+            <option value="contain">{t('controls.fit_contain')}</option>
+            <option value="cover">{t('controls.fit_cover')}</option>
+          </select>
+        </label>
+
+        <label><input type="checkbox" bind:checked={settings.grayscale} /> {t('controls.grayscale')}</label>
+        <label><input type="checkbox" bind:checked={settings.trim} /> {t('controls.trim')}</label>
+      </fieldset>
+
+      <fieldset class:empty={!settings.removeBackground}>
+        <legend>
+          <label><input type="checkbox" bind:checked={settings.removeBackground} /> {t('controls.background')}</label>
+        </legend>
+        {#if settings.removeBackground}
+          <label><input type="checkbox" bind:checked={settings.backgroundAuto} /> {t('controls.bg_auto')}</label>
+          {#if !settings.backgroundAuto}
+            <label class="select">
+              <span>{t('controls.bg_color')}</span>
+              <input type="color" bind:value={settings.backgroundColor} />
+            </label>
+          {/if}
+          <label class="slider">
+            <span>{t('controls.tolerance')}</span>
+            <input type="range" min="0" max="100" bind:value={settings.tolerance} />
+            <output>{settings.tolerance}</output>
+          </label>
+          <p class="hint">{t('controls.tolerance_hint')}</p>
+          <label class="slider">
+            <span>{t('controls.feather')}</span>
+            <input type="range" min="0" max="100" bind:value={settings.feather} />
+            <output>{settings.feather}%</output>
+          </label>
+        {/if}
+      </fieldset>
+    </section>
+  </div>
+
+  <section class="download">
+    <fieldset class="formats">
+      <legend>{t('download.format')}</legend>
+      <label><input type="radio" name="format" value="ico" bind:group={settings.format} /> {t('download.ico')}</label>
+      <label><input type="radio" name="format" value="icns" bind:group={settings.format} /> {t('download.icns')}</label>
+    </fieldset>
+    <button type="button" class="primary" onclick={download} disabled={!converted || working}>
+      {t('download.button', { name: downloadName(file.name, settings.format) })}
+    </button>
+    {#if settings.format === 'icns'}<p class="hint">{t('download.icns_note')}</p>{/if}
+  </section>
+{/if}

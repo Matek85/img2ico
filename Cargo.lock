@@ -543,6 +543,8 @@ dependencies = [
 name = "img2ico-wasm"
 version = "0.0.0"
 dependencies = [
+ "ico",
+ "image",
  "img2ico-core",
  "serde_json",
  "wasm-bindgen",

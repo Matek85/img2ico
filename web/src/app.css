@@ -170,3 +170,303 @@ footer p {
     transition: border-color 0.15s;
   }
 }
+
+/* --- the editor ------------------------------------------------------- */
+
+main.wide {
+  max-width: 64rem;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.bar .file {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+button.quiet {
+  background: transparent;
+  color: var(--accent);
+  padding: 0.35rem 0.5rem;
+}
+
+button.quiet:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  filter: none;
+}
+
+button.primary {
+  font-weight: 600;
+  padding: 0.75rem 1.5rem;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.editor {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+
+@media (max-width: 52rem) {
+  .editor {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.preview,
+.controls fieldset,
+.download {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  padding: 1rem 1.25rem;
+}
+
+.preview h2 {
+  font-size: 1rem;
+  margin: 0 0 0.75rem;
+}
+
+.controls {
+  display: grid;
+  gap: 1rem;
+}
+
+.controls fieldset {
+  margin: 0;
+  display: grid;
+  gap: 0.6rem;
+}
+
+legend {
+  font-weight: 600;
+  padding: 0 0.25rem;
+}
+
+fieldset label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+}
+
+.slider {
+  display: grid !important;
+  grid-template-columns: 8.5rem 1fr 3.25rem;
+}
+
+.slider output {
+  text-align: right;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.select {
+  justify-content: space-between;
+}
+
+select,
+input[type='color'] {
+  font: inherit;
+  max-width: 16rem;
+}
+
+fieldset .hint,
+.preview .hint {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.original {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.original img {
+  max-width: 6rem;
+  max-height: 6rem;
+  object-fit: contain;
+  border-radius: 0.35rem;
+  border: 1px solid var(--border);
+}
+
+/* The surfaces the icon is shown on. They do not follow the page's theme: the
+   point is to see the icon on a light, a dark and a gray background. */
+.checker {
+  background-color: #fff;
+  background-image:
+    linear-gradient(45deg, #d9d9e0 25%, transparent 25%, transparent 75%, #d9d9e0 75%),
+    linear-gradient(45deg, #d9d9e0 25%, transparent 25%, transparent 75%, #d9d9e0 75%);
+  background-size: 16px 16px;
+  background-position:
+    0 0,
+    8px 8px;
+}
+
+.light {
+  background: #ffffff;
+}
+
+.dark {
+  background: #1b1b22;
+}
+
+.gray {
+  background: #808089;
+}
+
+.backdrops {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.backdrops label {
+  padding: 0.25rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.backdrops label.chosen {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--accent);
+}
+
+.backdrops input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.backdrops label:has(input:focus-visible) {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.stage {
+  display: grid;
+  place-items: center;
+  min-height: 18rem;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+}
+
+.stage .big {
+  margin: 0;
+  display: grid;
+  justify-items: center;
+  gap: 0.35rem;
+}
+
+.stage .big img {
+  max-width: 100%;
+  height: auto;
+}
+
+.stage .big figcaption {
+  font-size: 0.75rem;
+  color: #666;
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 0.2rem;
+  padding: 0 0.3rem;
+}
+
+.dark .big figcaption {
+  color: #ddd;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.controls fieldset.empty {
+  padding-block: 0.1rem 0.25rem;
+}
+
+.stage .note {
+  color: #555;
+  background: rgba(255, 255, 255, 0.85);
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.35rem;
+}
+
+.tiles {
+  list-style: none;
+  margin: 0.75rem 0 0.5rem;
+  padding: 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+}
+
+.tiles li {
+  display: grid;
+  justify-items: center;
+  gap: 0.25rem;
+}
+
+.tiles li span {
+  font-size: 0.75rem;
+  color: #666;
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 0.2rem;
+  padding: 0 0.3rem;
+}
+
+.tiles.dark li span {
+  color: #ddd;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.download {
+  margin-top: 1.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem 2rem;
+}
+
+.formats {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.25rem;
+}
+
+.download .hint {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+h3 {
+  margin: 1rem 0 0.25rem;
+}
