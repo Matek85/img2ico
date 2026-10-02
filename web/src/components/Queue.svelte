@@ -324,7 +324,7 @@
       <div class="queue-compare">
         <div class="queue-compare-head">
           <h3>{t('queue.compare_title', { a: comparing[0].fileName, b: comparing[1].fileName })}</h3>
-          <button type="button" class="quiet" onclick={() => (selected = [])}>{t('queue.compare_close')}</button>
+          <button type="button" class="quiet icon-button" title={t('queue.compare_close')} aria-label={t('queue.compare_close')} onclick={() => (selected = [])}><Icon name="close" /></button>
         </div>
         <div class="backdrops" role="radiogroup" aria-label={t('editor.background')}>
           {#each BACKDROPS as choice (choice)}

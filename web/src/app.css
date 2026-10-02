@@ -1226,6 +1226,7 @@ h3 {
 .compare {
   width: min(100%, 24rem);
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.5rem;
 }
 
@@ -1284,9 +1285,14 @@ h3 {
   right: 0.4rem;
 }
 
+.compare .slider input {
+  min-width: 0;
+  width: 100%;
+}
+
 .compare .slider {
   display: grid;
-  grid-template-columns: 5rem 1fr 3rem;
+  grid-template-columns: auto minmax(0, 1fr) 3rem;
   align-items: center;
   gap: 0.5rem;
   background: var(--surface);
@@ -1781,27 +1787,42 @@ h3 {
 
 .queue-compare {
   display: grid;
-  justify-items: start;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.6rem;
   margin-top: 1rem;
-  padding-top: 0.75rem;
-  border-top: 1px solid var(--border);
+  padding: 0.75rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
 }
 
 .queue-compare-head {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem 1rem;
+  justify-content: space-between;
+  gap: 0.5rem;
 }
 
 .queue-compare-head h3 {
   margin: 0;
+  min-width: 0;
+  font-size: 0.95rem;
+  overflow-wrap: anywhere;
 }
 
+.queue-compare .backdrops {
+  margin: 0;
+}
+
+/* the comparison fits the width it is given */
 .queue-compare .stage {
-  width: 100%;
+  display: block;
   min-height: 0;
+  padding: 0.5rem;
+}
+
+.queue-compare .compare {
+  width: 100%;
 }
 
 .queue-compare .tag {
