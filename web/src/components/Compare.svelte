@@ -31,6 +31,9 @@
       `width:${(layout.width / UNITS) * 100}%;height:${(layout.height / UNITS) * 100}%`,
   );
   let beforeStyle = $derived(`clip-path:inset(0 ${100 - position}% 0 0)`);
+  // Each side shows only its own picture: where the original is transparent or
+  // smaller than the icon, the icon must not shine through behind it.
+  let afterStyle = $derived(`clip-path:inset(0 0 0 ${position}%)`);
 
   function place(event: PointerEvent) {
     if (!box) return;
@@ -73,7 +76,7 @@
     onpointerup={() => (dragging = false)}
     onpointercancel={() => (dragging = false)}
   >
-    <img class="after" src={after} alt="" draggable="false" />
+    <img class="after" src={after} alt="" draggable="false" style={afterStyle} />
     <div class="before" style={beforeStyle}>
       <img src={before} alt="" draggable="false" style={beforeImageStyle} />
     </div>
