@@ -71,6 +71,7 @@ export function sanitize(raw: unknown): Settings {
     grayscale: data.grayscale === true,
     trim: data.trim === true,
     crop: null,
+    gifFrame: 0,
     removeBackground: data.removeBackground === true,
     backgroundAuto: data.backgroundAuto !== false,
     backgroundColor: color(data.backgroundColor, base.backgroundColor),
@@ -96,7 +97,7 @@ export function loadSettings(): Settings {
 /** Remembers the settings; does nothing where storage is not available. */
 export function saveSettings(settings: Settings): void {
   try {
-    localStorage.setItem(KEY, JSON.stringify({ ...settings, crop: null }));
+    localStorage.setItem(KEY, JSON.stringify({ ...settings, crop: null, gifFrame: 0 }));
   } catch {
     // Private window, storage full or blocked: the page works without it.
   }

@@ -1,7 +1,7 @@
 import { latestOnly } from '../lib/latest';
 import { parseReport, type ValidationReport } from '../lib/report';
 import type { EngineOptions } from '../lib/settings';
-import type { Converted, FaviconPack, Opened, Pixels, Request, Response } from './protocol';
+import type { Converted, FaviconPack, GifInfo, Opened, Pixels, Request, Response } from './protocol';
 
 type Pending = { resolve: (response: Response & { ok: true }) => void; reject: (error: Error) => void };
 
@@ -36,6 +36,9 @@ type Call =
   | { op: 'validate'; bytes: Uint8Array }
   | { op: 'open'; bytes: Uint8Array; name: string; gifFrame: number }
   | { op: 'convert'; options: EngineOptions }
+  | { op: 'gifOpen'; bytes: Uint8Array; name: string }
+  | { op: 'gifFrame'; index: number }
+  | { op: 'gifSelect'; index: number }
   | { op: 'pixels'; bytes: Uint8Array; index: number }
   | { op: 'describe'; bytes: Uint8Array }
   | { op: 'extract'; bytes: Uint8Array; index: number }
@@ -56,7 +59,7 @@ function call(request: Call, transfer: Transferable[] = []): Promise<Response & 
   });
 }
 
-function field<K extends 'value' | 'opened' | 'converted' | 'pixels' | 'data' | 'pack'>(
+function field<K extends 'value' | 'opened' | 'gif' | 'converted' | 'pixels' | 'data' | 'pack'>(
   response: Response & { ok: true },
   key: K,
 ): NonNullable<Extract<Response, Record<K, unknown>>[K]> {
@@ -164,6 +167,21 @@ export async function buildZip(files: { name: string; bytes: Uint8Array }[]): Pr
 /** Every image of an .ico file as a PNG, in a ZIP. */
 export async function pngZip(bytes: Uint8Array, stem: string): Promise<Uint8Array> {
   return field(await call({ op: 'pngZip', bytes, stem }), 'data');
+}
+
+/** Reads all frames of an animated GIF into the engine (see `gifFrame`, `selectGifFrame`). */
+export async function openGif(bytes: Uint8Array, name: string): Promise<GifInfo> {
+  return field(await call({ op: 'gifOpen', bytes, name }, [bytes.buffer]), 'gif');
+}
+
+/** Frame number `index` (from 0) of the GIF read with `openGif`, as a PNG. */
+export async function gifFramePng(index: number): Promise<Uint8Array> {
+  return field(await call({ op: 'gifFrame', index }), 'data');
+}
+
+/** Makes frame `index` (from 0) the open picture, as if it had been opened on its own. */
+export async function selectGifFrame(index: number): Promise<Opened> {
+  return field(await call({ op: 'gifSelect', index }), 'opened');
 }
 
 /** Lets the engine forget the open picture. */

@@ -6,15 +6,19 @@
     convertLatest,
     faviconPack,
     faviconSnippet,
+    gifFramePng,
+    openGif,
     openPicture,
     pngZip,
+    selectGifFrame,
   } from '../engine/client';
-  import type { Converted, Opened } from '../engine/protocol';
+  import type { Converted, GifInfo, Opened } from '../engine/protocol';
   import { t } from '../i18n';
   import Compare from './Compare.svelte';
   import PixelInspector from './PixelInspector.svelte';
   import CropTool from './CropTool.svelte';
   import DropOverlay from './DropOverlay.svelte';
+  import GifPlayer from './GifPlayer.svelte';
   import Icon from './Icon.svelte';
   import type { IconName } from '../lib/icons';
   import Queue from './Queue.svelte';
@@ -162,21 +166,79 @@
     settings.crop = picture && cropOn && !isFull(frame, picture) ? { ...frame } : null;
   });
 
+  // An animated GIF: its frames (the player shows them, one is chosen), and the frame the
+  // open picture is.
+  let gif = $state<GifInfo | null>(null);
+  let gifNote = $state('');
+  let shownFrame = -1;
+  const frameUrls = new Map<number, string>();
+
+  async function frameUrl(index: number): Promise<string> {
+    let url = frameUrls.get(index);
+    if (!url) {
+      url = URL.createObjectURL(new Blob([(await gifFramePng(index)) as BlobPart], { type: 'image/png' }));
+      frameUrls.set(index, url);
+    }
+    return url;
+  }
+
+  // The chosen frame becomes the picture the icon is made from, shortly after the last change
+  // (stepping or dragging the slider changes it many times).
+  let pictureVersion = $state(0);
+  $effect(() => {
+    const index = settings.gifFrame;
+    if (!gif || index === shownFrame) return;
+    const timer = setTimeout(async () => {
+      try {
+        opened = await selectGifFrame(index);
+        const url = await frameUrl(index);
+        shownFrame = index;
+        originalUrl = url;
+        pictureVersion += 1;
+      } catch (error) {
+        convertFailure = explain(error);
+      }
+    }, 100);
+    return () => clearTimeout(timer);
+  });
+
   onMount(async () => {
     originalUrl = URL.createObjectURL(file);
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
-      opened = await openPicture(bytes, file.name);
+      // An icon from the queue comes back with its GIF frame, too.
+      const startFrame = settings.gifFrame;
+      const isGif = bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46;
+      const forGif = isGif ? new Uint8Array(bytes) : undefined;
+      opened = await openPicture(bytes, file.name, startFrame + 1);
       // An icon from the queue comes back with its crop frame.
       frame = startCrop ? { ...startCrop } : fullRect(opened);
       cropOn = startCrop !== null;
+      if (forGif) {
+        try {
+          const info = await openGif(forGif, file.name);
+          if (info.count > 1) {
+            const first = Math.min(startFrame, info.count - 1);
+            // The file itself would play on, so the original is shown as the chosen frame.
+            const url = await frameUrl(first);
+            URL.revokeObjectURL(originalUrl);
+            originalUrl = url;
+            shownFrame = first;
+            gif = info;
+          }
+        } catch {
+          // Too many frames to hold: the page works with the frame that was opened.
+          gifNote = t('gif.too_many');
+        }
+      }
     } catch (error) {
       openFailure = explain(error);
     }
   });
 
   onDestroy(() => {
-    if (originalUrl) URL.revokeObjectURL(originalUrl);
+    if (gif) frameUrls.forEach((url) => URL.revokeObjectURL(url));
+    else if (originalUrl) URL.revokeObjectURL(originalUrl);
     if (appleUrl) URL.revokeObjectURL(appleUrl);
     revoke(tiles);
     closePicture().catch(() => {});
@@ -206,6 +268,8 @@
       removeBackground: settings.removeBackground && !picking,
     });
     const apple = settings.appleBackground;
+    // A different frame of a GIF is a different picture.
+    void pictureVersion;
     if (!favicon && settings.sizes.length === 0) {
       converted = undefined;
       show([]);
@@ -623,6 +687,11 @@
         </button>
       {/if}
       </div>
+
+      {#if gif}
+        <GifPlayer count={gif.count} delays={gif.delays} bind:frame={settings.gifFrame} load={frameUrl} />
+      {/if}
+      {#if gifNote}<p class="hint">{gifNote}</p>{/if}
 
       <div class="preview-body">
       <div class="swatches" role="group" aria-label={t('editor.background')} onpointerleave={() => (hovered = null)}>
