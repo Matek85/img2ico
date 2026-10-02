@@ -13,6 +13,7 @@
   import { t } from '../i18n';
   import Compare from './Compare.svelte';
   import PixelInspector from './PixelInspector.svelte';
+  import ColorPicker from './ColorPicker.svelte';
   import CropTool from './CropTool.svelte';
   import {
     ASPECTS,
@@ -89,6 +90,8 @@
   let cropOn = $state(false);
   // The detailed controls are folded away until asked for.
   let advanced = $state(false);
+  // Picking the color to remove from the picture itself.
+  let picking = $state(false);
   let cropAspect = $state<AspectChoice>('free');
   let frame = $state<Rect>({ x: 0, y: 0, width: 1, height: 1 });
   let picture = $derived(opened ? { width: opened.width, height: opened.height } : undefined);
@@ -516,6 +519,23 @@
               <span>{t('controls.bg_color')}</span>
               <input type="color" bind:value={settings.backgroundColor} />
             </label>
+            <div class="pick-row">
+              <button type="button" class="outline" onclick={() => (picking = !picking)} aria-expanded={picking}>
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m2 22 1-1h3l9-9"/><path d="M3 21v-3l9-9"/><path d="m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3z"/></svg>
+                {t('picker.open')}
+              </button>
+            </div>
+            {#if picking}
+              <ColorPicker
+                src={originalUrl}
+                size={{ width: opened.width, height: opened.height }}
+                onpick={(color) => {
+                  settings.backgroundColor = color;
+                  picking = false;
+                }}
+                oncancel={() => (picking = false)}
+              />
+            {/if}
           {/if}
           <label class="slider">
             <span>{t('controls.tolerance')}</span>
