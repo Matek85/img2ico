@@ -577,7 +577,7 @@ fn check_png(data: &[u8]) -> Result<(u32, u32), String> {
 }
 
 /// The CRC-32 PNG uses for its chunks.
-fn crc32(bytes: &[u8]) -> u32 {
+pub(crate) fn crc32(bytes: &[u8]) -> u32 {
     let mut crc = 0xFFFF_FFFFu32;
     for &byte in bytes {
         crc ^= u32::from(byte);
