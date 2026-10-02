@@ -40,6 +40,7 @@
     const about = document.getElementById('about');
     if (about) about.hidden = view.kind !== 'start';
     document.body.classList.toggle('wide', view.kind === 'editor' || view.kind === 'batch');
+    document.body.classList.toggle('working', view.kind !== 'start');
   });
 
   let problem = $state('');

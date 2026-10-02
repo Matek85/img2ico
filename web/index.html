@@ -10,12 +10,23 @@
   <body>
     <!-- Everything outside #app is there before any script runs (and stays for
          people and search engines without one); the script fills #app. -->
-    <header class="part" id="top">
-      <!--seo:header-->
+    <header class="topbar">
+      <div class="shell">
+        <a class="brand" href="./"><img src="./favicon.png" alt="" width="36" height="36" /><span><!--seo:name--></span></a>
+        <nav><a href="<!--seo:repository-->"><!--seo:github--></a></nav>
+      </div>
     </header>
+    <section class="hero" id="top">
+      <div class="shell">
+        <div class="hero-text">
+          <!--seo:header-->
+        </div>
+        <!--seo:art-->
+      </div>
+    </section>
     <noscript><p class="part failure"><!--seo:noscript--></p></noscript>
     <main class="part" id="app"></main>
-    <section class="part about" id="about">
+    <section class="shell about" id="about">
         <!--seo:about-->
     </section>
     <footer class="part">

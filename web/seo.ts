@@ -83,7 +83,19 @@ export function headTags(m: Messages, siteUrl: string): string {
 
 /** The heading of the page: there before the script runs, and what a crawler without scripts reads. */
 export function headerHtml(m: Messages): string {
-  return `<h1>${escapeHtml(m['app.name'])}</h1>\n      <p class="tagline">${escapeHtml(m['app.tagline'])}</p>`;
+  return `<h1>${escapeHtml(m['hero.title'])}</h1>\n          <p class="lead">${escapeHtml(m['app.tagline'])}</p>`;
+}
+
+const FILE_ICON =
+  '<svg viewBox="0 0 24 24" width="36" height="36" fill="currentColor"><path d="M6 2h8l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm7 1.5V8h4.5L13 3.5zM8 18h8l-2.5-3.5-2 2.5-1.2-1.5L8 18z"/></svg>';
+
+/** The picture in the corner of the heading: a file turning into another. Decoration only. */
+export function artHtml(m: Messages): string {
+  return `<div class="hero-art" aria-hidden="true">
+          <div class="tile">${FILE_ICON}<b>PNG</b></div>
+          <div class="join"><span class="spin"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0 1 13.5-5.8L20 8.5M20 4v4.5h-4.5M20 12a8 8 0 0 1-13.5 5.8L4 15.5M4 20v-4.5h4.5"/></svg></span><small>${escapeHtml(m['hero.to'])}</small></div>
+          <div class="tile out">${FILE_ICON}<b>ICO</b></div>
+        </div>`;
 }
 
 /** The text under the converter. */
@@ -94,7 +106,7 @@ export function aboutHtml(m: Messages): string {
     Array.from({ length: count }, (_, i) => `          <li>${e(`${prefix}${i + 1}`)}</li>`).join('\n') +
     `\n        </${tag}>`;
   const questions = ['free', 'private', 'sizes', 'favicon', 'formats', 'cli']
-    .map((id) => `<h3>${e(`about.q_${id}`)}</h3>\n        <p>${e(`about.a_${id}`)}</p>`)
+    .map((id) => `<div class="qa"><h3>${e(`about.q_${id}`)}</h3>\n          <p>${e(`about.a_${id}`)}</p></div>`)
     .join('\n        ');
   return `<h2>${e('about.title')}</h2>
         <p>${e('about.intro')}</p>
@@ -103,7 +115,9 @@ export function aboutHtml(m: Messages): string {
         <h2>${e('about.can_title')}</h2>
         ${list('ul', 'about.can_', 5)}
         <h2>${e('about.faq_title')}</h2>
+        <div class="qas">
         ${questions}
+        </div>
         <p><a href="${REPOSITORY}">${e('about.source')}</a></p>`;
 }
 
@@ -124,6 +138,10 @@ export function seo(address?: string): Plugin {
       return html
         .replace('<!--seo:head-->', () => headTags(en, siteUrl))
         .replace('<!--seo:header-->', () => headerHtml(en))
+        .replace('<!--seo:art-->', () => artHtml(en))
+        .replace('<!--seo:name-->', () => escapeHtml(en['app.name']))
+        .replace('<!--seo:github-->', () => escapeHtml(en['nav.github']))
+        .replace('<!--seo:repository-->', () => REPOSITORY)
         .replace('<!--seo:noscript-->', () => escapeHtml(en['seo.noscript']))
         .replace('<!--seo:privacy-->', () => escapeHtml(en['app.privacy']))
         .replace('<!--seo:about-->', () => aboutHtml(en));

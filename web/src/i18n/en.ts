@@ -4,7 +4,10 @@
 // _other (the suffixes of Intl.PluralRules); {name} is replaced by a value.
 export const en = {
   'app.name': 'img2ico',
-  'app.tagline': 'Turn any picture into an icon, right in your browser.',
+  'app.tagline': 'Turn PNG, JPG, SVG and more into .ico and .icns icons, or a complete favicon package. Right in your browser, nothing is uploaded.',
+  'hero.title': 'Image to Icon Converter',
+  'hero.to': 'to',
+  'nav.github': 'GitHub',
   'app.privacy': 'Your files never leave your browser. Nothing is uploaded.',
 
   // What search engines and link previews show.

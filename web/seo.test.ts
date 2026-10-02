@@ -55,7 +55,7 @@ describe('the text of the page', () => {
   it('has one heading level 1 and escapes what it prints', () => {
     expect(headerHtml(en).match(/<h1>/g)).toHaveLength(1);
     expect(escapeHtml('a<b & "c"')).toBe('a&lt;b &amp; &quot;c&quot;');
-    expect(headerHtml({ ...en, 'app.name': '<x>' })).toContain('&lt;x&gt;');
+    expect(headerHtml({ ...en, 'hero.title': '<x>' })).toContain('&lt;x&gt;');
   });
 
   it('has every question with its answer', () => {
