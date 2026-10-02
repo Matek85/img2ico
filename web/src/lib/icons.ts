@@ -11,6 +11,9 @@ export const ICONS = {
   plus: '<path d="M12 5v14"/><path d="M5 12h14"/>',
   queueAdd: '<path d="M11 12H3"/><path d="M16 6H3"/><path d="M16 18H3"/><path d="M18 9v6"/><path d="M21 12h-6"/>',
   checkAll: '<path d="m9 11 3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
+  view: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/>',
+  compare: '<path d="M12 3v18"/><path d="M3 5h5a4 4 0 0 1 4 4v6a4 4 0 0 1-4 4H3z"/><path d="M21 5h-5"/><path d="M21 19h-5"/>',
+  grid: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/><path d="M15 3v18"/>',
   checkNone: '<rect x="3" y="3" width="18" height="18" rx="2"/>',
 } as const;
 

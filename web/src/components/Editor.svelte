@@ -59,8 +59,13 @@
     onopenitem?: (item: QueueItem) => void;
   } = $props();
 
-  type Backdrop = 'checker' | 'light' | 'dark' | 'gray';
-  const BACKDROPS: Backdrop[] = ['checker', 'light', 'dark', 'gray'];
+  type Backdrop = 'checker' | 'light' | 'dark' | 'gray' | 'custom';
+  const BACKDROPS: Backdrop[] = ['checker', 'light', 'dark', 'gray', 'custom'];
+  const VIEWS = [
+    { id: 'icon', icon: 'view' },
+    { id: 'compare', icon: 'compare' },
+    { id: 'pixels', icon: 'grid' },
+  ] as const;
 
   // What was chosen last time is the starting point (see storage.ts).
   // (The editor is made anew for every icon, so only the first value of `editing` matters.)
@@ -75,6 +80,11 @@
   let originalUrl = $state('');
 
   let backdrop = $state<Backdrop>('checker');
+  let customColor = $state('#3b82f6');
+  // The surface under the mouse is shown at once; a click keeps it.
+  let hovered = $state<Backdrop | null>(null);
+  let shown = $derived(hovered ?? backdrop);
+  let surface = $derived(shown === 'custom' ? `background:${customColor}` : undefined);
   let view = $state<'icon' | 'compare' | 'pixels'>('icon');
   let converted = $state<Converted>();
   let tiles = $state<{ size: number; url: string }[]>([]);
@@ -441,25 +451,45 @@
     <section class="preview" aria-labelledby="preview-title">
       <h2 id="preview-title">{t('editor.preview')}</h2>
 
-      <div class="backdrops" role="radiogroup" aria-label={t('editor.background')}>
+      <div class="views" role="radiogroup" aria-label={t('editor.view')}>
+        {#each VIEWS as choice (choice.id)}
+          <label class:chosen={view === choice.id}>
+            <input type="radio" name="view" value={choice.id} bind:group={view} />
+            <Icon name={choice.icon} />
+            {t(`editor.view_${choice.id}`)}
+          </label>
+        {/each}
+      </div>
+
+      <div class="preview-body">
+      <div class="swatches" role="group" aria-label={t('editor.background')} onpointerleave={() => (hovered = null)}>
         {#each BACKDROPS as choice (choice)}
-          <label class:chosen={backdrop === choice}>
-            <input type="radio" name="backdrop" value={choice} bind:group={backdrop} />
-            {t(`editor.bg_${choice}`)}
+          {@const name = t(`editor.bg_${choice}`)}
+          <label
+            class:chosen={backdrop === choice}
+            title={name}
+            onpointerenter={() => (hovered = choice)}
+            onfocusin={() => (hovered = choice)}
+            onfocusout={() => (hovered = null)}
+          >
+            <input type="radio" name="backdrop" value={choice} aria-label={name} bind:group={backdrop} />
+            <span class="sw {choice}" style={choice === 'custom' ? `background:${customColor}` : undefined}>
+              {#if choice === 'custom'}
+                <input
+                  type="color"
+                  class="sw-color"
+                  aria-label={t('editor.bg_custom_pick')}
+                  bind:value={customColor}
+                  oninput={() => (backdrop = 'custom')}
+                />
+              {/if}
+            </span>
           </label>
         {/each}
       </div>
 
-      <div class="chips views" role="radiogroup" aria-label={t('editor.view')}>
-        {#each ['icon', 'compare', 'pixels'] as choice (choice)}
-          <label class:chosen={view === choice}>
-            <input type="radio" name="view" value={choice} bind:group={view} />
-            {t(`editor.view_${choice}`)}
-          </label>
-        {/each}
-      </div>
-
-      <div class="stage {backdrop}" aria-live="polite">
+      <div class="preview-main">
+      <div class="stage {shown}" style={surface} aria-live="polite">
         {#if settings.sizes.length === 0}
           <p class="note">{t('editor.no_sizes')}</p>
         {:else if converted && tiles.length > 0 && view === 'pixels'}
@@ -481,7 +511,7 @@
       </div>
 
       {#if smaller.length > 0}
-        <ul class="tiles {backdrop}">
+        <ul class="tiles {shown}" style={surface}>
           {#each smaller as tile (tile.size)}
             <li>
               <img src={tile.url} alt="" width={tile.size} height={tile.size} />
@@ -490,6 +520,8 @@
           {/each}
         </ul>
       {/if}
+      </div>
+      </div>
       {#if tiles.length > 0}<p class="hint">{t('editor.preview_note')}</p>{/if}
 
       {#if working}<p class="hint" role="status">{t('editor.working')}</p>{/if}

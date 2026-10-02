@@ -2307,3 +2307,140 @@ input[type='range'] {
     flex: 1 1 100%;
   }
 }
+
+/* =========================================================================
+   Preview: a column of background swatches beside the picture, and the three
+   views as a segmented control with icons.
+   ========================================================================= */
+
+.preview .views {
+  display: inline-flex;
+  gap: 0.25rem;
+  margin-bottom: 0.9rem;
+  padding: 0.25rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 0.7rem;
+}
+
+.preview .views label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: var(--control-small);
+  padding: 0 0.85rem;
+  border-radius: 0.5rem;
+  color: var(--muted);
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.preview .views label:hover {
+  color: var(--text);
+  background: var(--tint);
+}
+
+.preview .views label.chosen {
+  background: var(--accent);
+  color: var(--accent-text);
+  box-shadow: var(--shadow);
+}
+
+.preview .views input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.preview .views label:has(input:focus-visible) {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.preview .views .icon {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+.preview-body {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: start;
+}
+
+.preview-main {
+  min-width: 0;
+}
+
+.swatches {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.4rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 0.7rem;
+}
+
+.swatches label {
+  display: block;
+  cursor: pointer;
+  border-radius: 0.5rem;
+}
+
+.swatches input[type='radio'] {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.swatches .sw {
+  display: block;
+  position: relative;
+  width: 2rem;
+  height: 2rem;
+  border: 2px solid var(--border);
+  border-radius: 0.5rem;
+  background-size: 8px 8px;
+  background-position: 0 0, 4px 4px;
+  overflow: hidden;
+}
+
+.swatches label:hover .sw {
+  border-color: var(--muted);
+}
+
+.swatches label.chosen .sw {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.swatches label:has(input[type='radio']:focus-visible) {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.swatches .sw.custom::after {
+  content: '';
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 0.55rem;
+  height: 0.55rem;
+  background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red);
+  border: 1px solid #fff;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.swatches .sw-color {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  cursor: pointer;
+}
