@@ -1989,3 +1989,214 @@ button.icon-button.on {
   align-items: center;
   gap: 0.45rem;
 }
+
+/* =========================================================================
+   One set of controls
+   Buttons are all the same height (--control); only their look differs:
+   filled (the main action), outline (a second action), quiet (a text link).
+   Chips and icon buttons are smaller on purpose. Fields have their own height.
+   ========================================================================= */
+
+:root {
+  --control: 2.5rem;
+  --control-small: 2rem;
+  --field: 2.25rem;
+}
+
+button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-height: var(--control);
+  padding: 0 1.1rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+button.primary {
+  padding: 0 1.1rem;
+}
+
+button.outline {
+  padding: 0 1rem;
+  font-weight: 500;
+}
+
+button.quiet {
+  padding: 0 0.75rem;
+  font-weight: 500;
+}
+
+button.chip {
+  min-height: var(--control-small);
+  padding: 0 0.8rem;
+  font-weight: 500;
+}
+
+button.icon-button {
+  min-height: var(--control-small);
+  width: var(--control-small);
+  padding: 0;
+}
+
+.drop button.choose {
+  min-height: 3rem;
+  padding: 0 1.75rem;
+}
+
+.bar .reset {
+  min-height: var(--control);
+}
+
+/* chips: the labels of the radio groups are as high as the chips */
+.chips label,
+.backdrops label,
+.formats label {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-small);
+  padding: 0 0.8rem;
+}
+
+/* fields */
+select,
+input[type='text'],
+input[type='number'] {
+  font: inherit;
+  min-height: var(--field);
+  padding: 0 0.6rem;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 0.45rem;
+}
+
+input[type='color'] {
+  width: 3.5rem;
+  height: var(--field);
+  padding: 0.15rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 0.45rem;
+  cursor: pointer;
+}
+
+input[type='checkbox'],
+input[type='radio'],
+input[type='range'] {
+  accent-color: var(--accent);
+}
+
+/* the settings: cards with their title inside */
+.controls fieldset {
+  display: flow-root;
+}
+
+.controls fieldset > legend {
+  float: left;
+  width: 100%;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.controls fieldset > legend + * {
+  clear: both;
+}
+
+.controls fieldset > :not(legend) + :not(legend) {
+  margin-top: 0.65rem;
+}
+
+.controls fieldset.empty {
+  padding-block: 0.7rem;
+}
+
+.controls fieldset.empty > legend {
+  margin: 0;
+}
+
+.controls fieldset > button.quiet,
+.controls fieldset > button.outline {
+  display: inline-flex;
+  margin-right: 0.5rem;
+}
+
+/* a text button under a card's content lines up with the text above it */
+.controls fieldset > button.quiet {
+  margin-left: -0.75rem;
+}
+
+.controls fieldset > .pick-row,
+.controls fieldset > .checks {
+  margin-top: 0.65rem;
+}
+
+/* the download card */
+.download {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.formats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.4rem;
+}
+
+.formats > legend {
+  float: none;
+  width: auto;
+  margin-right: 0.75rem;
+  padding: 0;
+  font-weight: 600;
+}
+
+.formats label {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+
+.formats label:has(input:checked) {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--accent);
+}
+
+.formats input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.formats label:has(input:focus-visible) {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.download-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.download > .hint {
+  margin: 0;
+}
+
+/* on a tall screen the preview stays in view while the settings are scrolled */
+@media (min-width: 52rem) and (min-height: 760px) {
+  .editor .preview {
+    position: sticky;
+    top: 1rem;
+    max-height: calc(100vh - 2rem);
+    overflow: auto;
+  }
+}

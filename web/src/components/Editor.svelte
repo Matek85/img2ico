@@ -13,6 +13,7 @@
   import Compare from './Compare.svelte';
   import PixelInspector from './PixelInspector.svelte';
   import CropTool from './CropTool.svelte';
+  import Icon from './Icon.svelte';
   import Queue from './Queue.svelte';
   import {
     ASPECTS,
@@ -704,11 +705,14 @@
         <button type="button" class="quiet" onclick={copySnippet}>{copied ? t('site.copied') : t('site.copy')}</button>
       </div>
     {/if}
+    <div class="download-actions">
       <button type="button" class="primary" onclick={download} disabled={!converted || working || packing}>
+        <Icon name="download" />
         {packing ? t('site.building') : t('download.button', { name: downloadName(file.name, settings.format) })}
       </button>
       {#if settings.format !== 'favicon'}
-        <button type="button" onclick={downloadPngZip} disabled={!converted || working}>
+        <button type="button" class="outline" onclick={downloadPngZip} disabled={!converted || working}>
+          <Icon name="archive" />
           {t('download.png_zip')}
         </button>
       {/if}
@@ -720,6 +724,7 @@
           disabled={!converted || working || packing || settings.format === 'favicon'}
           title={settings.format === 'favicon' ? t('queue.add_favicon') : t('queue.add_hint')}
         >
+          <Icon name="queueAdd" />
           {t('queue.update')}
         </button>
       {/if}
@@ -730,9 +735,11 @@
         disabled={!converted || working || packing || settings.format === 'favicon'}
         title={settings.format === 'favicon' ? t('queue.add_favicon') : t('queue.add_hint')}
       >
+        <Icon name="queueAdd" />
         {editId !== undefined ? t('queue.add_new') : t('queue.add')}
       </button>
-      {#if settings.format === 'icns'}<p class="hint">{t('download.icns_note')}</p>{/if}
+    </div>
+    {#if settings.format === 'icns'}<p class="hint">{t('download.icns_note')}</p>{/if}
   </section>
   <Queue activeId={editId} onopen={jump} onnext={nextPicture} onpicture={nextPicture} />
 {/if}
