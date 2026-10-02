@@ -59,7 +59,7 @@ export const en = {
   'drop.choose': 'Choose a file',
   'drop.formats': 'PNG, JPG, GIF, WebP, BMP, TIFF, SVG or ICNS',
   'drop.check': 'Drop an .ico file instead to look inside it, check it, take images out or combine it with others.',
-  'drop.many': 'Several pictures, or a ZIP of pictures, are all turned into icons at once.',
+  'drop.many': 'Several files, or a ZIP of pictures and .ico files, go into a queue at once: pictures become icons, .ico files stay as they are.',
   'drop.active': 'Release to open the picture',
 
   'state.opening': 'Opening {name} …',
@@ -128,6 +128,8 @@ export const en = {
   'queue.combine_hint': 'Combining puts the images of all icons into one file. If two icons have an image of the same size, the one higher in the list wins; move icons up or down to choose.',
   'queue.combine_icns': 'Only .ico icons can be combined into one file; the ZIP holds every icon as its own file.',
   'queue.clear': 'Clear the queue',
+  'queue.look': 'Look into {name}',
+  'queue.as_it_is': 'icon file as it is',
   'queue.next_button': 'Add the next picture',
   'queue.next_hint': 'This icon is kept in the queue first. Several pictures or a ZIP are all added to the queue at once.',
   'queue.filling': 'Making the icons for the queue',
@@ -221,10 +223,10 @@ export const en = {
 
   'batch.progress': 'Progress',
   'batch.working': 'Picture {done} of {total}: {name}',
-  'batch.none': 'None of these files is a picture.',
-  'batch.empty_zip': 'There are no pictures in this ZIP.',
-  'batch.ignored_one': '{count} file was left out: it is not a picture.',
-  'batch.ignored_other': '{count} files were left out: they are not pictures.',
+  'batch.none': 'None of these files is a picture or an icon file.',
+  'batch.empty_zip': 'There are no pictures or icon files in this ZIP.',
+  'batch.ignored_one': '{count} file was left out: it is not a picture or an icon file.',
+  'batch.ignored_other': '{count} files were left out: they are not pictures or icon files.',
   'batch.too_many': 'Only the first {max} pictures are used.',
 
   'result.valid': 'This icon file is valid.',

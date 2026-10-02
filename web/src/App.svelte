@@ -7,7 +7,16 @@
   import { type QueueItem, queue } from './lib/queue.svelte';
   import { type Settings, toEngineOptions } from './lib/settings';
   import { loadSettings } from './lib/storage';
-  import { closePicture, convert, engineVersion, openPicture, openZip, readZipFile } from './engine/client';
+  import {
+    closePicture,
+    convert,
+    describeIcon,
+    engineVersion,
+    extractPng,
+    openPicture,
+    openZip,
+    readZipFile,
+  } from './engine/client';
   import { t } from './i18n';
   import { type BatchItem, MAX_BATCH, baseName, isIconName, isPictureName, isZipName } from './lib/batch';
 
@@ -64,7 +73,7 @@
       } else if (files.length === 1) {
         view = { kind: 'editor', file: files[0] };
       } else {
-        const pictures = files.filter((file) => isPictureName(file.name));
+        const pictures = files.filter((file) => isQueueName(file.name));
         if (pictures.length === 0) {
           problem = t('batch.none');
           return;
@@ -83,7 +92,7 @@
 
   async function chooseZip(zip: File) {
     const listed = await openZip(new Uint8Array(await zip.arrayBuffer()));
-    const pictures = listed.filter((entry) => isPictureName(entry.name));
+    const pictures = listed.filter((entry) => isQueueName(entry.name));
     if (pictures.length === 0) {
       problem = t('batch.empty_zip');
       return;
@@ -95,6 +104,9 @@
     const skipped = listed.length - pictures.length;
     await fillQueue(items, skipped > 0 ? [t('batch.ignored', { count: skipped })] : []);
   }
+
+  // Pictures become icons for the queue; .ico files go in as they are.
+  const isQueueName = (name: string) => isPictureName(name) || isIconName(name);
 
   // How far the making of the queue has come.
   let filling = $state<{ done: number; total: number; name: string } | null>(null);
@@ -116,6 +128,20 @@
         filling = { done: at, total: items.length, name: item.name };
         try {
           const bytes = await item.load();
+          if (isIconName(item.name)) {
+            // An icon file stays as it is; the engine tells its images (and fails on a damaged one).
+            const description = await describeIcon(bytes.slice());
+            const largest = description.images.reduce((a, b) => (b.width > a.width ? b : a), description.images[0]);
+            const sizes = [...new Set(description.images.map((image) => image.width))].sort((a, b) => a - b);
+            queue.addIcon(
+              baseName(item.name),
+              new File([bytes as BlobPart], baseName(item.name)),
+              bytes,
+              sizes,
+              largest ? await extractPng(bytes.slice(), largest.index) : null,
+            );
+            continue;
+          }
           await openPicture(bytes.slice(), item.name);
           const preview = await convert(toEngineOptions(settings, 'ico'));
           const out = settings.format === 'icns' ? (await convert(toEngineOptions(settings, 'icns'))).bytes : preview.bytes;
@@ -137,7 +163,10 @@
     }
     queue.setProblems(problems);
     if (first) {
+      // The first picture is opened; a queue of icon files only is shown on the start page.
       openFromQueue(first);
+    } else if (queue.items.length > 0) {
+      view = { kind: 'start' };
     } else {
       view = { kind: 'start' };
       problem = t('batch.none');
@@ -150,7 +179,11 @@
 
   // An icon of the queue is opened again, with the picture and settings it was made with.
   function openFromQueue(item: QueueItem) {
-    view = { kind: 'editor', file: item.file, editing: { id: item.id, settings: $state.snapshot(item.settings) as Settings } };
+    // An .ico file that was added as it is is looked into (checked, taken apart); a picture is edited.
+    view =
+      item.kind === 'icon' || !item.settings
+        ? { kind: 'validate', file: item.file }
+        : { kind: 'editor', file: item.file, editing: { id: item.id, settings: $state.snapshot(item.settings) as Settings } };
     window.scrollTo({ top: 0 });
   }
 

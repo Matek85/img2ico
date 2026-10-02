@@ -9,11 +9,13 @@ export type QueueFormat = 'ico' | 'icns';
 
 export interface QueueItem {
   id: number;
-  /** The picture the icon was made from, and the picture itself, so the icon can be edited again. */
+  /** An icon made from a picture (it can be edited again), or an .ico file that was added as it is. */
+  kind: 'picture' | 'icon';
+  /** The picture the icon was made from (or the name of the .ico file), and the file itself. */
   picture: string;
   file: File;
-  /** The settings it was made with. */
-  settings: Settings;
+  /** The settings it was made with; none for an .ico file added as it is. */
+  settings: Settings | null;
   /** The name of the icon file, unique in the queue. */
   fileName: string;
   format: QueueFormat;
@@ -90,6 +92,7 @@ export const queue = {
     const made_ = parts(made);
     const item: QueueItem = {
       id: nextId++,
+      kind: 'picture',
       picture,
       fileName: outputName(
         items.map((existing) => existing.fileName),
@@ -97,6 +100,30 @@ export const queue = {
         made.format,
       ),
       ...made_,
+    };
+    items = [...items, item];
+    notice = true;
+    ticks += 1;
+    return item;
+  },
+
+  /** Adds an .ico file as it is: it is not made from a picture, so it cannot be edited, only looked into. */
+  addIcon(name: string, file: File, bytes: Uint8Array, sizes: number[], largestPng: Uint8Array | null): QueueItem {
+    const item: QueueItem = {
+      id: nextId++,
+      kind: 'icon',
+      picture: name,
+      file,
+      settings: null,
+      fileName: outputName(
+        items.map((existing) => existing.fileName),
+        name,
+        'ico',
+      ),
+      format: 'ico',
+      bytes,
+      sizes,
+      thumb: largestPng ? URL.createObjectURL(new Blob([largestPng as BlobPart], { type: 'image/png' })) : '',
     };
     items = [...items, item];
     notice = true;

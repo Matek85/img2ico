@@ -124,7 +124,7 @@
           <button
             type="button"
             class="open"
-            aria-label={t('queue.edit', { name: item.fileName })}
+            aria-label={t(item.kind === 'icon' ? 'queue.look' : 'queue.edit', { name: item.fileName })}
             aria-current={item.id === activeId ? 'true' : undefined}
             disabled={!onopen || item.id === activeId}
             onclick={() => onopen?.(item)}
@@ -133,7 +133,7 @@
             <span class="what">
               <strong>{item.fileName}</strong>
               <span class="hint">
-                {item.id === activeId ? t('queue.editing') + ' · ' : ''}{item.format === 'ico' ? sizesText(item.sizes) : t('queue.icns_sizes')}
+                {item.id === activeId ? t('queue.editing') + ' · ' : ''}{item.format === 'ico' ? sizesText(item.sizes) : t('queue.icns_sizes')}{item.kind === 'icon' ? ' · ' + t('queue.as_it_is') : ''}
               </span>
             </span>
           </button>
