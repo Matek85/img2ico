@@ -276,7 +276,7 @@
       <div class="subqueue" bind:this={subRoot}>
         <div class="queue-compare-head">
           <h3>{t('queue.sub_title', { name: source?.fileName ?? '' })}</h3>
-          <button type="button" class="quiet" onclick={closeSub}>{t('queue.sub_close')}</button>
+          <button type="button" class="quiet" onclick={closeSub}><Icon name="close" />{t('queue.sub_close')}</button>
         </div>
         <p class="hint">{t('queue.sub_hint')}</p>
         <ul class="sub-images">
@@ -303,16 +303,17 @@
                   onclick={() => asPicture(source, image.index)}
                 ><Icon name="edit" /></button>
               {/if}
-              <button type="button" class="outline" disabled={working} onclick={() => addImages([image.index])}>{t('queue.sub_add')}</button>
+              <button type="button" class="outline" disabled={working} onclick={() => addImages([image.index])}><Icon name="queueAdd" />{t('queue.sub_add')}</button>
             </li>
           {/each}
         </ul>
         <div class="queue-actions">
           <button type="button" disabled={working || subTicked.length < 2} onclick={() => addImages(subTicked)}>
+            <Icon name="queueAdd" />
             {subTicked.length >= 2 ? t('queue.sub_add_chosen', { count: subTicked.length }) : t('queue.sub_add_chosen_none')}
           </button>
-          <button type="button" class="quiet" onclick={() => (subTicked = sub ? sub.images.map((image) => image.index) : [])}>{t('iconfile.select_all')}</button>
-          <button type="button" class="quiet" onclick={() => (subTicked = [])}>{t('iconfile.select_none')}</button>
+          <button type="button" class="quiet" onclick={() => (subTicked = sub ? sub.images.map((image) => image.index) : [])}><Icon name="checkAll" />{t('iconfile.select_all')}</button>
+          <button type="button" class="quiet" onclick={() => (subTicked = [])}><Icon name="checkNone" />{t('iconfile.select_none')}</button>
         </div>
       </div>
     {/if}
@@ -351,7 +352,7 @@
 
     {#if onnext}
       <div class="queue-next">
-        <button type="button" class="outline" onclick={() => picker?.click()}>+ {t('queue.next_button')}</button>
+        <button type="button" class="outline" onclick={() => picker?.click()}><Icon name="plus" />{t('queue.next_button')}</button>
         <span class="hint">{t('queue.next_hint')}</span>
         <input bind:this={picker} type="file" accept="image/*,.svg,.icns,.zip" multiple hidden onchange={chosen} />
       </div>
@@ -371,8 +372,8 @@
       <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
       <div class="confirm" role="group" aria-label={t('queue.clear')} onkeydown={(e) => e.key === 'Escape' && (confirmClear = false)}>
         <p>{t('queue.clear_ask', { count: queue.items.length })}</p>
-        <button type="button" class="danger" onclick={() => { confirmClear = false; queue.clear(); }}>{t('queue.clear_yes')}</button>
-        <button type="button" class="outline" bind:this={keepButton} onclick={() => (confirmClear = false)}>{t('queue.clear_no')}</button>
+        <button type="button" class="danger" onclick={() => { confirmClear = false; queue.clear(); }}><Icon name="trash" />{t('queue.clear_yes')}</button>
+        <button type="button" class="outline" bind:this={keepButton} onclick={() => (confirmClear = false)}><Icon name="close" />{t('queue.clear_no')}</button>
       </div>
     {/if}
     {#if queue.problems.length > 0}
@@ -381,7 +382,7 @@
         <ul>
           {#each queue.problems as problem}<li>{problem}</li>{/each}
         </ul>
-        <button type="button" class="quiet" onclick={() => queue.setProblems([])}>{t('picker.dismiss')}</button>
+        <button type="button" class="quiet" onclick={() => queue.setProblems([])}><Icon name="close" />{t('picker.dismiss')}</button>
       </div>
     {/if}
     {#if failure}<p class="failure" role="alert">{failure}</p>{/if}

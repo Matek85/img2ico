@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from './Icon.svelte';
   import { tick } from 'svelte';
   import { iconPixels } from '../engine/client';
   import type { Pixels } from '../engine/protocol';
@@ -168,7 +169,7 @@
       {#if picking}
         <div class="pickbar" role="status">
           <p>{t('picker.hint')}</p>
-          <button type="button" class="outline" onclick={() => oncancel?.()}>{t('picker.cancel')}</button>
+          <button type="button" class="outline" onclick={() => oncancel?.()}><Icon name="close" />{t('picker.cancel')}</button>
         </div>
       {/if}
       {#if transparentNote}
@@ -176,7 +177,7 @@
           <div class="notice" role="alert">
             <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
             <p>{t('picker.clear')}</p>
-            <button type="button" class="quiet" aria-label={t('picker.dismiss')} onclick={() => (transparentNote = false)}>×</button>
+            <button type="button" class="quiet icon-button" aria-label={t('picker.dismiss')} onclick={() => (transparentNote = false)}><Icon name="close" /></button>
           </div>
         {/key}
       {/if}
@@ -192,7 +193,7 @@
       </select>
     </label>
     <div class="zoom">
-      <button type="button" class="quiet" aria-label={t('pixels.zoom_out')} onclick={() => setZoom(zoom - 1)} disabled={zoom <= 1}>−</button>
+      <button type="button" class="quiet icon-button" aria-label={t('pixels.zoom_out')} onclick={() => setZoom(zoom - 1)} disabled={zoom <= 1}><Icon name="minus" /></button>
       <input
         type="range"
         min="1"
@@ -201,9 +202,9 @@
         aria-label={t('pixels.zoom')}
         oninput={(e) => setZoom(e.currentTarget.valueAsNumber)}
       />
-      <button type="button" class="quiet" aria-label={t('pixels.zoom_in')} onclick={() => setZoom(zoom + 1)} disabled={zoom >= MAX_ZOOM}>+</button>
+      <button type="button" class="quiet icon-button" aria-label={t('pixels.zoom_in')} onclick={() => setZoom(zoom + 1)} disabled={zoom >= MAX_ZOOM}><Icon name="plus" /></button>
       <output>{zoom}×</output>
-      <button type="button" class="quiet" onclick={() => pixels && setZoom(fitZoom(width, pixels.width))}>{t('pixels.fit')}</button>
+      <button type="button" class="quiet" onclick={() => pixels && setZoom(fitZoom(width, pixels.width))}><Icon name="fit" />{t('pixels.fit')}</button>
     </div>
     <label><input type="checkbox" bind:checked={grid} /> {t('pixels.grid')}</label>
   </div>
@@ -256,6 +257,7 @@
       </dl>
       {#if onuse && pinned}
         <button type="button" class="primary remove" title={t('pixels.remove_bg_hint')} onclick={() => apply(pinned)}>
+          <Icon name="eraser" />
           {t('pixels.remove_bg')}
         </button>
       {/if}

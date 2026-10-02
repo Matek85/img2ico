@@ -2688,3 +2688,81 @@ input[type='range'] {
 .stage .crop-stage {
   max-width: 100%;
 }
+
+/* The mask: shapes on the left of the picture, its frame in the middle, the
+   measures on the right (each with a small drawing of what it sets). */
+.stage .mask {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.6rem;
+  align-items: start;
+  width: 100%;
+}
+
+.mask .aspects,
+.mask .numbers {
+  padding: 0.4rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+}
+
+.mask .aspects {
+  flex-direction: column;
+  flex-wrap: nowrap;
+}
+
+.mask .aspects label {
+  display: flex;
+  justify-content: center;
+  padding: 0.2rem 0.6rem;
+  min-height: var(--control-small);
+  align-items: center;
+}
+
+.mask .numbers {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.4rem;
+}
+
+.mask .numbers label {
+  display: grid !important;
+  gap: 0.15rem;
+}
+
+.mask .numbers label > span {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.mask .numbers label > span svg {
+  flex: none;
+  color: var(--accent);
+}
+
+.mask .numbers input {
+  width: 5.2rem;
+  min-height: var(--control-small);
+}
+
+.mask .crop-stage {
+  align-self: center;
+}
+
+button.small {
+  min-height: var(--control-small);
+  padding: 0 0.75rem;
+  font-size: 0.9rem;
+}
+
+.mask-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+}

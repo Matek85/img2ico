@@ -465,14 +465,14 @@
 
 {#if openFailure}
   <p class="failure" role="alert">{t('state.failed', { reason: openFailure })}</p>
-  <button type="button" onclick={onback}>{t('state.back')}</button>
+  <button type="button" onclick={onback}><Icon name="back" />{t('state.back')}</button>
 {:else if !opened}
   <p class="working" role="status">{t('state.opening', { name: file.name })}</p>
 {:else}
   <!-- On a wide window the queue (and its note) is a column to the left of the editor. -->
   <div class="workspace" class:with-queue={queue.items.length > 0}>
   <div class="bar">
-    <button type="button" class="quiet" onclick={leave}>← {t('state.back')}</button>
+    <button type="button" class="quiet" onclick={leave}><Icon name="back" />{t('state.back')}</button>
     <span class="file">{file.name}</span>
     <button type="button" class="outline reset" onclick={askReset} disabled={isDefault} title={t('editor.reset_hint')}>
       <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
@@ -484,8 +484,8 @@
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <div class="confirm" role="group" aria-label={t('editor.reset')} onkeydown={(e) => e.key === 'Escape' && (confirmingReset = false)}>
       <p>{t('editor.reset_ask')}</p>
-      <button type="button" class="danger" onclick={resetSettings}>{t('editor.reset_yes')}</button>
-      <button type="button" class="outline" bind:this={keepResetButton} onclick={() => (confirmingReset = false)}>{t('editor.reset_no')}</button>
+      <button type="button" class="danger" onclick={resetSettings}><Icon name="reset" />{t('editor.reset_yes')}</button>
+      <button type="button" class="outline" bind:this={keepResetButton} onclick={() => (confirmingReset = false)}><Icon name="close" />{t('editor.reset_no')}</button>
     </div>
   {/if}
 
@@ -566,7 +566,7 @@
           </label>
         {/each}
       </div>
-      {#if !opened.vector && picture}
+      {#if !opened.vector && picture && view === 'icon'}
         <button
           type="button"
           class="chip crop-toggle"
@@ -615,7 +615,31 @@
         {#if settings.sizes.length === 0}
           <p class="note">{t('editor.no_sizes')}</p>
         {:else if masking && view === 'icon' && picture}
-          <CropTool src={originalUrl} size={picture} bind:rect={frame} aspect={aspectValue(cropAspect)} />
+          <div class="mask">
+            <div class="chips aspects" role="radiogroup" aria-label={t('crop.aspect')}>
+              {#each ASPECTS as choice (choice)}
+                <label class:chosen={cropAspect === choice} title={choice === 'free' ? t('crop.aspect_free') : choice}>
+                  <input type="radio" name="crop-aspect" value={choice} checked={cropAspect === choice} onchange={() => chooseAspect(choice)} />
+                  {choice === 'free' ? t('crop.aspect_free') : choice}
+                </label>
+              {/each}
+            </div>
+            <CropTool src={originalUrl} size={picture} bind:rect={frame} aspect={aspectValue(cropAspect)} />
+            <div class="numbers sides">
+              {#each [['x', 'crop.x', 'cropLeft'], ['y', 'crop.y', 'cropTop'], ['width', 'crop.width', 'cropWidth'], ['height', 'crop.height', 'cropHeight']] as [field, label, icon] (field)}
+                <label title={t(`${label}_hint`)}>
+                  <span><Icon name={icon as IconName} size={22} />{t(label)}</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max={field === 'x' || field === 'width' ? picture.width : picture.height}
+                    value={frame[field as keyof Rect]}
+                    onchange={(e) => setFrame(field as keyof Rect, e.currentTarget.valueAsNumber)}
+                  />
+                </label>
+              {/each}
+            </div>
+          </div>
         {:else if converted && tiles.length > 0 && view === 'pixels'}
           <PixelInspector
             bytes={converted.bytes}
@@ -636,32 +660,10 @@
 
       {#if masking && view === 'icon' && picture}
         <div class="mask-tools">
-          <div class="chips" role="radiogroup" aria-label={t('crop.aspect')}>
-            {#each ASPECTS as choice (choice)}
-              <label class:chosen={cropAspect === choice}>
-                <input type="radio" name="crop-aspect" value={choice} checked={cropAspect === choice} onchange={() => chooseAspect(choice)} />
-                {choice === 'free' ? t('crop.aspect_free') : choice}
-              </label>
-            {/each}
-          </div>
-          <div class="numbers">
-            {#each [['x', 'crop.x'], ['y', 'crop.y'], ['width', 'crop.width'], ['height', 'crop.height']] as [field, label] (field)}
-              <label>
-                <span>{t(label)}</span>
-                <input
-                  type="number"
-                  min="0"
-                  max={field === 'x' || field === 'width' ? picture.width : picture.height}
-                  value={frame[field as keyof Rect]}
-                  onchange={(e) => setFrame(field as keyof Rect, e.currentTarget.valueAsNumber)}
-                />
-              </label>
-            {/each}
-          </div>
           <p class="hint">{t('crop.hint')}</p>
           <div class="mask-actions">
-            <button type="button" class="quiet" onclick={() => (frame = fullRect(picture))} disabled={isFull(frame, picture)}>{t('crop.reset')}</button>
-            <button type="button" class="primary" onclick={() => (masking = false)}>{t('crop.done')}</button>
+            <button type="button" class="quiet small" onclick={() => (frame = fullRect(picture))} disabled={isFull(frame, picture)}><Icon name="reset" size={16} />{t('crop.reset')}</button>
+            <button type="button" class="primary small" onclick={() => (masking = false)}><Icon name="check" size={16} />{t('crop.done')}</button>
           </div>
         </div>
       {/if}
@@ -751,8 +753,7 @@
           class="quiet"
           onclick={() => (settings.sizes = [...DEFAULT_SIZES])}
           disabled={[...settings.sizes].sort((a, b) => a - b).join() === DEFAULT_SIZES.join()}
-          >{t('controls.sizes_reset')}</button
-        >
+          ><Icon name="reset" />{t('controls.sizes_reset')}</button>
       </fieldset>
       {/if}
 
@@ -847,10 +848,10 @@
         {/if}
         <p class="hint">{t('site.snippet')}</p>
         <pre class="snippet">{snippet}</pre>
-        <button type="button" class="quiet" onclick={copySnippet}>{copied ? t('site.copied') : t('site.copy')}</button>
+        <button type="button" class="quiet" onclick={copySnippet}><Icon name="copy" />{copied ? t('site.copied') : t('site.copy')}</button>
       </div>
     <div class="dialog-actions">
-      <button type="button" class="primary" onclick={() => siteDialog?.close()}>{t('site.done')}</button>
+      <button type="button" class="primary" onclick={() => siteDialog?.close()}><Icon name="check" />{t('site.done')}</button>
     </div>
   </dialog>
   <DropOverlay onfiles={nextPicture} label={t('queue.drop')} />

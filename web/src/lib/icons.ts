@@ -25,6 +25,18 @@ export const ICONS = {
   gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
   trash: '<path d="M3 6h18"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
   crop: '<path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/>',
+  back: '<path d="M19 12H5"/><path d="m12 19-7-7 7-7"/>',
+  reset: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>',
+  copy: '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+  upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/>',
+  minus: '<path d="M5 12h14"/>',
+  fit: '<path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="m21 3-7 7"/><path d="m3 21 7-7"/>',
+  eraser: '<path d="m7 21-4.3-4.3a1 1 0 0 1 0-1.4l9.6-9.6a1 1 0 0 1 1.4 0l5.6 5.6a1 1 0 0 1 0 1.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/>',
+  cropLeft: '<rect x="2" y="2" width="20" height="20" rx="1" stroke-dasharray="3 2.5"/><rect x="10" y="7" width="9" height="11" rx="1" fill="currentColor" fill-opacity=".25"/><path d="M2 12.5h8"/><path d="m5 9.5-3 3 3 3"/>',
+  cropTop: '<rect x="2" y="2" width="20" height="20" rx="1" stroke-dasharray="3 2.5"/><rect x="7" y="10" width="11" height="9" rx="1" fill="currentColor" fill-opacity=".25"/><path d="M12.5 2v8"/><path d="m9.5 5 3-3 3 3"/>',
+  cropWidth: '<rect x="2" y="2" width="20" height="20" rx="1" stroke-dasharray="3 2.5"/><rect x="6" y="7" width="12" height="10" rx="1" fill="currentColor" fill-opacity=".25"/><path d="M6 12h12"/><path d="m9 9-3 3 3 3"/><path d="m15 9 3 3-3 3"/>',
+  cropHeight: '<rect x="2" y="2" width="20" height="20" rx="1" stroke-dasharray="3 2.5"/><rect x="7" y="6" width="10" height="12" rx="1" fill="currentColor" fill-opacity=".25"/><path d="M12 6v12"/><path d="m9 9 3-3 3 3"/><path d="m9 15 3 3 3-3"/>',
   checkNone: '<rect x="3" y="3" width="18" height="18" rx="2"/>',
 } as const;
 

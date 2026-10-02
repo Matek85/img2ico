@@ -160,12 +160,12 @@
 
 {#if failure}
   <p class="failure" role="alert">{t('state.failed', { reason: failure })}</p>
-  <button type="button" onclick={onback}>{t('state.back')}</button>
+  <button type="button" onclick={onback}><Icon name="back" />{t('state.back')}</button>
 {:else if !report}
   <p class="working" role="status">{t('state.working', { name: file.name })}</p>
 {:else}
   <div class="bar">
-    <button type="button" class="quiet" onclick={onback}>← {t('state.back')}</button>
+    <button type="button" class="quiet" onclick={onback}><Icon name="back" />{t('state.back')}</button>
     <span class="file">{file.name}</span>
   </div>
 
@@ -268,7 +268,7 @@
       {#each others as other, i (i)}
         <li>
           {other.name}
-          <button type="button" class="quiet" onclick={() => (others = others.filter((_, at) => at !== i))}>{t('merge.remove')}</button>
+          <button type="button" class="quiet" onclick={() => (others = others.filter((_, at) => at !== i))}><Icon name="close" />{t('merge.remove')}</button>
         </li>
       {/each}
     </ul>
