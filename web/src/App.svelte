@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import Dropzone from './components/Dropzone.svelte';
   import Editor from './components/Editor.svelte';
-  import Validator from './components/Validator.svelte';
+  import IconFile from './components/IconFile.svelte';
   import { engineVersion } from './engine/client';
   import { t } from './i18n';
 
@@ -39,7 +39,7 @@
     {/key}
   {:else}
     {#key view.file}
-      <Validator file={view.file} onback={back} />
+      <IconFile file={view.file} onback={back} />
     {/key}
   {/if}
 

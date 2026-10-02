@@ -3,7 +3,16 @@
 // picture that was opened, so changing a setting converts it again without
 // decoding it again.
 
-import init, { Source, engine_version, icon_pixels, validate_ico } from '../wasm/pkg/img2ico_wasm.js';
+import init, {
+  Merger,
+  Source,
+  engine_version,
+  icon_describe,
+  icon_extract_png,
+  icon_pixels,
+  icon_select,
+  validate_ico,
+} from '../wasm/pkg/img2ico_wasm.js';
 import type { Request, Response } from './protocol';
 
 const ready = init();
@@ -61,6 +70,40 @@ self.onmessage = async (event: MessageEvent<Request>) => {
         image.free();
         transfer.push(rgba.buffer);
         response = { id: request.id, ok: true, pixels };
+        break;
+      }
+      case 'describe':
+        response = { id: request.id, ok: true, value: icon_describe(request.bytes) };
+        break;
+      case 'extract': {
+        const data = icon_extract_png(request.bytes, request.index);
+        transfer.push(data.buffer);
+        response = { id: request.id, ok: true, data };
+        break;
+      }
+      case 'select': {
+        const data = icon_select(request.bytes, Uint32Array.from(request.indices));
+        transfer.push(data.buffer);
+        response = { id: request.id, ok: true, data };
+        break;
+      }
+      case 'merge': {
+        const merger = new Merger();
+        try {
+          for (const file of request.files) merger.add(file.bytes, file.name);
+          const output = merger.merge();
+          const bytes = output.bytes();
+          const converted = {
+            bytes,
+            sizes: Array.from(output.sizes()),
+            warnings: JSON.parse(output.warnings()) as string[],
+          };
+          output.free();
+          transfer.push(bytes.buffer);
+          response = { id: request.id, ok: true, converted };
+        } finally {
+          merger.free();
+        }
         break;
       }
       case 'close':

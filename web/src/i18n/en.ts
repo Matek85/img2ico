@@ -11,7 +11,7 @@ export const en = {
   'drop.or': 'or',
   'drop.choose': 'Choose a file',
   'drop.formats': 'PNG, JPG, GIF, WebP, BMP, TIFF, SVG or ICNS',
-  'drop.check': 'Drop an .ico file instead to check it for problems.',
+  'drop.check': 'Drop an .ico file instead to look inside it, check it, take images out or combine it with others.',
   'drop.active': 'Release to open the picture',
 
   'state.opening': 'Opening {name} …',
@@ -123,6 +123,23 @@ export const en = {
   'result.warnings': 'Warnings',
   'result.about_image': 'Image {number}: {message}',
   'image.format': '{width} × {height}, {format}, {bits}-bit',
+
+  'iconfile.images': 'Images in this file',
+  'iconfile.bits': '{bits}-bit',
+  'iconfile.alpha': 'Transparency: {alpha}',
+  'iconfile.save_png': 'Save as PNG',
+  'iconfile.save_selected': 'Save the {count} chosen as a new .ico',
+  'iconfile.select_all': 'Choose all',
+  'iconfile.select_none': 'Choose none',
+  'iconfile.missing': 'Sizes Windows would like but this file lacks (it will scale a nearby one): {sizes}.',
+
+  'merge.title': 'Combine with other icon files',
+  'merge.hint': 'Adds the images of other .ico files to this one. If two files have the same size, the first one wins.',
+  'merge.this': 'this file',
+  'merge.add': 'Add .ico files',
+  'merge.remove': 'Remove',
+  'merge.combine': 'Combine and download',
+  'merge.done': 'Combined: {count} images ({sizes}).',
 
   'footer.engine': 'Engine {version}',
 } as const;
