@@ -3103,3 +3103,23 @@ button.small {
   padding: 0;
   align-items: stretch;
 }
+
+/* Unlocked: the frame has handles and is dragged; the rest of the box does nothing. */
+.crop-view.unlocked .crop-pane {
+  cursor: default;
+}
+
+.crop-view.unlocked .crop-frame {
+  pointer-events: auto;
+  cursor: move;
+}
+
+.crop-view .crop-frame .handle {
+  pointer-events: auto;
+}
+
+.aspects .lock-toggle {
+  min-width: var(--control-small);
+  padding: 0;
+  justify-content: center;
+}

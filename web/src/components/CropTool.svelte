@@ -1,49 +1,79 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { t } from '../i18n';
-  import { type Rect, type Size, panRect, zoomRect } from '../lib/crop';
+  import { HANDLES, type Handle, type Rect, type Size, dragRect, panRect, zoomRect } from '../lib/crop';
 
-  // The frame stays where it is on the screen (it has the shape of the crop); the
-  // picture moves and grows beneath it. `rect` is the part of the picture under
+  // Locked: the frame stays in the middle of the box (it has the shape of the crop) and
+  // the picture is dragged and zoomed beneath it. `rect` is the part of the picture under
   // the frame, in the picture's own pixels.
+  // Unlocked: the picture stays, and the frame is moved and resized with its handles;
+  // the wheel still zooms the picture.
   let {
     src,
     size,
     rect = $bindable(),
-  }: { src: string; size: Size; rect: Rect; aspect?: number | null } = $props();
+    aspect = null,
+    locked = true,
+  }: { src: string; size: Size; rect: Rect; aspect?: number | null; locked?: boolean } = $props();
 
   const MARGIN = 14;
   let box = $state<HTMLDivElement>();
   let width = $state(0);
   let height = $state(0);
 
-  // Screen pixels per picture pixel, so that the frame is as big as the box allows.
-  let scale = $derived(
+  // Locked: screen pixels per picture pixel, so that the frame is as big as the box allows.
+  let fit = $derived(
     width > 0 && height > 0 ? Math.min((width - 2 * MARGIN) / rect.width, (height - 2 * MARGIN) / rect.height) : 1,
   );
-  let frameW = $derived(rect.width * scale);
-  let frameH = $derived(rect.height * scale);
-  let frameX = $derived((width - frameW) / 2);
-  let frameY = $derived((height - frameH) / 2);
+  let fitLeft = $derived((width - rect.width * fit) / 2 - rect.x * fit);
+  let fitTop = $derived((height - rect.height * fit) / 2 - rect.y * fit);
 
-  let imageStyle = $derived(
-    `left:${frameX - rect.x * scale}px;top:${frameY - rect.y * scale}px;` +
-      `width:${size.width * scale}px;height:${size.height * scale}px`,
+  // Unlocked: the picture as it was shown when the frame was unlocked, and as it is zoomed.
+  let free = $state({ scale: 1, left: 0, top: 0 });
+  $effect(() => {
+    if (locked) free = { scale: fit, left: fitLeft, top: fitTop };
+  });
+
+  let scale = $derived(locked ? fit : free.scale);
+  let left = $derived(locked ? fitLeft : free.left);
+  let top = $derived(locked ? fitTop : free.top);
+
+  let imageStyle = $derived(`left:${left}px;top:${top}px;width:${size.width * scale}px;height:${size.height * scale}px`);
+  let frameStyle = $derived(
+    `left:${left + rect.x * scale}px;top:${top + rect.y * scale}px;width:${rect.width * scale}px;height:${rect.height * scale}px`,
   );
-  let frameStyle = $derived(`left:${frameX}px;top:${frameY}px;width:${frameW}px;height:${frameH}px`);
 
-  // Dragging moves the picture under the frame.
-  let drag: { x: number; y: number; from: Rect } | undefined;
+  type Drag =
+    | { kind: 'picture'; x: number; y: number; from: Rect }
+    | { kind: 'frame'; handle: Handle; x: number; y: number; from: Rect };
+  let drag: Drag | undefined;
 
-  function begin(event: PointerEvent) {
+  // Locked: dragging moves the picture under the frame.
+  function beginPicture(event: PointerEvent) {
+    if (!locked) return;
     event.preventDefault();
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-    drag = { x: event.clientX, y: event.clientY, from: { ...rect } };
+    drag = { kind: 'picture', x: event.clientX, y: event.clientY, from: { ...rect } };
+  }
+
+  // Unlocked: dragging the frame or one of its handles.
+  function beginFrame(event: PointerEvent, handle: Handle) {
+    if (locked) return;
+    event.preventDefault();
+    event.stopPropagation();
+    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    drag = { kind: 'frame', handle, x: event.clientX, y: event.clientY, from: { ...rect } };
   }
 
   function move(event: PointerEvent) {
     if (!drag) return;
-    rect = panRect(drag.from, -(event.clientX - drag.x) / scale, -(event.clientY - drag.y) / scale, size);
+    const dx = event.clientX - drag.x;
+    const dy = event.clientY - drag.y;
+    if (drag.kind === 'picture') {
+      rect = panRect(drag.from, -dx / scale, -dy / scale, size);
+    } else {
+      rect = dragRect(drag.from, drag.handle, Math.round(dx / scale), Math.round(dy / scale), size, aspect);
+    }
   }
 
   function end() {
@@ -55,9 +85,17 @@
   function zoom(factor: number, clientX: number, clientY: number) {
     if (!box) return;
     const at = box.getBoundingClientRect();
-    const ax = (clientX - at.left - frameX) / frameW;
-    const ay = (clientY - at.top - frameY) / frameH;
-    rect = zoomRect(rect, factor, ax, ay, size);
+    const px = clientX - at.left;
+    const py = clientY - at.top;
+    if (locked) {
+      rect = zoomRect(rect, factor, (px - (left + rect.x * scale)) / (rect.width * scale), (py - (top + rect.y * scale)) / (rect.height * scale), size);
+      return;
+    }
+    // Unlocked: the picture (and the frame on it) grows around the pointer.
+    const wanted = free.scale / factor;
+    const next = Math.min(Math.max(wanted, Math.min(width / size.width, height / size.height) / 2), 12);
+    const k = next / free.scale;
+    free = { scale: next, left: px - (px - free.left) * k, top: py - (py - free.top) * k };
   }
 
   onMount(() => {
@@ -71,8 +109,8 @@
     return () => area.removeEventListener('wheel', wheel);
   });
 
-  // The arrow keys move the picture by a pixel (ten with Shift), + and - zoom:
-  // the way to place it exactly, and the way without a pointer.
+  // The arrow keys move the picture (locked) or the frame (unlocked) by a pixel, ten with
+  // Shift; plus and minus zoom: the way to place it exactly, and the way without a pointer.
   function key(event: KeyboardEvent) {
     const step = event.shiftKey ? 10 : 1;
     const delta: Record<string, [number, number]> = {
@@ -81,34 +119,56 @@
       ArrowUp: [0, -step],
       ArrowDown: [0, step],
     };
-    if (event.key === '+' || event.key === '=') {
+    if (event.key === '+' || event.key === '=' || event.key === '-') {
       event.preventDefault();
-      rect = zoomRect(rect, 0.9, 0.5, 0.5, size);
-    } else if (event.key === '-') {
-      event.preventDefault();
-      rect = zoomRect(rect, 1 / 0.9, 0.5, 0.5, size);
+      const factor = event.key === '-' ? 1 / 0.9 : 0.9;
+      const at = box?.getBoundingClientRect();
+      if (at) zoom(factor, at.left + width / 2, at.top + height / 2);
     } else if (delta[event.key]) {
       event.preventDefault();
-      rect = panRect(rect, delta[event.key][0], delta[event.key][1], size);
+      const [dx, dy] = delta[event.key];
+      // Locked, the picture moves under the frame (so the frame's place on it goes the other way).
+      rect = locked ? panRect(rect, -dx, -dy, size) : panRect(rect, dx, dy, size);
     }
   }
 </script>
 
-<div class="crop-view" bind:this={box} bind:clientWidth={width} bind:clientHeight={height}>
+<div class="crop-view" class:unlocked={!locked} bind:this={box} bind:clientWidth={width} bind:clientHeight={height}>
   <img {src} alt="" draggable="false" style={imageStyle} />
-  <!-- The frame is a small custom control: it takes the pointer and the keys. -->
+  <!-- The pane is a small custom control: it takes the pointer and the keys. -->
   <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
   <div
     class="crop-pane"
     role="group"
     tabindex="0"
-    aria-label={t('crop.frame')}
-    onpointerdown={begin}
+    aria-label={t(locked ? 'crop.frame_locked' : 'crop.frame_unlocked')}
+    onpointerdown={beginPicture}
     onpointermove={move}
     onpointerup={end}
     onpointercancel={end}
     onkeydown={key}
   >
-    <span class="crop-frame" style={frameStyle}></span>
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <span
+      class="crop-frame"
+      style={frameStyle}
+      onpointerdown={(e) => beginFrame(e, 'move')}
+      onpointermove={move}
+      onpointerup={end}
+      onpointercancel={end}
+    >
+      {#if !locked}
+        {#each HANDLES as handle (handle)}
+          <span
+            class="handle {handle}"
+            aria-hidden="true"
+            onpointerdown={(e) => beginFrame(e, handle)}
+            onpointermove={move}
+            onpointerup={end}
+            onpointercancel={end}
+          ></span>
+        {/each}
+      {/if}
+    </span>
   </div>
 </div>

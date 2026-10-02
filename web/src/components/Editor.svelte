@@ -134,6 +134,8 @@
   let cropOn = $state(false);
   // The crop frame is being set in the preview (the "mask"): the picture is shown with the frame on it.
   let masking = $state(false);
+  // Locked: the frame stays and the picture is moved under it. Unlocked: the frame has handles.
+  let cropLocked = $state(true);
   // The detailed controls are folded away until asked for.
   let advanced = $state(false);
   // The settings beside the preview can be folded to a slim row of icons, for a wider preview.
@@ -653,7 +655,7 @@
         {#if settings.sizes.length === 0}
           <p class="note">{t('editor.no_sizes')}</p>
         {:else if masking && view === 'icon' && picture}
-          <CropTool src={originalUrl} size={picture} bind:rect={frame} aspect={aspectValue(cropAspect)} />
+          <CropTool src={originalUrl} size={picture} bind:rect={frame} aspect={aspectValue(cropAspect)} locked={cropLocked} />
         {:else if converted && tiles.length > 0 && view === 'pixels'}
           <PixelInspector
             bytes={converted.bytes}
@@ -677,6 +679,17 @@
           <h3 class="mask-title">{t('crop.use')}</h3>
           <div class="mask-grid">
     <div class="chips aspects" role="radiogroup" aria-label={t('crop.aspect')}>
+      <button
+        type="button"
+        class="chip lock-toggle"
+        class:chosen={!cropLocked}
+        aria-pressed={!cropLocked}
+        title={t(cropLocked ? 'crop.lock_on' : 'crop.lock_off')}
+        aria-label={t(cropLocked ? 'crop.lock_on' : 'crop.lock_off')}
+        onclick={() => (cropLocked = !cropLocked)}
+      >
+        <Icon name={cropLocked ? 'lock' : 'unlock'} size={16} />
+      </button>
       {#each ASPECTS as choice (choice)}
         <label class:chosen={cropAspect === choice} title={choice === 'free' ? t('crop.aspect_free') : choice}>
           <input type="radio" name="crop-aspect" value={choice} checked={cropAspect === choice} onchange={() => chooseAspect(choice)} />
@@ -699,7 +712,7 @@
       {/each}
     </div>
           </div>
-          <p class="hint">{t('crop.hint')}</p>
+          <p class="hint">{t(cropLocked ? 'crop.hint' : 'crop.hint_unlocked')}</p>
           <div class="mask-actions">
             <button type="button" class="primary small" onclick={endMask}><Icon name="check" size={16} />{t('crop.done')}</button>
             <button type="button" class="quiet small" onclick={() => (frame = fullRect(picture))} disabled={isFull(frame, picture)}><Icon name="reset" size={16} />{t('crop.reset')}</button>
