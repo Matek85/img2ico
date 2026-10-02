@@ -141,7 +141,9 @@
   async function fillQueue(all: BatchItem[], notes: string[]) {
     const items = all.slice(0, MAX_BATCH);
     const problems = all.length > MAX_BATCH ? [...notes, t('batch.too_many', { max: MAX_BATCH })] : [...notes];
-    view = { kind: 'filling' };
+    // Icon files only (nothing to convert) are added where you are: the editor stays open on its picture.
+    const onlyIcons = items.every((item) => isIconName(item.name));
+    if (!onlyIcons) view = { kind: 'filling' };
     const remembered = loadSettings();
     const settings: Settings = { ...remembered, crop: null, format: remembered.format === 'icns' ? 'icns' : 'ico' };
     let first: QueueItem | undefined;
@@ -180,18 +182,20 @@
         }
       }
     } finally {
-      await closePicture().catch(() => {});
+      // (The editor's own picture is still open in the engine when only icon files were added.)
+      if (!onlyIcons) await closePicture().catch(() => {});
       filling = null;
     }
     queue.setProblems(problems);
     if (first) {
-      // The first picture is opened; a queue of icon files only is shown on the start page.
+      // The first picture is opened in the editor.
       openFromQueue(first);
-    } else if (queue.items.length > 0) {
+    } else if (queue.items.length === 0) {
+      // Nothing could be added: say why where it can be seen.
       view = { kind: 'start' };
-    } else {
+      problem = problems.length > 0 ? problems.join(' ') : t('batch.none');
+    } else if (!onlyIcons) {
       view = { kind: 'start' };
-      problem = t('batch.none');
     }
   }
 
