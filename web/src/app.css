@@ -80,7 +80,6 @@ footer {
   color: var(--muted);
 }
 
-
 .result {
   background: var(--surface);
   border: 2px dashed var(--border);
@@ -94,7 +93,6 @@ footer {
   padding: 1.5rem;
   text-align: left;
 }
-
 
 .or {
   margin: 0.5rem 0;
@@ -1124,30 +1122,6 @@ h3 {
 
 /* --- the crop frame ----------------------------------------------------- */
 
-.crop-stage {
-  position: relative;
-  line-height: 0;
-  overflow: hidden;
-  border-radius: 0.35rem;
-  user-select: none;
-  touch-action: none;
-}
-
-.crop-stage img {
-  width: 100%;
-  height: auto;
-  display: block;
-}
-
-.crop-stage .frame {
-  position: absolute;
-  border: 2px solid #fff;
-  outline: 1px solid rgba(0, 0, 0, 0.6);
-  /* Dims everything outside the frame. */
-  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55);
-  cursor: move;
-}
-
 .handle {
   position: absolute;
   width: 14px;
@@ -1577,20 +1551,6 @@ h3 {
   flex-basis: 100%;
   height: 0.6rem;
   accent-color: var(--accent);
-}
-
-.results {
-  flex-basis: 100%;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  max-height: 14rem;
-  overflow: auto;
-  font-size: 0.9rem;
-}
-
-.results li.bad {
-  color: var(--bad);
 }
 
 /* --- the website package ----------------------------------------------------- */
@@ -2650,95 +2610,6 @@ input[type='range'] {
   background: var(--accent-text);
 }
 
-.mask-tools {
-  display: grid;
-  gap: 0.6rem;
-  margin: 0.75rem 0;
-  padding: 0.75rem;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 0.6rem;
-}
-
-.mask-tools .hint {
-  margin: 0;
-}
-
-.mask-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-
-.stage .crop-stage {
-  max-width: 100%;
-}
-
-/* The mask: shapes on the left of the picture, its frame in the middle, the
-   measures on the right (each with a small drawing of what it sets). */
-.stage .mask {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 0.6rem;
-  align-items: start;
-  width: 100%;
-}
-
-.mask .aspects,
-.mask .numbers {
-  padding: 0.4rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 0.6rem;
-}
-
-.mask .aspects {
-  flex-direction: column;
-  flex-wrap: nowrap;
-}
-
-.mask .aspects label {
-  display: flex;
-  justify-content: center;
-  padding: 0.2rem 0.6rem;
-  min-height: var(--control-small);
-  align-items: center;
-}
-
-.mask .numbers {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 0.4rem;
-}
-
-.mask .numbers label {
-  display: grid !important;
-  gap: 0.15rem;
-}
-
-.mask .numbers label > span {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  color: var(--muted);
-  font-size: 0.8rem;
-}
-
-.mask .numbers label > span svg {
-  flex: none;
-  color: var(--accent);
-}
-
-.mask .numbers input {
-  width: 5.2rem;
-  min-height: var(--control-small);
-}
-
-.mask .crop-stage {
-  align-self: center;
-}
 
 button.small {
   min-height: var(--control-small);
@@ -2746,128 +2617,6 @@ button.small {
   font-size: 0.9rem;
 }
 
-.mask-tools {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem 1rem;
-}
-
-/* The mask is a box of its own: a title, the shapes, the picture with its frame
-   (on the chosen background) and the measures, then the buttons. */
-.stage.masked {
-  display: block;
-  min-height: 0;
-  padding: 0;
-  background: none;
-  border: 0;
-}
-
-.stage .mask {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 0.75rem;
-  padding: 0.75rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 0.6rem;
-}
-
-.mask-title {
-  margin: 0;
-  font-size: 1rem;
-}
-
-.mask-grid {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 0.6rem;
-  align-items: start;
-}
-
-.mask .aspects,
-.mask .numbers {
-  background: var(--bg);
-}
-
-.mask-picture {
-  display: grid;
-  place-items: center;
-  align-self: center;
-  padding: 0.5rem;
-  border: 1px solid var(--border);
-  border-radius: 0.5rem;
-}
-
-.mask .hint {
-  margin: 0;
-}
-
-.mask .mask-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-
-/* The crop box under the picture: the shapes on the left, the four measures
-   (two by two) on the right, the buttons at the end. */
-.preview-main > .mask {
-  display: grid;
-  gap: 0.75rem;
-  margin: 0.75rem 0;
-  padding: 0.75rem;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 0.6rem;
-}
-
-.preview-main > .mask .mask-grid {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.75rem 1.25rem;
-}
-
-.preview-main > .mask .aspects,
-.preview-main > .mask .numbers {
-  background: var(--surface);
-}
-
-.preview-main > .mask .aspects {
-  flex-direction: row;
-  flex-wrap: wrap;
-}
-
-.preview-main > .mask .aspects label {
-  padding: 0.2rem 0.75rem;
-}
-
-.preview-main > .mask .numbers {
-  display: grid;
-  grid-template-columns: repeat(2, auto);
-  gap: 0.5rem 0.9rem;
-}
-
-.preview-main > .mask .mask-actions {
-  justify-content: flex-start;
-  gap: 0.75rem;
-}
-
-.preview-main > .mask .mask-grid {
-  display: grid;
-  grid-template-columns: auto auto;
-  justify-content: space-between;
-  align-items: start;
-}
-
-.preview-main > .mask .aspects {
-  flex-direction: column;
-  flex-wrap: nowrap;
-}
 
 /* =========================================================================
    The settings beside the preview fold to a slim rail of icons: the preview
@@ -2922,18 +2671,6 @@ button.small {
     width: 1px;
     height: 1.5rem;
   }
-}
-
-.preview-main > .mask .aspects {
-  flex-direction: row;
-  flex-wrap: wrap;
-}
-
-.preview-main > .mask .mask-grid {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: flex-start;
 }
 
 .rail .rail-button {
@@ -3015,35 +2752,6 @@ button.small {
 }
 
 /* Zooming in the crop: the picture grows inside a window that scrolls. */
-.crop-viewport {
-  width: 100%;
-  overflow: auto;
-  border-radius: 0.35rem;
-}
-
-.stage:has(.crop-viewport) {
-  position: relative;
-}
-
-.crop-zoom {
-  position: absolute;
-  top: 0.6rem;
-  right: 0.6rem;
-  z-index: 2;
-  background: var(--surface);
-}
-
-.crop-viewport .crop-stage {
-  max-width: none;
-}
-
-.crop-viewport.zoomed {
-  cursor: grab;
-}
-
-.crop-viewport.zoomed .frame {
-  cursor: move;
-}
 
 /* The crop view: a box of fixed size, the frame in its middle, the picture under it. */
 .crop-view {
@@ -3109,4 +2817,85 @@ button.small {
   min-width: var(--control-small);
   padding: 0;
   justify-content: center;
+}
+
+/* =========================================================================
+   The crop box under the picture: the lock and the shapes on the left, the four
+   measures (two by two, each with a small drawing of what it sets) on the right,
+   the buttons at the end.
+   ========================================================================= */
+
+.mask {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0.75rem 0;
+  padding: 0.75rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+}
+
+.mask-title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.mask .hint {
+  margin: 0;
+}
+
+.mask-grid {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem 1.25rem;
+}
+
+.mask .aspects,
+.mask .numbers {
+  padding: 0.4rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+}
+
+.mask .aspects label {
+  padding: 0.2rem 0.75rem;
+}
+
+.mask .numbers {
+  display: grid;
+  grid-template-columns: repeat(2, auto);
+  gap: 0.5rem 0.9rem;
+}
+
+.mask .numbers label {
+  display: grid !important;
+  gap: 0.15rem;
+}
+
+.mask .numbers label > span {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.mask .numbers label > span svg {
+  flex: none;
+  color: var(--accent);
+}
+
+.mask .numbers input {
+  width: 5.2rem;
+  min-height: var(--control-small);
+}
+
+.mask-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
 }
