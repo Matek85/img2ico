@@ -8,6 +8,24 @@ import { SIZE_CHOICES, type Settings, defaultSettings } from './settings';
 
 const KEY = 'img2ico.settings.v1';
 const AUTOSAVE_KEY = 'img2ico.autosave.v1';
+const SIDE_KEY = 'img2ico.side.v1';
+
+/** Whether the settings beside the preview are open (they are, unless folded away). */
+export function loadSideOpen(): boolean {
+  try {
+    return localStorage.getItem(SIDE_KEY) !== '0';
+  } catch {
+    return true;
+  }
+}
+
+export function saveSideOpen(open: boolean): void {
+  try {
+    localStorage.setItem(SIDE_KEY, open ? '1' : '0');
+  } catch {
+    // Without storage the choice only lasts until the page is closed.
+  }
+}
 
 /** Whether changes to an icon of the queue are saved to it on their own (on unless it was switched off). */
 export function loadAutoSave(): boolean {

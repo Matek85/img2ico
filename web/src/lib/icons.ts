@@ -37,6 +37,9 @@ export const ICONS = {
   cropTop: '<rect x="2" y="2" width="20" height="20" rx="1" stroke-dasharray="3 2.5"/><rect x="7" y="10" width="11" height="9" rx="1" fill="currentColor" fill-opacity=".25"/><path d="M12.5 2v8"/><path d="m9.5 5 3-3 3 3"/>',
   cropWidth: '<rect x="2" y="2" width="20" height="20" rx="1" stroke-dasharray="3 2.5"/><rect x="6" y="7" width="12" height="10" rx="1" fill="currentColor" fill-opacity=".25"/><path d="M6 12h12"/><path d="m9 9-3 3 3 3"/><path d="m15 9 3 3-3 3"/>',
   cropHeight: '<rect x="2" y="2" width="20" height="20" rx="1" stroke-dasharray="3 2.5"/><rect x="7" y="6" width="10" height="12" rx="1" fill="currentColor" fill-opacity=".25"/><path d="M12 6v12"/><path d="m9 9 3-3 3 3"/><path d="m9 15 3 3 3-3"/>',
+  expand: '<path d="m15 18-6-6 6-6"/>',
+  collapse: '<path d="m9 18 6-6-6-6"/>',
+  sliders: '<path d="M4 21v-7"/><path d="M4 10V3"/><path d="M12 21v-9"/><path d="M12 8V3"/><path d="M20 21v-5"/><path d="M20 12V3"/><path d="M1 14h6"/><path d="M9 8h6"/><path d="M17 16h6"/>',
   checkNone: '<rect x="3" y="3" width="18" height="18" rx="2"/>',
 } as const;
 

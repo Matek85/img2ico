@@ -32,7 +32,7 @@
   import { stemOf } from '../lib/batch';
   import { ICNS_TYPE, ICO_TYPE, ZIP_TYPE, saveBytes } from '../lib/download';
   import { type QueueItem, queue } from '../lib/queue.svelte';
-  import { loadAutoSave, loadSettings, saveAutoSave, saveSettings } from '../lib/storage';
+  import { loadAutoSave, loadSettings, loadSideOpen, saveAutoSave, saveSettings, saveSideOpen } from '../lib/storage';
   import {
     DEFAULT_SIZES,
     FAVICON_SIZES,
@@ -136,6 +136,16 @@
   let masking = $state(false);
   // The detailed controls are folded away until asked for.
   let advanced = $state(false);
+  // The settings beside the preview can be folded to a slim row of icons, for a wider preview.
+  let sideOpen = $state(loadSideOpen());
+  function setSide(open: boolean) {
+    sideOpen = open;
+    saveSideOpen(open);
+  }
+  function openAdvanced() {
+    advanced = true;
+    setSide(true);
+  }
   // Picking the color to remove: the pixel view is shown, without the background
   // removal (or the color would already be gone), and a click on a pixel takes it.
   let picking = $state(false);
@@ -297,6 +307,7 @@
   let flashBackground = $state(false);
   async function showBackgroundSettings() {
     advanced = true;
+    sideOpen = true;
     await tick();
     document.getElementById('background-settings')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     flashBackground = false;
@@ -552,7 +563,7 @@
     </div>
     {#if settings.format === 'icns'}<p class="hint">{t('download.icns_note')}</p>{/if}
   </section>
-  <div class="editor">
+  <div class="editor" class:folded={!sideOpen}>
     <section class="preview" aria-labelledby="preview-title">
       <h2 id="preview-title">{t('editor.preview')}</h2>
 
@@ -697,7 +708,13 @@
       {/if}
     </section>
 
+    {#if sideOpen}
     <section class="controls" aria-label={t('controls.look')}>
+      <div class="side-head">
+        <button type="button" class="quiet small" title={t('side.collapse')} aria-label={t('side.collapse')} onclick={() => setSide(false)}>
+          <Icon name="collapse" size={16} />
+        </button>
+      </div>
       <figure class="original">
         <img src={originalUrl} alt={t('editor.source')} />
         <figcaption>
@@ -820,6 +837,33 @@
         </div>
       </details>
     </section>
+    {:else}
+    <aside class="rail" aria-label={t('controls.look')}>
+      <button type="button" class="icon-button outline" title={t('side.expand')} aria-label={t('side.expand')} onclick={() => setSide(true)}>
+        <Icon name="expand" size={16} />
+      </button>
+      {#each [USE_PRESETS, STYLE_PRESETS] as list, i (i)}
+        <span class="rail-sep" aria-hidden="true"></span>
+        {#each list as preset (preset.id)}
+          <button
+            type="button"
+            class="icon-button rail-button"
+            class:chosen={isActive(settings, preset)}
+            aria-pressed={isActive(settings, preset)}
+            title={t(`preset.${preset.id}`)}
+            aria-label={t(`preset.${preset.id}`)}
+            onclick={() => usePreset(preset)}
+          >
+            <Icon name={preset.id as IconName} size={16} />
+          </button>
+        {/each}
+      {/each}
+      <span class="rail-sep" aria-hidden="true"></span>
+      <button type="button" class="icon-button rail-button" title={t('advanced.title')} aria-label={t('advanced.title')} onclick={openAdvanced}>
+        <Icon name="sliders" size={16} />
+      </button>
+    </aside>
+    {/if}
   </div>
 
   </div>

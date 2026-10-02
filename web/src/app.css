@@ -2881,3 +2881,86 @@ button.small {
   flex-direction: column;
   flex-wrap: nowrap;
 }
+
+/* =========================================================================
+   The settings beside the preview fold to a slim rail of icons: the preview
+   gets the room. The shapes of the crop box are one row.
+   ========================================================================= */
+
+.side-head {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: -0.5rem;
+}
+
+.editor.folded {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+}
+
+.rail-sep {
+  width: 1.5rem;
+  height: 1px;
+  background: var(--border);
+}
+
+.rail .rail-button.chosen {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--accent);
+}
+
+@media (max-width: 52rem) {
+  .editor.folded {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .rail {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .rail-sep {
+    width: 1px;
+    height: 1.5rem;
+  }
+}
+
+.preview-main > .mask .aspects {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+
+.preview-main > .mask .mask-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.rail .rail-button {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.rail .rail-button:hover {
+  background: var(--tint);
+}
+
+.rail .rail-button.chosen {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--accent);
+}

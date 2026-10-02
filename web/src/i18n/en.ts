@@ -174,6 +174,8 @@ export const en = {
   'queue.leave_unsaved': 'Leave {name} without saving your changes to the queue?',
   'queue.next': 'Choose the next picture above, or download the queue.',
   'advanced.title': 'Advanced editor',
+  'side.collapse': 'Fold the settings away to make the preview wider',
+  'side.expand': 'Show the settings',
   'advanced.hint': 'Sizes, background, margin, corners',
   'editor.reset': 'Reset to defaults',
   'editor.reset_ask': 'Reset all settings, the crop frame and the saved background colors? This cannot be undone.',
