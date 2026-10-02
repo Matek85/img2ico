@@ -14,7 +14,7 @@ use crate::chroma_key::{
     format_hex, parse_hex_color, warn_about_removal_extent,
 };
 use crate::cli::{Args, OutputFormat};
-use crate::gif::{extract_gif_frame_from_bytes, extract_gif_frame_limited, is_gif, is_gif_bytes};
+use crate::gif::{extract_gif_frame_limited, is_gif, is_gif_bytes};
 use crate::icns::{encode_icns, icns_sizes};
 use crate::layout::{Layout, Trimmed, auto_sizes, crop, make_icon, parse_crop, trim_transparent};
 use crate::plan::{Job, Naming, check_batch_options, check_folder_options, plan_jobs, single_job};
@@ -1094,9 +1094,12 @@ fn load_source_image(input_path: &Path, resolved: &ResolvedSettings) -> Result<L
     };
     if is_gif {
         return match &stdin_bytes {
-            Some(bytes) => {
-                extract_gif_frame_from_bytes(bytes, resolved.gif_frame, resolved.max_pixels)
-            }
+            Some(bytes) => img2ico_core::source::extract_gif_frame_from_bytes(
+                bytes,
+                "standard input",
+                resolved.gif_frame,
+                resolved.max_pixels,
+            ),
             None => extract_gif_frame_limited(input_path, resolved.gif_frame, resolved.max_pixels),
         }
         .map(Loaded::Raster);

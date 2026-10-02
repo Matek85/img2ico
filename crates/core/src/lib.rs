@@ -13,5 +13,6 @@ pub mod icns;
 pub mod layout;
 pub mod par;
 pub mod resize;
+pub mod source;
 pub mod validate;
 pub mod vector;
