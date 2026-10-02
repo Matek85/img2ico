@@ -25,6 +25,8 @@ export interface Settings {
   trim: boolean;
   /** The part of the picture to use, in its pixels; `null` is all of it. */
   crop: Rect | null;
+  /** The frame of an animated GIF the icon is made from, counted from 0. */
+  gifFrame: number;
   removeBackground: boolean;
   /** Detect the background color from the picture's border. */
   backgroundAuto: boolean;
@@ -49,6 +51,7 @@ export function defaultSettings(): Settings {
     grayscale: false,
     trim: false,
     crop: null,
+    gifFrame: 0,
     removeBackground: false,
     backgroundAuto: true,
     backgroundColor: '#00ff00',

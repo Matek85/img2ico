@@ -4,6 +4,7 @@
 // decoding it again.
 
 import init, {
+  GifFrames,
   Source,
   ZipBuilder,
   ZipReader,
@@ -25,10 +26,17 @@ const scope = self as unknown as { postMessage(message: unknown, transfer: Trans
 let source: Source | undefined;
 // The ZIP whose files are being read one by one.
 let zip: ZipReader | undefined;
+// The frames of an animated GIF, to show them and to choose one.
+let gif: GifFrames | undefined;
 
 function forget(): void {
   source?.free();
   source = undefined;
+}
+
+function forgetGif(): void {
+  gif?.free();
+  gif = undefined;
 }
 
 self.onmessage = async (event: MessageEvent<Request>) => {
@@ -46,7 +54,34 @@ self.onmessage = async (event: MessageEvent<Request>) => {
         break;
       case 'open': {
         forget();
+        forgetGif();
         source = Source.open(request.bytes, request.name, request.gifFrame);
+        response = {
+          id: request.id,
+          ok: true,
+          opened: { width: source.width(), height: source.height(), vector: source.is_vector() },
+        };
+        break;
+      }
+      case 'gifOpen': {
+        forgetGif();
+        gif = GifFrames.open(request.bytes, request.name);
+        const delays = Array.from({ length: gif.count() }, (_, index) => gif!.delay_ms(index));
+        response = { id: request.id, ok: true, gif: { count: gif.count(), width: gif.width(), height: gif.height(), delays } };
+        break;
+      }
+      case 'gifFrame': {
+        if (!gif) throw new Error('No GIF is open.');
+        const data = gif.frame_png(request.index);
+        transfer.push(data.buffer);
+        response = { id: request.id, ok: true, data };
+        break;
+      }
+      case 'gifSelect': {
+        if (!gif) throw new Error('No GIF is open.');
+        const chosen = Source.from_gif_frame(gif, request.index);
+        forget();
+        source = chosen;
         response = {
           id: request.id,
           ok: true,
@@ -139,6 +174,7 @@ self.onmessage = async (event: MessageEvent<Request>) => {
       }
       case 'close':
         forget();
+        forgetGif();
         response = { id: request.id, ok: true };
         break;
     }

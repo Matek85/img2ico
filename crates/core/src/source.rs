@@ -145,6 +145,51 @@ pub fn extract_gif_frame_from<R: BufRead + Seek>(
     })
 }
 
+/// One frame of an animated GIF, as the picture it shows and for how long.
+pub struct GifFrame {
+    pub image: image::RgbaImage,
+    /// How long the frame is shown, in milliseconds (browsers show anything under
+    /// 20 as 100, and so does this).
+    pub delay_ms: u32,
+}
+
+/// The most pixels all frames of one GIF may have together when they are kept in
+/// memory at once (64 million, 256 MB): more than that is not worth showing.
+pub const MAX_GIF_TOTAL_PIXELS: u64 = 64_000_000;
+
+/// Every frame of a GIF that is already in memory, in order, each with the time it
+/// is shown. `max_pixels` limits one frame (0 means no limit), and the frames together
+/// may not pass `MAX_GIF_TOTAL_PIXELS`.
+pub fn decode_gif_frames_from_bytes(
+    bytes: &[u8],
+    name: &str,
+    max_pixels: u64,
+) -> Result<Vec<GifFrame>, String> {
+    let decoder = GifDecoder::new(Cursor::new(bytes))
+        .map_err(|e| format!("Could not read '{name}' as a GIF: {e}"))?;
+    let (width, height) = image::ImageDecoder::dimensions(&decoder);
+    check_pixel_limit(width, height, max_pixels)
+        .map_err(|e| format!("Could not read '{name}': {e}"))?;
+    let per_frame = u64::from(width) * u64::from(height);
+
+    let mut frames = Vec::new();
+    for frame in decoder.into_frames() {
+        if (frames.len() as u64 + 1) * per_frame > MAX_GIF_TOTAL_PIXELS {
+            return Err(format!(
+                "'{name}' has too many frames of {width}x{height} pixels to hold them all in memory."
+            ));
+        }
+        let frame = frame.map_err(|e| format!("Could not decode a frame in '{name}': {e}"))?;
+        let (numerator, denominator) = frame.delay().numer_denom_ms();
+        let delay_ms = numerator.checked_div(denominator).unwrap_or(0);
+        frames.push(GifFrame {
+            image: frame.into_buffer(),
+            delay_ms: if delay_ms < 20 { 100 } else { delay_ms },
+        });
+    }
+    Ok(frames)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -209,6 +254,54 @@ mod tests {
         let error = decode_image_bytes_limited(&encoded(ImageFormat::Png), "a", 50).unwrap_err();
         assert!(error.contains("12x8"), "{error}");
         assert!(decode_image_bytes_limited(&encoded(ImageFormat::Png), "a", 96).is_ok());
+    }
+
+    fn animated_gif(frames: &[([u8; 4], u16)]) -> Vec<u8> {
+        use image::codecs::gif::GifEncoder;
+        let mut bytes = Cursor::new(Vec::new());
+        {
+            let mut encoder = GifEncoder::new(&mut bytes);
+            for (color, delay_ms) in frames {
+                let frame = image::Frame::from_parts(
+                    RgbaImage::from_pixel(6, 4, Rgba(*color)),
+                    0,
+                    0,
+                    image::Delay::from_numer_denom_ms(u32::from(*delay_ms), 1),
+                );
+                encoder.encode_frame(frame).unwrap();
+            }
+        }
+        bytes.into_inner()
+    }
+
+    #[test]
+    fn every_frame_of_a_gif_comes_with_its_time() {
+        let bytes = animated_gif(&[([255, 0, 0, 255], 40), ([0, 0, 255, 255], 250)]);
+        let frames = decode_gif_frames_from_bytes(&bytes, "a.gif", 0).unwrap();
+        assert_eq!(frames.len(), 2);
+        assert_eq!(frames[0].image.dimensions(), (6, 4));
+        assert_eq!(frames[0].image.get_pixel(0, 0).0, [255, 0, 0, 255]);
+        assert_eq!(frames[1].image.get_pixel(0, 0).0, [0, 0, 255, 255]);
+        // GIF times are in hundredths of a second
+        assert_eq!(frames[0].delay_ms, 40);
+        assert_eq!(frames[1].delay_ms, 250);
+    }
+
+    #[test]
+    fn a_frame_shown_for_next_to_no_time_is_shown_for_a_tenth_of_a_second() {
+        let bytes = animated_gif(&[([1, 2, 3, 255], 0)]);
+        assert_eq!(
+            decode_gif_frames_from_bytes(&bytes, "a.gif", 0).unwrap()[0].delay_ms,
+            100
+        );
+    }
+
+    #[test]
+    fn frames_that_do_not_fit_in_memory_together_are_refused() {
+        let bytes = animated_gif(&[([1, 2, 3, 255], 40)]);
+        // a single frame over the limit of one frame
+        assert!(decode_gif_frames_from_bytes(&bytes, "a.gif", 10).is_err());
+        assert!(decode_gif_frames_from_bytes(b"not a gif", "a.gif", 0).is_err());
     }
 
     #[test]

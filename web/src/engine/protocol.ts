@@ -14,6 +14,9 @@ export type Request =
   | { id: number; op: 'validate'; bytes: Uint8Array }
   | { id: number; op: 'open'; bytes: Uint8Array; name: string; gifFrame: number }
   | { id: number; op: 'convert'; options: EngineOptions }
+  | { id: number; op: 'gifOpen'; bytes: Uint8Array; name: string }
+  | { id: number; op: 'gifFrame'; index: number }
+  | { id: number; op: 'gifSelect'; index: number }
   | { id: number; op: 'pixels'; bytes: Uint8Array; index: number }
   | { id: number; op: 'describe'; bytes: Uint8Array }
   | { id: number; op: 'extract'; bytes: Uint8Array; index: number }
@@ -31,6 +34,15 @@ export interface Opened {
   width: number;
   height: number;
   vector: boolean;
+}
+
+/** The frames of an animated GIF the engine holds. */
+export interface GifInfo {
+  count: number;
+  width: number;
+  height: number;
+  /** How long each frame is shown, in milliseconds. */
+  delays: number[];
 }
 
 /** One image of an icon file, as exact pixels. */
@@ -51,6 +63,7 @@ export interface Converted {
 export type Response =
   | { id: number; ok: true; value: string }
   | { id: number; ok: true; opened: Opened }
+  | { id: number; ok: true; gif: GifInfo }
   | { id: number; ok: true; converted: Converted }
   | { id: number; ok: true; pixels: Pixels }
   | { id: number; ok: true; data: Uint8Array }

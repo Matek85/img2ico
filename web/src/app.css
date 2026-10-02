@@ -2899,3 +2899,67 @@ button.small {
   align-items: center;
   gap: 0.75rem;
 }
+
+/* =========================================================================
+   The player of an animated GIF: the frame shown, play/pause, step, slider.
+   ========================================================================= */
+
+.gif-player {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.4rem 0.9rem;
+  align-items: center;
+  margin-bottom: 0.9rem;
+  padding: 0.6rem 0.75rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 0.7rem;
+}
+
+.gif-frame {
+  display: grid;
+  place-items: center;
+  width: 5.5rem;
+  height: 4rem;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  background: repeating-conic-gradient(#c8c8d0 0 25%, #f2f2f6 0 50%) 0 0 / 10px 10px;
+}
+
+.gif-frame img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.gif-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.gif-controls input[type='range'] {
+  flex: 1;
+  min-width: 4rem;
+}
+
+.gif-controls .icon-button {
+  flex: none;
+  width: var(--control);
+  height: var(--control);
+}
+
+.gif-count {
+  flex: none;
+  min-width: 7.5rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+  text-align: right;
+}
+
+.gif-player .hint {
+  grid-column: 1 / -1;
+  margin: 0;
+}

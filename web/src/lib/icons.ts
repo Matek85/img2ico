@@ -42,6 +42,10 @@ export const ICONS = {
   sliders: '<path d="M4 21v-7"/><path d="M4 10V3"/><path d="M12 21v-9"/><path d="M12 8V3"/><path d="M20 21v-5"/><path d="M20 12V3"/><path d="M1 14h6"/><path d="M9 8h6"/><path d="M17 16h6"/>',
   lock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
   unlock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.5-2"/>',
+  play: '<path d="M6 4v16l14-8z"/>',
+  pause: '<path d="M8 5v14"/><path d="M16 5v14"/>',
+  framePrev: '<path d="M19 20 9 12l10-8z"/><path d="M5 19V5"/>',
+  frameNext: '<path d="m5 4 10 8-10 8z"/><path d="M19 5v14"/>',
   checkNone: '<rect x="3" y="3" width="18" height="18" rx="2"/>',
 } as const;
 
