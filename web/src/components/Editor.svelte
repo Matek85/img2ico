@@ -87,6 +87,8 @@
   // The crop frame. It is `settings.crop` only while crop is on and the frame
   // is smaller than the picture; the frame itself is kept while it is off.
   let cropOn = $state(false);
+  // The detailed controls are folded away until asked for.
+  let advanced = $state(false);
   let cropAspect = $state<AspectChoice>('free');
   let frame = $state<Rect>({ x: 0, y: 0, width: 1, height: 1 });
   let picture = $derived(opened ? { width: opened.width, height: opened.height } : undefined);
@@ -408,6 +410,12 @@
         </div>
       </fieldset>
 
+      <details class="advanced" bind:open={advanced}>
+        <summary>
+          <span>{t('advanced.title')}</span>
+          <small>{t('advanced.hint')}</small>
+        </summary>
+        <div class="advanced-body">
       {#if !batch && !opened.vector && picture}
         <fieldset class:empty={!cropOn}>
           <legend>
@@ -522,6 +530,8 @@
           </label>
         {/if}
       </fieldset>
+        </div>
+      </details>
     </section>
   </div>
 

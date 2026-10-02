@@ -106,6 +106,8 @@ export const en = {
   'presets.title': 'Quick start',
   'presets.use': 'What is it for?',
   'presets.style': 'Style',
+  'advanced.title': 'Advanced editor',
+  'advanced.hint': 'Sizes, margin, corners, crop, background',
   'editor.reset': 'Reset to defaults',
   'editor.reset_hint': 'Sizes, look, background and crop go back to how they were when the page was first opened.',
   'presets.remembered': 'Your settings are remembered in this browser.',

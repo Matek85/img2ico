@@ -737,6 +737,64 @@ button:disabled {
   gap: 1rem;
 }
 
+/* The detailed controls: one card that opens up. */
+.advanced {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+}
+
+.advanced summary {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 0 0.75rem;
+  padding: 0.9rem 1.25rem;
+  list-style: none;
+  cursor: pointer;
+}
+
+.advanced summary::-webkit-details-marker {
+  display: none;
+}
+
+.advanced summary span {
+  font-weight: 600;
+}
+
+.advanced summary small {
+  grid-column: 1;
+  color: var(--muted);
+}
+
+.advanced summary::after {
+  content: '';
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  width: 0.55rem;
+  height: 0.55rem;
+  margin-top: -0.25rem;
+  border: solid var(--muted);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+  transition: transform 0.15s;
+}
+
+.advanced[open] summary::after {
+  margin-top: 0.2rem;
+  transform: rotate(-135deg);
+}
+
+.advanced summary:hover span {
+  color: var(--link);
+}
+
+.advanced-body {
+  display: grid;
+  gap: 1rem;
+  padding: 0.25rem 1rem 1rem;
+}
+
 .controls fieldset {
   margin: 0;
   display: grid;
