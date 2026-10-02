@@ -7,6 +7,24 @@
 import { SIZE_CHOICES, type Settings, defaultSettings } from './settings';
 
 const KEY = 'img2ico.settings.v1';
+const AUTOSAVE_KEY = 'img2ico.autosave.v1';
+
+/** Whether changes to an icon of the queue are saved to it on their own (on unless it was switched off). */
+export function loadAutoSave(): boolean {
+  try {
+    return localStorage.getItem(AUTOSAVE_KEY) !== '0';
+  } catch {
+    return true;
+  }
+}
+
+export function saveAutoSave(on: boolean): void {
+  try {
+    localStorage.setItem(AUTOSAVE_KEY, on ? '1' : '0');
+  } catch {
+    // Without storage the choice only lasts until the page is closed.
+  }
+}
 
 function whole(value: unknown, min: number, max: number, fallback: number): number {
   return typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max

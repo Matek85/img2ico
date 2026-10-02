@@ -29,7 +29,7 @@
   import { stemOf } from '../lib/batch';
   import { ICNS_TYPE, ICO_TYPE, ZIP_TYPE, saveBytes } from '../lib/download';
   import { type QueueItem, queue } from '../lib/queue.svelte';
-  import { loadSettings, saveSettings } from '../lib/storage';
+  import { loadAutoSave, loadSettings, saveAutoSave, saveSettings } from '../lib/storage';
   import {
     DEFAULT_SIZES,
     FAVICON_SIZES,
@@ -93,6 +93,13 @@
   // The icon of the queue this picture is (an icon that was opened from it, or added from here).
   // svelte-ignore state_referenced_locally
   let editId = $state<number | undefined>(editing?.id);
+  // Changes to that icon go into the queue on their own, unless this is switched off.
+  let autoSave = $state(loadAutoSave());
+  // The settings as they were when the queue last got this icon (null until the first conversion of a turn).
+  let savedSignature = $state<string | null>(null);
+  let signature = $derived(JSON.stringify($state.snapshot(settings)));
+  let dirty = $derived(editId !== undefined && savedSignature !== null && signature !== savedSignature);
+  let saving = $state(false);
 
   // The crop frame. It is `settings.crop` only while crop is on and the frame
   // is smaller than the picture; the frame itself is kept while it is off.
@@ -287,14 +294,46 @@
   // Save the changes to the icon of the queue that is being edited.
   async function saveEditing(announce = true) {
     if (editId === undefined) return;
-    const made = await madeForQueue();
-    if (made) queue.update(editId, made, announce);
+    const now = signature;
+    saving = true;
+    try {
+      const made = await madeForQueue();
+      if (made) {
+        queue.update(editId, made, announce);
+        savedSignature = now;
+      }
+    } finally {
+      saving = false;
+    }
+  }
+
+  // With auto-save, each change is in the queue shortly after the preview has been made again.
+  $effect(() => {
+    if (editId === undefined || !converted || working) return;
+    const now = signature;
+    if (savedSignature === null) {
+      savedSignature = now;
+      return;
+    }
+    if (!autoSave || now === savedSignature) return;
+    const timer = setTimeout(() => void saveEditing(false), 300);
+    return () => clearTimeout(timer);
+  });
+
+  // Before leaving the icon being edited: save its changes (auto-save), or ask when they would be lost.
+  async function settle(announce: boolean): Promise<boolean> {
+    if (editId === undefined) return true;
+    if (autoSave) {
+      await saveEditing(announce);
+      return true;
+    }
+    return !dirty || confirm(t('queue.leave_unsaved', { name: queue.find(editId)?.fileName ?? file.name }));
   }
 
   // The next picture comes: this icon is kept in the queue first (added, or updated).
   async function nextPicture(files: File[]) {
     if (editId !== undefined) {
-      await saveEditing(false);
+      if (!(await settle(false))) return;
     } else {
       const made = await madeForQueue();
       if (made) queue.add(file.name, made);
@@ -304,12 +343,12 @@
 
   // Going back, or to another icon of the queue, keeps the changes of the one being edited.
   async function leave() {
-    await saveEditing();
+    if (!(await settle(true))) return;
     onback();
   }
 
   async function jump(item: QueueItem) {
-    await saveEditing(false);
+    if (!(await settle(false))) return;
     onopenitem?.(item);
   }
 
@@ -366,7 +405,16 @@
   </div>
 
   {#if editId !== undefined}
-    <p class="editing-note" role="status">{t('queue.editing_note', { name: queue.find(editId)?.fileName ?? file.name })}</p>
+    <div class="editing-note" role="status">
+      <span>{t('queue.editing_note', { name: queue.find(editId)?.fileName ?? file.name })}</span>
+      <label class="autosave">
+        <input type="checkbox" bind:checked={autoSave} onchange={() => saveAutoSave(autoSave)} />
+        {t('queue.autosave')}
+      </label>
+      <span class="save-state" class:pending={dirty || saving}>
+        {dirty || saving ? (autoSave ? t('queue.saving') : t('queue.unsaved')) : t('queue.saved')}
+      </span>
+    </div>
   {/if}
 
   <div class="editor">

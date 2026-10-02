@@ -1816,6 +1816,10 @@ h3 {
 }
 
 .editing-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 1.25rem;
   margin: 0 0 1rem;
   padding: 0.6rem 0.9rem;
   background: var(--tint);
@@ -1944,4 +1948,21 @@ button.danger {
 
 button.danger:hover {
   filter: brightness(1.1);
+}
+
+.editing-note .autosave {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.editing-note .save-state {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.editing-note .save-state.pending {
+  color: var(--warn-text);
+  font-weight: 600;
 }
