@@ -8,12 +8,17 @@
     after,
     picture,
     crop,
+    beforeLabel,
+    afterLabel,
   }: {
     /** The original picture's address, and the icon image's. */
     before: string;
     after: string;
     picture: Size;
     crop: Rect | null;
+    /** Names for the two sides; "Before" and "After" when not given. */
+    beforeLabel?: string;
+    afterLabel?: string;
   } = $props();
 
   /** Where the divider is, 0 (all "after") to 100 (all "before"), in percent. */
@@ -81,8 +86,8 @@
       <img src={before} alt="" draggable="false" style={beforeImageStyle} />
     </div>
     <div class="divider" style="left:{position}%"></div>
-    <span class="tag left">{t('compare.before')}</span>
-    <span class="tag right">{t('compare.after')}</span>
+    <span class="tag left">{beforeLabel ?? t('compare.before')}</span>
+    <span class="tag right">{afterLabel ?? t('compare.after')}</span>
   </div>
   <label class="slider">
     <span>{t('compare.divider')}</span>

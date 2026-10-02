@@ -1743,3 +1743,80 @@ h3 {
   margin: 1rem 0 0;
   text-align: center;
 }
+
+.queue-list li.active {
+  border-color: var(--accent);
+  background: var(--tint);
+}
+
+.queue-list .pick {
+  flex: none;
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+.queue-list .open {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.queue-list .open:disabled {
+  opacity: 1;
+  cursor: default;
+}
+
+.queue-list .open:not(:disabled):hover strong {
+  color: var(--link);
+  text-decoration: underline;
+}
+
+.queue-compare {
+  display: grid;
+  justify-items: start;
+  gap: 0.6rem;
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.queue-compare-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+}
+
+.queue-compare-head h3 {
+  margin: 0;
+}
+
+.queue-compare .stage {
+  width: 100%;
+  min-height: 0;
+}
+
+.queue-compare .tag {
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.queue-note {
+  margin-top: 0.5rem;
+}
+
+.editing-note {
+  margin: 0 0 1rem;
+  padding: 0.6rem 0.9rem;
+  background: var(--tint);
+  border: 1px solid var(--accent);
+  border-radius: 0.5rem;
+}

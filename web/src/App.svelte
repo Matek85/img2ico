@@ -4,14 +4,15 @@
   import Editor from './components/Editor.svelte';
   import IconFile from './components/IconFile.svelte';
   import Queue from './components/Queue.svelte';
-  import { queue } from './lib/queue.svelte';
+  import { type QueueItem, queue } from './lib/queue.svelte';
+  import type { Settings } from './lib/settings';
   import { engineVersion, openZip, readZipFile } from './engine/client';
   import { t } from './i18n';
   import { type BatchItem, MAX_BATCH, baseName, isIconName, isPictureName, isZipName, stemOf } from './lib/batch';
 
   type View =
     | { kind: 'start' }
-    | { kind: 'editor'; file: File }
+    | { kind: 'editor'; file: File; editing?: { id: number; settings: Settings } }
     | { kind: 'validate'; file: File }
     | { kind: 'batch'; file: File; items: BatchItem[]; archive: string; notes: string[] };
 
@@ -103,16 +104,33 @@
   function back() {
     view = { kind: 'start' };
   }
+
+  // An icon of the queue is opened again, with the picture and settings it was made with.
+  function openFromQueue(item: QueueItem) {
+    view = { kind: 'editor', file: item.file, editing: { id: item.id, settings: $state.snapshot(item.settings) as Settings } };
+    window.scrollTo({ top: 0 });
+  }
+
+  // Closing or reloading the page would lose the queue: the browser asks first.
+  $effect(() => {
+    if (queue.items.length === 0) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  });
 </script>
 
 {#if view.kind === 'start'}
   <Dropzone onfiles={choose} />
   {#if problem}<p class="failure" role="alert">{problem}</p>{/if}
   {#if queue.items.length > 0}<p class="hint next">{t('queue.next')}</p>{/if}
-  <Queue />
+  <Queue onopen={openFromQueue} />
 {:else if view.kind === 'editor'}
-  {#key view.file}
-    <Editor file={view.file} onback={back} />
+  {#key view}
+    <Editor file={view.file} editing={view.editing} onopenitem={openFromQueue} onback={back} />
   {/key}
 {:else if view.kind === 'batch'}
   {#key view.items}

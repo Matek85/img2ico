@@ -29,7 +29,7 @@
   import { type Preset, STYLE_PRESETS, USE_PRESETS, isActive, withPreset } from '../lib/presets';
   import { type BatchItem, outputName, stemOf } from '../lib/batch';
   import { ICNS_TYPE, ICO_TYPE, ZIP_TYPE, saveBytes } from '../lib/download';
-  import { queue } from '../lib/queue.svelte';
+  import { type QueueItem, queue } from '../lib/queue.svelte';
   import { loadSettings, saveSettings } from '../lib/storage';
   import {
     DEFAULT_SIZES,
@@ -46,9 +46,15 @@
     file,
     onback,
     batch,
+    editing,
+    onopenitem,
   }: {
     file: File;
     onback: () => void;
+    /** An icon of the queue that is being edited again, with the settings it was made with. */
+    editing?: { id: number; settings: Settings };
+    /** Opens another icon of the queue (this one is saved first). */
+    onopenitem?: (item: QueueItem) => void;
     /** Several pictures to turn into icons with the same settings; `file` is the one shown. */
     batch?: { items: BatchItem[]; archive: string; notes: string[] };
   } = $props();
@@ -57,7 +63,13 @@
   const BACKDROPS: Backdrop[] = ['checker', 'light', 'dark', 'gray'];
 
   // What was chosen last time is the starting point (see storage.ts).
-  let settings = $state<Settings>(loadSettings());
+  // (The editor is made anew for every icon, so only the first value of `editing` matters.)
+  // svelte-ignore state_referenced_locally
+  let settings = $state<Settings>(editing ? structuredClone($state.snapshot(editing.settings)) : loadSettings());
+  // The crop frame an icon from the queue comes back with; the effect below clears
+  // `settings.crop` until the picture is open, so it is noted here first.
+  // svelte-ignore state_referenced_locally
+  const startCrop: Rect | null = settings.crop ? { ...settings.crop } : null;
   let opened = $state<Opened>();
   let openFailure = $state('');
   let originalUrl = $state('');
@@ -108,7 +120,9 @@
       const bytes = new Uint8Array(await file.arrayBuffer());
       previewBytes = bytes.slice();
       opened = await openPicture(bytes, file.name);
-      frame = fullRect(opened);
+      // An icon from the queue comes back with its crop frame.
+      frame = startCrop ? { ...startCrop } : fullRect(opened);
+      cropOn = startCrop !== null;
     } catch (error) {
       openFailure = error instanceof Error ? error.message : String(error);
     }
@@ -201,8 +215,9 @@
   }
 
   // Remember the settings for the next visit.
+  // (Not while an icon of the queue is edited: that one has its own settings.)
   $effect(() => {
-    saveSettings($state.snapshot(settings));
+    if (!editing) saveSettings($state.snapshot(settings));
   });
 
   function usePreset(preset: Preset) {
@@ -305,13 +320,43 @@
     }
   }
 
-  // Keep this icon in the queue and go back to choose the next picture.
-  async function addToQueue() {
-    if (!converted || settings.format === 'favicon') return;
+  // What the icon is made of, as the queue keeps it; nothing if there is nothing to keep.
+  async function madeForQueue() {
+    if (!converted || settings.format === 'favicon') return undefined;
     const format = settings.format;
     const bytes = format === 'ico' ? converted.bytes : (await convert(toEngineOptions(settings, 'icns'))).bytes;
-    queue.add(file.name, format, bytes, converted.bytes);
+    return { file, settings: $state.snapshot(settings) as Settings, format, bytes, preview: converted.bytes };
+  }
+
+  // Keep this icon in the queue and go back to choose the next picture.
+  async function addToQueue() {
+    const made = await madeForQueue();
+    if (!made) return;
+    queue.add(file.name, made);
     onback();
+  }
+
+  // Save the changes to the icon of the queue that is being edited.
+  async function saveEditing(announce = true) {
+    if (!editing) return;
+    const made = await madeForQueue();
+    if (made) queue.update(editing.id, made, announce);
+  }
+
+  async function updateInQueue() {
+    await saveEditing();
+    onback();
+  }
+
+  // Going back, or to another icon of the queue, keeps the changes of the one being edited.
+  async function leave() {
+    await saveEditing();
+    onback();
+  }
+
+  async function jump(item: QueueItem) {
+    await saveEditing(false);
+    onopenitem?.(item);
   }
 
   async function downloadPngZip() {
@@ -358,13 +403,17 @@
   <p class="working" role="status">{t('state.opening', { name: file.name })}</p>
 {:else}
   <div class="bar">
-    <button type="button" class="quiet" onclick={onback}>← {t('state.back')}</button>
+    <button type="button" class="quiet" onclick={leave}>← {t('state.back')}</button>
     <span class="file">{file.name}</span>
     <button type="button" class="outline reset" onclick={resetSettings} disabled={isDefault} title={t('editor.reset_hint')}>
       <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
       {t('editor.reset')}
     </button>
   </div>
+
+  {#if editing}
+    <p class="editing-note" role="status">{t('queue.editing_note', { name: queue.find(editing.id)?.fileName ?? file.name })}</p>
+  {/if}
 
   <div class="editor">
     <section class="preview" aria-labelledby="preview-title">
@@ -465,7 +514,7 @@
           </div>
         {/each}
         <div class="preset-foot">
-          <span class="hint">{t('presets.remembered')}</span>
+          {#if !editing}<span class="hint">{t('presets.remembered')}</span>{/if}
         </div>
       </fieldset>
 
@@ -672,6 +721,17 @@
           {t('download.png_zip')}
         </button>
       {/if}
+      {#if editing}
+        <button
+          type="button"
+          class="outline"
+          onclick={updateInQueue}
+          disabled={!converted || working || packing || settings.format === 'favicon'}
+          title={settings.format === 'favicon' ? t('queue.add_favicon') : t('queue.add_hint')}
+        >
+          {t('queue.update')}
+        </button>
+      {/if}
       <button
         type="button"
         class="outline"
@@ -679,10 +739,10 @@
         disabled={!converted || working || packing || settings.format === 'favicon'}
         title={settings.format === 'favicon' ? t('queue.add_favicon') : t('queue.add_hint')}
       >
-        {t('queue.add')}
+        {editing ? t('queue.add_new') : t('queue.add')}
       </button>
       {#if settings.format === 'icns'}<p class="hint">{t('download.icns_note')}</p>{/if}
     {/if}
   </section>
-  {#if !batch}<Queue />{/if}
+  {#if !batch}<Queue activeId={editing?.id} onopen={jump} />{/if}
 {/if}

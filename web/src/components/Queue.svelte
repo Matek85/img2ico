@@ -3,8 +3,19 @@
   import { buildZip, mergeIcons } from '../engine/client';
   import { t } from '../i18n';
   import { ICNS_TYPE, ICO_TYPE, ZIP_TYPE, saveBytes } from '../lib/download';
-  import { queue } from '../lib/queue.svelte';
+  import { type QueueItem, queue } from '../lib/queue.svelte';
   import { sizesText } from '../lib/queue';
+  import Compare from './Compare.svelte';
+
+  let {
+    activeId,
+    onopen,
+  }: {
+    /** The icon being edited just now, if any. */
+    activeId?: number;
+    /** Opens an icon of the queue for editing. */
+    onopen?: (item: QueueItem) => void;
+  } = $props();
 
   let root = $state<HTMLElement>();
   let flash = $state(false);
@@ -12,7 +23,18 @@
   let failure = $state('');
   let notes = $state<string[]>([]);
 
-  // When icons were just added, show the queue: scroll to it and let it flash once.
+  // Two icons ticked are shown side by side, with a divider as in "Before and after".
+  let selected = $state<number[]>([]);
+  let backdrop = $state<'checker' | 'light' | 'dark' | 'gray'>('checker');
+  const BACKDROPS = ['checker', 'light', 'dark', 'gray'] as const;
+  let pair = $derived(selected.map((id) => queue.find(id)).filter((item): item is QueueItem => item !== undefined));
+  let comparing = $derived(pair.length === 2 ? pair : null);
+
+  function toggle(id: number) {
+    selected = selected.includes(id) ? selected.filter((other) => other !== id) : [...selected.slice(-1), id];
+  }
+
+  // When icons were just added or changed, show the queue: scroll to it and let it flash once.
   onMount(() => {
     if (!queue.takeNotice()) return;
     root?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -58,16 +80,35 @@
 {#if queue.items.length > 0}
   <section class="queue" class:flash bind:this={root} aria-labelledby="queue-title">
     <h2 id="queue-title">{t('queue.title', { count: queue.items.length })}</h2>
+    {#if onopen}<p class="hint">{t('queue.jump_hint')}</p>{/if}
     <ol class="queue-list">
       {#each queue.items as item, at (item.id)}
-        <li>
-          {#if item.thumb}<img src={item.thumb} alt="" width="40" height="40" />{:else}<span class="blank"></span>{/if}
-          <div class="what">
-            <strong>{item.fileName}</strong>
-            <span class="hint">
-              {item.format === 'ico' ? sizesText(item.sizes) : t('queue.icns_sizes')}
+        <li class:active={item.id === activeId}>
+          {#if queue.items.length > 1}
+            <input
+              type="checkbox"
+              class="pick"
+              checked={selected.includes(item.id)}
+              aria-label={t('queue.compare_pick', { name: item.fileName })}
+              onchange={() => toggle(item.id)}
+            />
+          {/if}
+          <button
+            type="button"
+            class="open"
+            aria-label={t('queue.edit', { name: item.fileName })}
+            aria-current={item.id === activeId ? 'true' : undefined}
+            disabled={!onopen || item.id === activeId}
+            onclick={() => onopen?.(item)}
+          >
+            {#if item.thumb}<img src={item.thumb} alt="" width="40" height="40" />{:else}<span class="blank"></span>{/if}
+            <span class="what">
+              <strong>{item.fileName}</strong>
+              <span class="hint">
+                {item.id === activeId ? t('queue.editing') + ' · ' : ''}{item.format === 'ico' ? sizesText(item.sizes) : t('queue.icns_sizes')}
+              </span>
             </span>
-          </div>
+          </button>
           <div class="item-buttons">
             <button type="button" class="quiet" aria-label={t('queue.up', { name: item.fileName })} disabled={at === 0} onclick={() => queue.move(item.id, -1)}>↑</button>
             <button type="button" class="quiet" aria-label={t('queue.down', { name: item.fileName })} disabled={at === queue.items.length - 1} onclick={() => queue.move(item.id, 1)}>↓</button>
@@ -76,6 +117,38 @@
         </li>
       {/each}
     </ol>
+
+    {#if queue.items.length > 1 && !comparing}
+      <p class="hint">{t('queue.compare_hint')}</p>
+    {/if}
+    {#if comparing}
+      <div class="queue-compare">
+        <div class="queue-compare-head">
+          <h3>{t('queue.compare_title', { a: comparing[0].fileName, b: comparing[1].fileName })}</h3>
+          <button type="button" class="quiet" onclick={() => (selected = [])}>{t('queue.compare_close')}</button>
+        </div>
+        <div class="backdrops" role="radiogroup" aria-label={t('editor.background')}>
+          {#each BACKDROPS as choice (choice)}
+            <label class:chosen={backdrop === choice}>
+              <input type="radio" name="queue-backdrop" value={choice} bind:group={backdrop} />
+              {t(`editor.bg_${choice}`)}
+            </label>
+          {/each}
+        </div>
+        <div class="stage {backdrop}">
+          {#key comparing[0].id + ':' + comparing[1].id}
+            <Compare
+              before={comparing[0].thumb}
+              after={comparing[1].thumb}
+              picture={{ width: 1, height: 1 }}
+              crop={null}
+              beforeLabel={comparing[0].fileName}
+              afterLabel={comparing[1].fileName}
+            />
+          {/key}
+        </div>
+      </div>
+    {/if}
 
     <div class="queue-actions">
       {#if queue.items.length === 1}
@@ -95,5 +168,6 @@
         {#each notes as note}<li>{note}</li>{/each}
       </ul>
     {/if}
+    <p class="hint queue-note">{t('queue.note')}</p>
   </section>
 {/if}
