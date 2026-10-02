@@ -1966,3 +1966,18 @@ button.danger:hover {
   color: var(--warn-text);
   font-weight: 600;
 }
+
+/* Small square buttons with a line icon (the hint is in the title). */
+button.icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border-radius: 0.4rem;
+}
+
+button.icon-button.on {
+  background: var(--tint);
+  color: var(--link);
+}

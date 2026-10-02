@@ -218,7 +218,7 @@
             <button type="button" class="quiet" disabled={working} onclick={() => savePng(image.index, image.width)}>
               {t('iconfile.save_png')}
             </button>
-            <button type="button" class="quiet" disabled={working} title={t('queue.as_picture_hint')} onclick={() => asPicture(image.index)}>
+            <button type="button" class="quiet" disabled={working} title={t('queue.as_picture_this_hint')} onclick={() => asPicture(image.index)}>
               {t('queue.as_picture')}
             </button>
           </li>
