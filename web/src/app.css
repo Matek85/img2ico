@@ -246,59 +246,161 @@ a {
   color: var(--muted);
 }
 
+/* One picture after another turns into an icon: it shrinks and rounds off,
+   fans out into the sizes of the icon file, and its label changes from the
+   picture type to the icon type. Each scene takes a fifth of the loop. The
+   styles without animation are the finished state, which people who prefer
+   no motion see (of the first scene only). */
 .hero-art {
+  position: relative;
+  flex-shrink: 0;
+  width: 23rem;
+  height: 12rem;
+}
+
+.scene {
+  position: absolute;
+  inset: 0;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  flex-shrink: 0;
+  justify-content: center;
+  gap: 1.5rem;
 }
 
-.tile {
-  display: grid;
-  justify-items: center;
-  gap: 0.35rem;
-  width: 6.5rem;
-  padding: 1.1rem 0 0.9rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 0.9rem;
-  box-shadow: var(--shadow);
-  color: var(--muted);
+.scene:not(:first-child) {
+  display: none;
 }
 
-.tile.out {
-  color: var(--accent);
-  border-color: var(--accent);
-}
-
-.tile b {
-  color: var(--text);
-  font-size: 0.85rem;
-  letter-spacing: 0.05em;
-}
-
-.join {
-  display: grid;
-  justify-items: center;
-  gap: 0.25rem;
-  color: var(--muted);
-}
-
-.join small {
-  font-size: 0.65rem;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-}
-
-.spin {
+.frame {
+  position: relative;
   display: grid;
   place-items: center;
-  width: 2.5rem;
-  height: 2.5rem;
-  border-radius: 50%;
-  background: var(--surface);
-  border: 1px solid var(--accent);
-  color: var(--accent);
+  width: 8.5rem;
+  height: 8.5rem;
+}
+
+.pic,
+.sizes i {
+  background: var(--art);
+  box-shadow: var(--shadow);
+}
+
+.pic {
+  width: 6.5rem;
+  height: 6.5rem;
+  border-radius: 1.4rem;
+}
+
+.tag {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  display: grid;
+  transform: translateX(-50%);
+  padding: 0.15rem 0.7rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+}
+
+.tag b {
+  grid-area: 1 / 1;
+  text-align: center;
+}
+
+.tag .from {
+  opacity: 0;
+}
+
+.sizes {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.45rem;
+}
+
+.sizes i {
+  display: block;
+  border-radius: 22%;
+}
+
+.sizes i:nth-child(1) { width: 3.4rem; height: 3.4rem; }
+.sizes i:nth-child(2) { width: 2.5rem; height: 2.5rem; }
+.sizes i:nth-child(3) { width: 1.8rem; height: 1.8rem; }
+.sizes i:nth-child(4) { width: 1.2rem; height: 1.2rem; }
+.sizes i:nth-child(5) { width: 0.8rem; height: 0.8rem; }
+
+.art1 { --art: radial-gradient(circle at 72% 28%, #ffd66b 0 15%, transparent 16%), linear-gradient(160deg, #5b9bff, #1e3a8a); }
+.art2 { --art: radial-gradient(circle at 30% 68%, #fff1a8 0 14%, transparent 15%), linear-gradient(#ff9a62, #7b2ff7); }
+.art3 { --art: radial-gradient(circle, #fff 0 22%, transparent 23%), conic-gradient(from 30deg, #22d3ee, #6366f1, #d946ef, #22d3ee); }
+.art4 { --art: radial-gradient(circle at 50% 50%, #fff 0 12%, transparent 13%), repeating-linear-gradient(45deg, #34d399 0 0.6rem, #059669 0.6rem 1.2rem); }
+.art5 { --art: radial-gradient(circle at 35% 35%, #fff 0 10%, transparent 11%), linear-gradient(135deg, #2dd4bf, #2563eb); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .scene,
+  .scene:not(:first-child) {
+    display: flex;
+    opacity: 0;
+    animation: scene-life 20s infinite;
+    animation-delay: calc(var(--i) * 4s);
+  }
+
+  .pic {
+    animation: pic-morph 20s infinite backwards;
+    animation-delay: calc(var(--i) * 4s);
+  }
+
+  .tag .from {
+    animation: tag-from 20s infinite backwards;
+    animation-delay: calc(var(--i) * 4s);
+  }
+
+  .tag .to {
+    animation: tag-to 20s infinite backwards;
+    animation-delay: calc(var(--i) * 4s);
+  }
+
+  .sizes i {
+    animation: size-pop 20s infinite backwards;
+    animation-delay: calc(var(--i) * 4s + var(--n) * 0.12s);
+  }
+
+  .sizes i:nth-child(1) { --n: 0; }
+  .sizes i:nth-child(2) { --n: 1; }
+  .sizes i:nth-child(3) { --n: 2; }
+  .sizes i:nth-child(4) { --n: 3; }
+  .sizes i:nth-child(5) { --n: 4; }
+}
+
+@keyframes scene-life {
+  0% { opacity: 0; }
+  1.5% { opacity: 1; }
+  18.5% { opacity: 1; }
+  20%, 100% { opacity: 0; }
+}
+
+/* The picture comes in wide, then shrinks to an app-icon square. */
+@keyframes pic-morph {
+  0% { width: 9rem; height: 6.4rem; border-radius: 0.5rem; transform: scale(0.85) rotate(-3deg); }
+  2.5%, 8% { width: 9rem; height: 6.4rem; border-radius: 0.5rem; transform: none; }
+  13%, 100% { width: 6.5rem; height: 6.5rem; border-radius: 1.4rem; transform: none; }
+}
+
+@keyframes tag-from {
+  0%, 9% { opacity: 1; }
+  11%, 100% { opacity: 0; }
+}
+
+@keyframes tag-to {
+  0%, 10% { opacity: 0; }
+  12%, 100% { opacity: 1; }
+}
+
+/* The sizes pop up one after another, largest first. */
+@keyframes size-pop {
+  0%, 10% { opacity: 0; transform: translateX(-1.5rem) scale(0.3); }
+  14%, 100% { opacity: 1; transform: none; }
 }
 
 /* The start page has the big heading; while working, it shrinks to a title. */

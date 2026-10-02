@@ -86,15 +86,30 @@ export function headerHtml(m: Messages): string {
   return `<h1>${escapeHtml(m['hero.title'])}</h1>\n          <p class="lead">${escapeHtml(m['app.tagline'])}</p>`;
 }
 
-const FILE_ICON =
-  '<svg viewBox="0 0 24 24" width="36" height="36" fill="currentColor"><path d="M6 2h8l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm7 1.5V8h4.5L13 3.5zM8 18h8l-2.5-3.5-2 2.5-1.2-1.5L8 18z"/></svg>';
+/** What the picture in the corner of the heading goes through: a picture of some type becomes an icon file. */
+const SCENES = [
+  { from: 'PNG', to: 'ICO' },
+  { from: 'JPG', to: 'ICO' },
+  { from: 'SVG', to: 'ICO' },
+  { from: 'GIF', to: 'ICO' },
+  { from: 'WEBP', to: 'ICNS' },
+];
 
-/** The picture in the corner of the heading: a file turning into another. Decoration only. */
-export function artHtml(m: Messages): string {
+/**
+ * The picture in the corner of the heading: one picture after another shrinks
+ * into an icon and fans out into the sizes of the icon file, its label turning
+ * from the picture type into ICO (or ICNS). Decoration only; the animation is
+ * pure CSS, and without motion the first scene stands finished.
+ */
+export function artHtml(): string {
+  const scenes = SCENES.map(
+    (scene, i) => `<div class="scene art${i + 1}" style="--i:${i}">
+            <div class="frame"><div class="pic"></div><span class="tag"><b class="from">${scene.from}</b><b class="to">${scene.to}</b></span></div>
+            <div class="sizes"><i></i><i></i><i></i><i></i><i></i></div>
+          </div>`,
+  ).join('\n          ');
   return `<div class="hero-art" aria-hidden="true">
-          <div class="tile">${FILE_ICON}<b>PNG</b></div>
-          <div class="join"><span class="spin"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0 1 13.5-5.8L20 8.5M20 4v4.5h-4.5M20 12a8 8 0 0 1-13.5 5.8L4 15.5M4 20v-4.5h4.5"/></svg></span><small>${escapeHtml(m['hero.to'])}</small></div>
-          <div class="tile out">${FILE_ICON}<b>ICO</b></div>
+          ${scenes}
         </div>`;
 }
 
@@ -138,7 +153,7 @@ export function seo(address?: string): Plugin {
       return html
         .replace('<!--seo:head-->', () => headTags(en, siteUrl))
         .replace('<!--seo:header-->', () => headerHtml(en))
-        .replace('<!--seo:art-->', () => artHtml(en))
+        .replace('<!--seo:art-->', () => artHtml())
         .replace('<!--seo:name-->', () => escapeHtml(en['app.name']))
         .replace('<!--seo:github-->', () => escapeHtml(en['nav.github']))
         .replace('<!--seo:repository-->', () => REPOSITORY)
