@@ -18,6 +18,7 @@
   } from '../lib/crop';
   import { type IconEntry, iconEntries } from '../lib/ico';
   import { type Preset, STYLE_PRESETS, USE_PRESETS, isActive, withPreset } from '../lib/presets';
+  import { ICNS_TYPE, ICO_TYPE, saveBytes } from '../lib/download';
   import { loadSettings, saveSettings } from '../lib/storage';
   import {
     DEFAULT_SIZES,
@@ -153,16 +154,7 @@
       bytes = (await convert(toEngineOptions(settings, 'icns'))).bytes;
     }
     if (!bytes) return;
-    const url = URL.createObjectURL(
-      new Blob([bytes as BlobPart], {
-        type: settings.format === 'ico' ? 'image/x-icon' : 'image/icns',
-      }),
-    );
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = downloadName(file.name, settings.format);
-    link.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    saveBytes(bytes, downloadName(file.name, settings.format), settings.format === 'ico' ? ICO_TYPE : ICNS_TYPE);
   }
 
   // The largest image is shown big; the others are shown at their real size.

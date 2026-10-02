@@ -36,6 +36,10 @@ type Call =
   | { op: 'open'; bytes: Uint8Array; name: string; gifFrame: number }
   | { op: 'convert'; options: EngineOptions }
   | { op: 'pixels'; bytes: Uint8Array; index: number }
+  | { op: 'describe'; bytes: Uint8Array }
+  | { op: 'extract'; bytes: Uint8Array; index: number }
+  | { op: 'select'; bytes: Uint8Array; indices: number[] }
+  | { op: 'merge'; files: { name: string; bytes: Uint8Array }[] }
   | { op: 'close' };
 
 function call(request: Call, transfer: Transferable[] = []): Promise<Response & { ok: true }> {
@@ -46,7 +50,7 @@ function call(request: Call, transfer: Transferable[] = []): Promise<Response & 
   });
 }
 
-function field<K extends 'value' | 'opened' | 'converted' | 'pixels'>(
+function field<K extends 'value' | 'opened' | 'converted' | 'pixels' | 'data'>(
   response: Response & { ok: true },
   key: K,
 ): NonNullable<Extract<Response, Record<K, unknown>>[K]> {
@@ -77,6 +81,41 @@ export async function convert(options: EngineOptions): Promise<Converted> {
 export async function iconPixels(bytes: Uint8Array, index: number): Promise<Pixels> {
   // The engine takes its own copy: the page keeps the file for the download.
   return field(await call({ op: 'pixels', bytes, index }), 'pixels');
+}
+
+/** What the engine says about the images of an .ico file. */
+export interface IconDescription {
+  images: {
+    index: number;
+    width: number;
+    height: number;
+    bits_per_pixel: number;
+    format: 'PNG' | 'BMP';
+    bytes: number;
+    alpha: string;
+    non_opaque_share: number | null;
+  }[];
+  missing_windows_sizes: number[];
+}
+
+/** The images of an .ico file, described. */
+export async function describeIcon(bytes: Uint8Array): Promise<IconDescription> {
+  return JSON.parse(field(await call({ op: 'describe', bytes }), 'value')) as IconDescription;
+}
+
+/** Image number `index` (from 0) of an .ico file, as a PNG file. */
+export async function extractPng(bytes: Uint8Array, index: number): Promise<Uint8Array> {
+  return field(await call({ op: 'extract', bytes, index }), 'data');
+}
+
+/** A new .ico file with only the images at `indices`. */
+export async function selectImages(bytes: Uint8Array, indices: number[]): Promise<Uint8Array> {
+  return field(await call({ op: 'select', bytes, indices }), 'data');
+}
+
+/** Merges two or more .ico files into one; images whose size was already there come back as warnings. */
+export async function mergeIcons(files: { name: string; bytes: Uint8Array }[]): Promise<Converted> {
+  return field(await call({ op: 'merge', files }), 'converted');
 }
 
 /** Lets the engine forget the open picture. */

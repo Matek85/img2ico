@@ -838,3 +838,90 @@ h3 {
   align-items: center;
   gap: 0.25rem 1rem;
 }
+
+/* --- looking into an .ico file ------------------------------------------------ */
+
+.images-panel,
+.merge-panel {
+  margin-top: 1.5rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  padding: 1rem 1.25rem;
+}
+
+.images-panel h2,
+.merge-panel h2 {
+  font-size: 1rem;
+  margin: 0 0 0.75rem;
+}
+
+.cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: 0.75rem;
+}
+
+.card {
+  display: grid;
+  gap: 0.35rem;
+  align-content: start;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.6rem;
+}
+
+.card .pick {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 600;
+}
+
+.card .thumb {
+  display: grid;
+  place-items: center;
+  min-height: 6rem;
+  border-radius: 0.35rem;
+  border: 1px solid var(--border);
+}
+
+.card .thumb img {
+  image-rendering: pixelated;
+}
+
+.card .facts {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.images-panel .hint,
+.merge-panel .hint {
+  font-size: 0.85rem;
+  margin: 0.5rem 0;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin-top: 0.75rem;
+}
+
+.others {
+  margin: 0.5rem 0;
+  padding-left: 1.25rem;
+}
+
+.others button {
+  margin-left: 0.5rem;
+}
+
+.result + .images-panel {
+  margin-top: 1rem;
+}
