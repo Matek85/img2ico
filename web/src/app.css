@@ -2200,3 +2200,89 @@ input[type='range'] {
     overflow: auto;
   }
 }
+
+/* =========================================================================
+   The queue beside the editor
+   On a wide window the queue (with its note) is a column at the left of the
+   editor; on a narrow one everything is stacked, the queue last.
+   ========================================================================= */
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.workspace > .queue {
+  container-type: inline-size;
+}
+
+@media (min-width: 80rem) {
+  body.queue-side .part,
+  body.queue-side .shell {
+    max-width: 88rem;
+  }
+
+  .workspace.with-queue {
+    grid-template-columns: 21rem minmax(0, 1fr);
+    grid-template-rows: auto auto 1fr;
+    column-gap: 1.5rem;
+  }
+
+  .workspace.with-queue > .bar {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+
+  .workspace.with-queue > .editing-note {
+    grid-column: 1;
+    grid-row: 2;
+    flex-direction: column;
+    align-items: flex-start;
+    margin-bottom: 1rem;
+  }
+
+  .workspace.with-queue > .editing-note .save-state {
+    margin-left: 0;
+  }
+
+  .workspace.with-queue > .main {
+    grid-column: 2;
+    grid-row: 2 / span 2;
+    min-width: 0;
+  }
+
+  .workspace.with-queue > .queue {
+    grid-column: 1;
+    grid-row: 3;
+    align-self: start;
+    position: sticky;
+    top: 1rem;
+    max-height: calc(100vh - 2rem);
+    overflow: auto;
+    margin-top: 0;
+  }
+
+  .workspace.with-queue .main .download {
+    margin-top: 1.5rem;
+  }
+}
+
+/* the queue's rows make room when their column is narrow */
+@container (max-width: 30rem) {
+  .queue-list li {
+    flex-wrap: wrap;
+  }
+
+  .queue-list .item-buttons {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .sub-images li {
+    flex-wrap: wrap;
+  }
+
+  .queue-actions .primary {
+    flex: 1 1 100%;
+  }
+}

@@ -54,6 +54,7 @@
     if (about) about.hidden = view.kind !== 'start';
     document.body.classList.toggle('wide', view.kind === 'editor');
     document.body.classList.toggle('working', view.kind !== 'start');
+    document.body.classList.toggle('queue-side', view.kind === 'editor' && queue.items.length > 0);
   });
 
   let problem = $state('');

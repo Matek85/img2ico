@@ -412,6 +412,8 @@
 {:else if !opened}
   <p class="working" role="status">{t('state.opening', { name: file.name })}</p>
 {:else}
+  <!-- On a wide window the queue (and its note) is a column to the left of the editor. -->
+  <div class="workspace" class:with-queue={queue.items.length > 0}>
   <div class="bar">
     <button type="button" class="quiet" onclick={leave}>← {t('state.back')}</button>
     <span class="file">{file.name}</span>
@@ -434,6 +436,7 @@
     </div>
   {/if}
 
+  <div class="main">
   <div class="editor">
     <section class="preview" aria-labelledby="preview-title">
       <h2 id="preview-title">{t('editor.preview')}</h2>
@@ -741,5 +744,7 @@
     </div>
     {#if settings.format === 'icns'}<p class="hint">{t('download.icns_note')}</p>{/if}
   </section>
+  </div>
   <Queue activeId={editId} onopen={jump} onnext={nextPicture} onpicture={nextPicture} />
+  </div>
 {/if}
