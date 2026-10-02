@@ -3,6 +3,7 @@
   import {
     closePicture,
     convert,
+    convertLatest,
     faviconPack,
     faviconSnippet,
     openPicture,
@@ -215,11 +216,11 @@
     working = true;
     const timer = setTimeout(async () => {
       try {
-        const result = await convert(options);
+        const result = await convertLatest(options);
         if (mine !== latest) return;
         let appleImage: Uint8Array | undefined;
         if (favicon) {
-          appleImage = (await convert({ ...options, format: 'png', sizes: [180], flatten: apple })).bytes;
+          appleImage = (await convertLatest({ ...options, format: 'png', sizes: [180], flatten: apple })).bytes;
         }
         if (mine !== latest) return;
         converted = result;

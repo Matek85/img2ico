@@ -1,3 +1,4 @@
+import { latestOnly } from '../lib/latest';
 import { parseReport, type ValidationReport } from '../lib/report';
 import type { EngineOptions } from '../lib/settings';
 import type { Converted, FaviconPack, Opened, Pixels, Request, Response } from './protocol';
@@ -81,6 +82,13 @@ export async function openPicture(bytes: Uint8Array, name: string, gifFrame = 1)
 export async function convert(options: EngineOptions): Promise<Converted> {
   return field(await call({ op: 'convert', options }), 'converted');
 }
+
+/**
+ * `convert` for the live preview: while one conversion runs, only the newest further request
+ * is kept (the others reject with `Superseded`), so clicking through settings quickly does not
+ * line up conversions of a big picture that nobody will look at.
+ */
+export const convertLatest = latestOnly(convert);
 
 /** The exact pixels of image number `index` (from 0) of an .ico file. */
 export async function iconPixels(bytes: Uint8Array, index: number): Promise<Pixels> {
