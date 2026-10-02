@@ -40,6 +40,10 @@ type Call =
   | { op: 'extract'; bytes: Uint8Array; index: number }
   | { op: 'select'; bytes: Uint8Array; indices: number[] }
   | { op: 'merge'; files: { name: string; bytes: Uint8Array }[] }
+  | { op: 'zipOpen'; bytes: Uint8Array }
+  | { op: 'zipRead'; index: number }
+  | { op: 'zipBuild'; files: { name: string; bytes: Uint8Array }[] }
+  | { op: 'pngZip'; bytes: Uint8Array; stem: string }
   | { op: 'close' };
 
 function call(request: Call, transfer: Transferable[] = []): Promise<Response & { ok: true }> {
@@ -116,6 +120,33 @@ export async function selectImages(bytes: Uint8Array, indices: number[]): Promis
 /** Merges two or more .ico files into one; images whose size was already there come back as warnings. */
 export async function mergeIcons(files: { name: string; bytes: Uint8Array }[]): Promise<Converted> {
   return field(await call({ op: 'merge', files }), 'converted');
+}
+
+/** A file inside a ZIP. */
+export interface ZipFile {
+  index: number;
+  name: string;
+  size: number;
+}
+
+/** Opens a ZIP and lists its files (folders and hidden files left out); `readZipFile` unpacks them. */
+export async function openZip(bytes: Uint8Array): Promise<ZipFile[]> {
+  return JSON.parse(field(await call({ op: 'zipOpen', bytes }, [bytes.buffer]), 'value')) as ZipFile[];
+}
+
+/** Unpacks one file of the ZIP opened last. */
+export async function readZipFile(index: number): Promise<Uint8Array> {
+  return field(await call({ op: 'zipRead', index }), 'data');
+}
+
+/** Writes files into a ZIP. */
+export async function buildZip(files: { name: string; bytes: Uint8Array }[]): Promise<Uint8Array> {
+  return field(await call({ op: 'zipBuild', files }), 'data');
+}
+
+/** Every image of an .ico file as a PNG, in a ZIP. */
+export async function pngZip(bytes: Uint8Array, stem: string): Promise<Uint8Array> {
+  return field(await call({ op: 'pngZip', bytes, stem }), 'data');
 }
 
 /** Lets the engine forget the open picture. */

@@ -6,10 +6,13 @@
 import init, {
   Merger,
   Source,
+  ZipBuilder,
+  ZipReader,
   engine_version,
   icon_describe,
   icon_extract_png,
   icon_pixels,
+  icon_png_zip,
   icon_select,
   validate_ico,
 } from '../wasm/pkg/img2ico_wasm.js';
@@ -20,6 +23,8 @@ const ready = init();
 // this project uses describe the page's version of it).
 const scope = self as unknown as { postMessage(message: unknown, transfer: Transferable[]): void };
 let source: Source | undefined;
+// The ZIP whose files are being read one by one.
+let zip: ZipReader | undefined;
 
 function forget(): void {
   source?.free();
@@ -104,6 +109,38 @@ self.onmessage = async (event: MessageEvent<Request>) => {
         } finally {
           merger.free();
         }
+        break;
+      }
+      case 'zipOpen': {
+        zip?.free();
+        zip = undefined;
+        zip = ZipReader.open(request.bytes);
+        response = { id: request.id, ok: true, value: zip.files() };
+        break;
+      }
+      case 'zipRead': {
+        if (!zip) throw new Error('No ZIP is open.');
+        const data = zip.read(request.index);
+        transfer.push(data.buffer);
+        response = { id: request.id, ok: true, data };
+        break;
+      }
+      case 'zipBuild': {
+        const builder = new ZipBuilder();
+        try {
+          for (const file of request.files) builder.add(file.name, file.bytes);
+          const data = builder.finish();
+          transfer.push(data.buffer);
+          response = { id: request.id, ok: true, data };
+        } finally {
+          builder.free();
+        }
+        break;
+      }
+      case 'pngZip': {
+        const data = icon_png_zip(request.bytes, request.stem);
+        transfer.push(data.buffer);
+        response = { id: request.id, ok: true, data };
         break;
       }
       case 'close':

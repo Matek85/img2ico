@@ -925,3 +925,25 @@ h3 {
 .result + .images-panel {
   margin-top: 1rem;
 }
+
+/* --- several pictures at once ---------------------------------------------- */
+
+.download progress {
+  flex-basis: 100%;
+  height: 0.6rem;
+  accent-color: var(--accent);
+}
+
+.results {
+  flex-basis: 100%;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 14rem;
+  overflow: auto;
+  font-size: 0.9rem;
+}
+
+.results li.bad {
+  color: var(--bad);
+}

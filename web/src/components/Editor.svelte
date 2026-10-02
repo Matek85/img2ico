@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
-  import { closePicture, convert, openPicture } from '../engine/client';
+  import { buildZip, closePicture, convert, openPicture, pngZip } from '../engine/client';
   import type { Converted, Opened } from '../engine/protocol';
   import { t } from '../i18n';
   import Compare from './Compare.svelte';
@@ -18,7 +18,8 @@
   } from '../lib/crop';
   import { type IconEntry, iconEntries } from '../lib/ico';
   import { type Preset, STYLE_PRESETS, USE_PRESETS, isActive, withPreset } from '../lib/presets';
-  import { ICNS_TYPE, ICO_TYPE, saveBytes } from '../lib/download';
+  import { type BatchItem, outputName, stemOf } from '../lib/batch';
+  import { ICNS_TYPE, ICO_TYPE, ZIP_TYPE, saveBytes } from '../lib/download';
   import { loadSettings, saveSettings } from '../lib/storage';
   import {
     DEFAULT_SIZES,
@@ -29,7 +30,16 @@
     toEngineOptions,
   } from '../lib/settings';
 
-  let { file, onback }: { file: File; onback: () => void } = $props();
+  let {
+    file,
+    onback,
+    batch,
+  }: {
+    file: File;
+    onback: () => void;
+    /** Several pictures to turn into icons with the same settings; `file` is the one shown. */
+    batch?: { items: BatchItem[]; archive: string; notes: string[] };
+  } = $props();
 
   type Backdrop = 'checker' | 'light' | 'dark' | 'gray';
   const BACKDROPS: Backdrop[] = ['checker', 'light', 'dark', 'gray'];
@@ -51,6 +61,13 @@
   // again while the engine was busy) is thrown away instead of shown.
   let latest = 0;
 
+  // The picture shown, kept so it can be opened again after a batch has used the engine.
+  let previewBytes = new Uint8Array();
+  // A batch run is going on: the engine is busy with it, so the preview waits.
+  let running = $state(false);
+  let progress = $state<{ done: number; total: number; name: string } | null>(null);
+  let results = $state<{ name: string; ok: boolean; message: string }[]>([]);
+
   // The crop frame. It is `settings.crop` only while crop is on and the frame
   // is smaller than the picture; the frame itself is kept while it is off.
   let cropOn = $state(false);
@@ -65,7 +82,9 @@
   onMount(async () => {
     originalUrl = URL.createObjectURL(file);
     try {
-      opened = await openPicture(new Uint8Array(await file.arrayBuffer()), file.name);
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      previewBytes = bytes.slice();
+      opened = await openPicture(bytes, file.name);
       frame = fullRect(opened);
     } catch (error) {
       openFailure = error instanceof Error ? error.message : String(error);
@@ -93,7 +112,7 @@
   // Make the icon again whenever a setting changes - after a short pause, so
   // dragging a slider does not start a conversion for every pixel it moves.
   $effect(() => {
-    if (!opened) return;
+    if (!opened || running) return;
     const options = toEngineOptions(settings);
     if (settings.sizes.length === 0) {
       converted = undefined;
@@ -144,6 +163,52 @@
   function setFrame(field: keyof Rect, value: number) {
     if (!picture || !Number.isFinite(value)) return;
     frame = clampRect({ ...frame, [field]: value }, picture);
+  }
+
+  async function convertAll() {
+    if (!batch || running) return;
+    running = true;
+    results = [];
+    const format = settings.format;
+    const options = toEngineOptions({ ...$state.snapshot(settings), crop: null }, format);
+    const made: { name: string; bytes: Uint8Array }[] = [];
+    try {
+      for (const [at, item] of batch.items.entries()) {
+        progress = { done: at, total: batch.items.length, name: item.name };
+        try {
+          await openPicture(await item.load(), item.name);
+          const result = await convert(options);
+          made.push({
+            name: outputName(made.map((m) => m.name), item.name, format),
+            bytes: result.bytes,
+          });
+          results.push({
+            name: item.name,
+            ok: true,
+            message: result.warnings.length > 0 ? t('batch.warnings', { count: result.warnings.length }) : '',
+          });
+        } catch (error) {
+          results.push({ name: item.name, ok: false, message: error instanceof Error ? error.message : String(error) });
+        }
+      }
+      progress = { done: batch.items.length, total: batch.items.length, name: '' };
+      if (made.length > 0) {
+        saveBytes(await buildZip(made), `${batch.archive}_icons.zip`, ZIP_TYPE);
+      }
+    } finally {
+      // The engine goes back to the picture that is shown.
+      try {
+        await openPicture(previewBytes.slice(), file.name);
+      } catch {
+        // The preview picture opened before, so this does not fail in practice.
+      }
+      running = false;
+    }
+  }
+
+  async function downloadPngZip() {
+    if (!converted) return;
+    saveBytes(await pngZip(converted.bytes, stemOf(file.name)), `${stemOf(file.name)}_png.zip`, ZIP_TYPE);
   }
 
   async function download() {
@@ -271,7 +336,7 @@
         </div>
       </fieldset>
 
-      {#if !opened.vector && picture}
+      {#if !batch && !opened.vector && picture}
         <fieldset class:empty={!cropOn}>
           <legend>
             <label><input type="checkbox" bind:checked={cropOn} /> {t('crop.use')}</label>
@@ -392,9 +457,38 @@
       <label><input type="radio" name="format" value="ico" bind:group={settings.format} /> {t('download.ico')}</label>
       <label><input type="radio" name="format" value="icns" bind:group={settings.format} /> {t('download.icns')}</label>
     </fieldset>
-    <button type="button" class="primary" onclick={download} disabled={!converted || working}>
-      {t('download.button', { name: downloadName(file.name, settings.format) })}
-    </button>
-    {#if settings.format === 'icns'}<p class="hint">{t('download.icns_note')}</p>{/if}
+    {#if batch}
+      <button type="button" class="primary" onclick={convertAll} disabled={running || settings.sizes.length === 0}>
+        {t('batch.convert', { count: batch.items.length })}
+      </button>
+      {#if settings.format === 'icns'}<p class="hint">{t('download.icns_note')}</p>{/if}
+      <p class="hint">{t('batch.preview')}</p>
+      {#each batch.notes as note}<p class="hint">{note}</p>{/each}
+      {#if progress}
+        <progress max={progress.total} value={progress.done} aria-label={t('batch.progress')}></progress>
+        <p class="hint" role="status">
+          {progress.name
+            ? t('batch.working', { done: progress.done + 1, total: progress.total, name: progress.name })
+            : t('batch.finished', { count: results.filter((r) => r.ok).length, failed: results.filter((r) => !r.ok).length })}
+        </p>
+      {/if}
+      {#if results.length > 0}
+        <ul class="results">
+          {#each results as result}
+            <li class:bad={!result.ok}>
+              {result.ok ? '✓' : '✗'} {result.name}{#if result.message}{' - '}{result.message}{/if}
+            </li>
+          {/each}
+        </ul>
+      {/if}
+    {:else}
+      <button type="button" class="primary" onclick={download} disabled={!converted || working}>
+        {t('download.button', { name: downloadName(file.name, settings.format) })}
+      </button>
+      <button type="button" onclick={downloadPngZip} disabled={!converted || working}>
+        {t('download.png_zip')}
+      </button>
+      {#if settings.format === 'icns'}<p class="hint">{t('download.icns_note')}</p>{/if}
+    {/if}
   </section>
 {/if}
