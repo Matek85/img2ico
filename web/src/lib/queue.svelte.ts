@@ -2,7 +2,7 @@
 // the browser, and nothing is kept after it is closed.
 import { outputName } from './batch';
 import { iconEntries } from './ico';
-import { canCombine, moveItem } from './queue';
+import { moveItem } from './queue';
 import type { Settings } from './settings';
 
 export type QueueFormat = 'ico' | 'icns';
@@ -83,10 +83,6 @@ function parts(made: Made) {
 export const queue = {
   get items(): QueueItem[] {
     return items;
-  },
-
-  get canCombine(): boolean {
-    return canCombine(items.map((item) => item.format));
   },
 
   get ticks(): number {

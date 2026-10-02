@@ -1,10 +1,10 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { buildZip, describeIcon, extractPng, mergeIcons, selectImages } from '../engine/client';
+  import { buildZip, describeIcon, extractPng, selectImages } from '../engine/client';
   import { t } from '../i18n';
   import { ICNS_TYPE, ICO_TYPE, ZIP_TYPE, saveBytes } from '../lib/download';
   import { type QueueItem, queue } from '../lib/queue.svelte';
-  import { overlaps, sizesText } from '../lib/queue';
+  import { sizesText } from '../lib/queue';
   import { stemOf } from '../lib/batch';
   import Compare from './Compare.svelte';
 
@@ -39,16 +39,11 @@
   let flash = $state(false);
   let working = $state(false);
   let failure = $state('');
-  let notes = $state<string[]>([]);
 
   // Two icons ticked are shown side by side, with a divider as in "Before and after".
   let selected = $state<number[]>([]);
   let backdrop = $state<'checker' | 'light' | 'dark' | 'gray'>('checker');
   const BACKDROPS = ['checker', 'light', 'dark', 'gray'] as const;
-  // What combining would leave out: an .ico holds one image per size.
-  let clashes = $derived(
-    queue.canCombine ? overlaps(queue.items.map((item) => ({ name: item.fileName, sizes: item.sizes }))) : [],
-  );
   let pair = $derived(selected.map((id) => queue.find(id)).filter((item): item is QueueItem => item !== undefined));
   let comparing = $derived(pair.length === 2 ? pair : null);
 
@@ -167,7 +162,6 @@
   async function run(job: () => Promise<void>) {
     working = true;
     failure = '';
-    notes = [];
     try {
       // The icon being edited next to the queue puts its last changes in first.
       await queue.flush();
@@ -185,14 +179,6 @@
   const downloadZip = () =>
     run(async () => {
       saveBytes(await buildZip(files()), 'img2ico_icons.zip', ZIP_TYPE);
-    });
-
-  // The images of all icons in one .ico; what the engine had to skip is shown.
-  const downloadCombined = () =>
-    run(async () => {
-      const merged = await mergeIcons(files());
-      notes = merged.warnings.map((warning) => warning.replace(/^Warning:\s*/, ''));
-      saveBytes(merged.bytes, 'combined.ico', ICO_TYPE);
     });
 
   const downloadOne = () =>
@@ -334,7 +320,6 @@
         <button type="button" class="primary" onclick={downloadOne}>{t('queue.single', { name: queue.items[0].fileName })}</button>
       {:else}
         <button type="button" class="primary" onclick={downloadZip} disabled={working}>{t('queue.zip')}</button>
-        <button type="button" onclick={downloadCombined} disabled={working || !queue.canCombine}>{t('queue.combine')}</button>
       {/if}
       {#if !confirmClear}
         <button type="button" class="quiet" onclick={() => (confirmClear = true)}>{t('queue.clear')}</button>
@@ -348,24 +333,6 @@
         <button type="button" class="outline" bind:this={keepButton} onclick={() => (confirmClear = false)}>{t('queue.clear_no')}</button>
       </div>
     {/if}
-    {#if queue.items.length > 1}
-      <p class="hint">{queue.canCombine ? t('queue.combine_hint') : t('queue.combine_icns')}</p>
-    {/if}
-    {#if clashes.length > 0}
-      <div class="findings warn clashes" role="note">
-        <p>{t('queue.overlap_intro')}</p>
-        <ul>
-          {#each clashes as clash}
-            <li>
-              {clash.left.length === clash.total
-                ? t('queue.overlap_all', { name: clash.name })
-                : t('queue.overlap_some', { name: clash.name, skipped: clash.left.length, total: clash.total, sizes: sizesText(clash.left) })}
-            </li>
-          {/each}
-        </ul>
-        <p>{t('queue.overlap_zip')}</p>
-      </div>
-    {/if}
     {#if queue.problems.length > 0}
       <div class="findings warn" role="status">
         <p>{t('queue.problems')}</p>
@@ -376,11 +343,6 @@
       </div>
     {/if}
     {#if failure}<p class="failure" role="alert">{failure}</p>{/if}
-    {#if notes.length > 0}
-      <ul class="findings warn">
-        {#each notes as note}<li>{note}</li>{/each}
-      </ul>
-    {/if}
     <p class="hint queue-note">{t('queue.note')}</p>
   </section>
 {/if}
