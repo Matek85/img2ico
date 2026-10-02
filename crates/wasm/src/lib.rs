@@ -4,6 +4,7 @@
 //! between JavaScript and img2ico-core.
 
 use image::RgbaImage;
+use img2ico_core::archive::{ZipArchive, write_zip};
 use img2ico_core::convert::{
     Background, BackgroundMode, DEFAULT_SIZES, Format, NoNotes, Options, Sizes, analyze_raster,
     convert_raster, convert_vector,
@@ -11,7 +12,7 @@ use img2ico_core::convert::{
 use img2ico_core::diag;
 use img2ico_core::icon::{
     alpha_share, alpha_summary, entry_png, merge, missing_windows_sizes, read_dir, read_entry,
-    select, write_dir,
+    select, unique_file_name, write_dir,
 };
 use img2ico_core::layout::{CropRect, FitMode, Layout, MAX_CORNER_RADIUS};
 use img2ico_core::source::{
@@ -127,6 +128,92 @@ pub fn icon_extract_png(bytes: &[u8], index: usize) -> Result<Vec<u8>, JsError> 
 #[wasm_bindgen]
 pub fn icon_select(bytes: &[u8], indices: &[u32]) -> Result<Vec<u8>, JsError> {
     select_images(bytes, indices).map_err(|message| JsError::new(&message))
+}
+
+/// A ZIP file that has been opened: its pictures can be listed and unpacked
+/// one at a time.
+#[wasm_bindgen]
+pub struct ZipReader {
+    archive: ZipArchive,
+}
+
+#[wasm_bindgen]
+impl ZipReader {
+    /// Reads the table of contents of the ZIP in `bytes`.
+    pub fn open(bytes: &[u8]) -> Result<ZipReader, JsError> {
+        ZipArchive::open(bytes.to_vec())
+            .map(|archive| ZipReader { archive })
+            .map_err(|message| JsError::new(&message))
+    }
+
+    /// The files in the ZIP as JSON text: `[{ index, name, size }]`. Folders,
+    /// macOS resource forks and hidden files are left out.
+    pub fn files(&self) -> String {
+        let files: Vec<Value> = self
+            .archive
+            .files()
+            .into_iter()
+            .map(|f| serde_json::json!({ "index": f.index, "name": f.name, "size": f.size }))
+            .collect();
+        Value::from(files).to_string()
+    }
+
+    /// Unpacks the file with this `index` (as listed by `files`).
+    pub fn read(&self, index: usize) -> Result<Vec<u8>, JsError> {
+        self.archive
+            .read(index)
+            .map_err(|message| JsError::new(&message))
+    }
+}
+
+/// Collects files and writes them into a ZIP.
+#[wasm_bindgen]
+pub struct ZipBuilder {
+    files: Vec<(String, Vec<u8>)>,
+}
+
+#[wasm_bindgen]
+impl ZipBuilder {
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> ZipBuilder {
+        ZipBuilder { files: Vec::new() }
+    }
+
+    pub fn add(&mut self, name: &str, bytes: &[u8]) {
+        self.files.push((name.to_string(), bytes.to_vec()));
+    }
+
+    pub fn finish(&self) -> Result<Vec<u8>, JsError> {
+        write_zip(&self.files).map_err(|message| JsError::new(&message))
+    }
+}
+
+impl Default for ZipBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Every image of an .ico file as a PNG, in a ZIP, named `<stem>_<w>x<h>.png`.
+#[wasm_bindgen]
+pub fn icon_png_zip(bytes: &[u8], stem: &str) -> Result<Vec<u8>, JsError> {
+    png_zip(bytes, stem).map_err(|message| JsError::new(&message))
+}
+
+/// `icon_png_zip` without the JavaScript error type.
+pub fn png_zip(bytes: &[u8], stem: &str) -> Result<Vec<u8>, String> {
+    let dir = read_dir(bytes, "the icon file")?;
+    if dir.entries().is_empty() {
+        return Err("The icon file has no images.".to_string());
+    }
+    let mut names: Vec<String> = Vec::new();
+    let mut files = Vec::new();
+    for entry in dir.entries() {
+        let name = unique_file_name(&names, stem, entry.width(), entry.height(), "png");
+        files.push((name.clone(), entry_png(entry, "the icon file")?));
+        names.push(name);
+    }
+    write_zip(&files)
 }
 
 /// Collects several .ico files and merges them into one. If two files hold the
@@ -736,6 +823,31 @@ mod tests {
         assert_eq!(merged.warnings.len(), 1);
         assert!(merged.warnings[0].contains("32x32 from 'b.ico'"));
         assert!(validate_bytes(&merged.bytes).is_valid());
+    }
+
+    #[test]
+    fn the_images_of_an_icon_come_as_a_zip_of_pngs() {
+        let bytes = icon_of(&[16, 48]);
+        let zip = ZipArchive::open(png_zip(&bytes, "logo").unwrap()).unwrap();
+        let names: Vec<String> = zip.files().into_iter().map(|f| f.name).collect();
+        assert_eq!(names, vec!["logo_16x16.png", "logo_48x48.png"]);
+        let first = zip.read(zip.files()[0].index).unwrap();
+        assert!(first.starts_with(&[0x89, b'P', b'N', b'G']));
+        assert!(png_zip(b"nope", "x").is_err());
+    }
+
+    #[test]
+    fn a_zip_is_built_and_read_through_the_bindings() {
+        let mut builder = ZipBuilder::new();
+        builder.add("a.png", &png(8, 8));
+        builder.add("b.txt", b"hi");
+        let reader = ZipReader {
+            archive: ZipArchive::open(write_zip(&builder.files).unwrap()).unwrap(),
+        };
+        let listed: Vec<Value> = serde_json::from_str(&reader.files()).unwrap();
+        assert_eq!(listed.len(), 2);
+        assert_eq!(listed[1]["name"], "b.txt");
+        assert_eq!(reader.archive.read(1).unwrap(), b"hi");
     }
 
     #[test]
