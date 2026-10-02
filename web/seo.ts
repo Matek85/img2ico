@@ -6,7 +6,7 @@
 // preview picture, sitemap) exist only when the build is told where the page
 // will live: SITE_URL=https://example.org/img2ico/ npm run build
 import type { Plugin } from 'vite';
-import { en } from './src/i18n/en';
+import { en } from './src/i18n/en.ts';
 
 type Messages = Record<string, string>;
 

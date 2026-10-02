@@ -1,6 +1,6 @@
 import { defineConfig } from 'vitest/config';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
-import { seo } from './seo';
+import { seo } from './seo.ts';
 
 // Only the environment is read from Node here.
 declare const process: { env: Record<string, string | undefined> };
