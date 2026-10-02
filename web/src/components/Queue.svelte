@@ -93,7 +93,8 @@
   let subTicked = $state<number[]>([]);
   let subRoot = $state<HTMLElement>();
 
-  // An icon's largest image (or the one at `index`) as a picture of its own: the editor makes new sizes from it.
+  // An icon file's largest image (or the one at `index`) as a picture of its own: the editor makes new sizes from it.
+  // (Only for .ico files added as they are; an icon made from a picture is edited from that picture.)
   async function asPicture(item: QueueItem, index?: number) {
     await run(async () => {
       const description = await describeIcon(item.bytes.slice());
@@ -239,7 +240,7 @@
             </span>
           </button>
           <div class="item-buttons">
-            {#if onpicture && item.format === 'ico'}
+            {#if onpicture && item.kind === 'icon'}
               <button type="button" class="quiet pick-images" title={t('queue.as_picture_hint')} disabled={working} onclick={() => asPicture(item)}>{t('queue.as_picture')}</button>
             {/if}
             {#if pickable(item)}
@@ -282,7 +283,7 @@
                 <strong>{image.width} × {image.height}</strong>
                 <span class="hint">{t('queue.sub_detail', { format: image.format, bits: image.bits })}</span>
               </span>
-              {#if onpicture && source}
+              {#if onpicture && source?.kind === 'icon'}
                 <button type="button" class="quiet" title={t('queue.as_picture_hint')} disabled={working} onclick={() => asPicture(source, image.index)}>{t('queue.as_picture')}</button>
               {/if}
               <button type="button" class="outline" disabled={working} onclick={() => addImages([image.index])}>{t('queue.sub_add')}</button>
