@@ -12,6 +12,10 @@ export type Request =
   | { id: number; op: 'extract'; bytes: Uint8Array; index: number }
   | { id: number; op: 'select'; bytes: Uint8Array; indices: number[] }
   | { id: number; op: 'merge'; files: { name: string; bytes: Uint8Array }[] }
+  | { id: number; op: 'zipOpen'; bytes: Uint8Array }
+  | { id: number; op: 'zipRead'; index: number }
+  | { id: number; op: 'zipBuild'; files: { name: string; bytes: Uint8Array }[] }
+  | { id: number; op: 'pngZip'; bytes: Uint8Array; stem: string }
   | { id: number; op: 'close' };
 
 /** What `open` tells about the picture. */

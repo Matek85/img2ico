@@ -7,6 +7,7 @@
 //! here from the command line step by step, whenever it is free of file
 //! access and operating-system threads.
 
+pub mod archive;
 pub mod chroma_key;
 pub mod convert;
 pub mod diag;

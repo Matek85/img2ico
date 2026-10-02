@@ -533,6 +533,7 @@ dependencies = [
  "icns",
  "ico",
  "image",
+ "miniz_oxide 0.9.1",
  "proptest",
  "resvg",
  "serde",

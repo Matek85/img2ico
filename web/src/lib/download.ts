@@ -15,9 +15,4 @@ export function saveBytes(bytes: Uint8Array, name: string, type: string): void {
 export const ICO_TYPE = 'image/x-icon';
 export const ICNS_TYPE = 'image/icns';
 export const PNG_TYPE = 'image/png';
-
-/** The name of a file without its extension. */
-export function stemOf(fileName: string): string {
-  const dot = fileName.lastIndexOf('.');
-  return (dot > 0 ? fileName.slice(0, dot) : fileName) || 'icon';
-}
+export const ZIP_TYPE = 'application/zip';

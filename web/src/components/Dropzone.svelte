@@ -1,7 +1,7 @@
 <script lang="ts">
   import { t } from '../i18n';
 
-  let { onfile }: { onfile: (file: File) => void } = $props();
+  let { onfiles }: { onfiles: (files: File[]) => void } = $props();
 
   let dragging = $state(false);
   let input = $state<HTMLInputElement>();
@@ -9,13 +9,13 @@
   function onDrop(event: DragEvent) {
     event.preventDefault();
     dragging = false;
-    const file = event.dataTransfer?.files[0];
-    if (file) onfile(file);
+    const files = Array.from(event.dataTransfer?.files ?? []);
+    if (files.length > 0) onfiles(files);
   }
 
   function onChoose() {
-    const file = input?.files?.[0];
-    if (file) onfile(file);
+    const files = Array.from(input?.files ?? []);
+    if (files.length > 0) onfiles(files);
     if (input) input.value = '';
   }
 
@@ -23,7 +23,7 @@
   // anywhere on the page.
   function onPaste(event: ClipboardEvent) {
     const file = Array.from(event.clipboardData?.files ?? []).find((f) => f.type.startsWith('image/'));
-    if (file) onfile(file);
+    if (file) onfiles([file]);
   }
 </script>
 
@@ -43,7 +43,15 @@
   <p class="prompt">{dragging ? t('drop.active') : t('drop.prompt')}</p>
   <p class="or">{t('drop.or')}</p>
   <button type="button" onclick={() => input?.click()}>{t('drop.choose')}</button>
-  <input bind:this={input} type="file" accept="image/*,.svg,.icns,.ico,.cur" onchange={onChoose} hidden />
+  <input
+    bind:this={input}
+    type="file"
+    accept="image/*,.svg,.icns,.ico,.cur,.zip"
+    multiple
+    onchange={onChoose}
+    hidden
+  />
   <p class="hint">{t('drop.formats')}</p>
   <p class="hint">{t('drop.check')}</p>
+  <p class="hint">{t('drop.many')}</p>
 </section>

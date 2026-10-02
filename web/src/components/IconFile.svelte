@@ -5,11 +5,13 @@
     describeIcon,
     extractPng,
     mergeIcons,
+    pngZip,
     selectImages,
     validateIco,
   } from '../engine/client';
   import { formatBytes, t } from '../i18n';
-  import { ICO_TYPE, PNG_TYPE, saveBytes, stemOf } from '../lib/download';
+  import { stemOf } from '../lib/batch';
+  import { ICO_TYPE, PNG_TYPE, ZIP_TYPE, saveBytes } from '../lib/download';
   import type { ValidationReport } from '../lib/report';
 
   let { file, onback }: { file: File; onback: () => void } = $props();
@@ -80,6 +82,11 @@
   const savePng = (index: number, width: number) =>
     run(async () => {
       saveBytes(await extractPng(bytes, index), `${stemOf(file.name)}_${width}.png`, PNG_TYPE);
+    });
+
+  const savePngZip = () =>
+    run(async () => {
+      saveBytes(await pngZip(bytes, stemOf(file.name)), `${stemOf(file.name)}_png.zip`, ZIP_TYPE);
     });
 
   const saveSelected = () =>
@@ -188,6 +195,7 @@
         >
           {t('iconfile.save_selected', { count: selected.length })}
         </button>
+        <button type="button" disabled={working} onclick={savePngZip}>{t('iconfile.save_zip')}</button>
         <button type="button" class="quiet" onclick={() => (selected = description!.images.map((i) => i.index))}>
           {t('iconfile.select_all')}
         </button>
