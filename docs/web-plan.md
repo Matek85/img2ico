@@ -9,7 +9,9 @@ img2ico also gets a version that runs in the browser. This file records what it 
 - **User experience first, then speed, then features.** A feature that makes the page harder to understand does not get in, however useful it is on the command line.
 - **Features that make no sense in a browser are left out** (for example `--delete-source`).
 - **Hosted on github.io first**, with the option to move to another web space later. For that the page uses only relative paths and no server-side routing; moving it means copying one folder.
-- **English first**, but every text goes through a message catalogue from the start, so more languages can be added without touching the code.
+- **Multilingual.** The page is multilingual and the languages are fixed: English, German, Spanish, Brazilian Portuguese and French. English comes first; every text goes through a message catalogue from the start, so a language is a new catalogue and not a change to the code. The language is detected from the browser and can be changed by the visitor. The translations themselves come after the first big pull request.
+- **Help in every language.** A help menu next to "Download CLI" in the top bar offers guidance (how to use the page, what the settings do, the file types). It exists in all languages, so its texts are catalogue entries and its pages are part of the static build.
+- **Documentation stays English:** the README, the docs and the repository are for GitHub, the contributors and the maintainer, and are written in English only.
 - **WYSIWYG**: what the preview shows is what the downloaded file contains.
 
 ## How it is built
@@ -58,7 +60,7 @@ Being found counts as part of the page, so it is built in from the start and che
 - **Speed:** the engine starts when the browser is idle, not before the page is shown.
 - **Structure:** one `h1`, headings in order, landmarks (header, main, footer), `lang` follows the language in use.
 - **Check:** `npx lighthouse <address> --only-categories=seo,accessibility,best-practices,performance` should give 100 for the first three. `web/seo.test.ts` tests the generated tags and text.
-- **When languages are added:** one page per language (`/de/`) with `hreflang` links, not one page that switches by script; crawlers index what the address returns.
+- **When languages are added:** one page per language (`/de/`, `/es/`, `/pt-br/`, `/fr/`) with `hreflang` links, not one page that switches by script; crawlers index what the address returns. The detection of the browser language only chooses where a first visit lands.
 - **When the design is done:** the link-preview picture `web/public/og-image.png` is a plain placeholder and is redone then.
 
 ## Checks
