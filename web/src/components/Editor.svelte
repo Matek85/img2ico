@@ -132,6 +132,8 @@
   // The crop frame. It is `settings.crop` only while crop is on and the frame
   // is smaller than the picture; the frame itself is kept while it is off.
   let cropOn = $state(false);
+  // The crop frame is being set in the preview (the "mask"): the picture is shown with the frame on it.
+  let masking = $state(false);
   // The detailed controls are folded away until asked for.
   let advanced = $state(false);
   // Picking the color to remove: the pixel view is shown, without the background
@@ -306,6 +308,19 @@
   // Leaving the pixel view ends the picking.
   $effect(() => {
     if (view !== 'pixels') picking = false;
+  });
+
+  function toggleMask() {
+    masking = !masking;
+    if (masking) {
+      cropOn = true;
+      view = 'icon';
+    }
+  }
+
+  // Another view ends the mask.
+  $effect(() => {
+    if (view !== 'icon') masking = false;
   });
 
   function chooseAspect(choice: AspectChoice) {
@@ -541,6 +556,7 @@
     <section class="preview" aria-labelledby="preview-title">
       <h2 id="preview-title">{t('editor.preview')}</h2>
 
+      <div class="views-row">
       <div class="views" role="radiogroup" aria-label={t('editor.view')}>
         {#each VIEWS as choice (choice.id)}
           <label class:chosen={view === choice.id}>
@@ -549,6 +565,21 @@
             {t(`editor.view_${choice.id}`)}
           </label>
         {/each}
+      </div>
+      {#if !opened.vector && picture}
+        <button
+          type="button"
+          class="chip crop-toggle"
+          class:chosen={masking}
+          aria-pressed={masking}
+          title={t('crop.use')}
+          onclick={toggleMask}
+        >
+          <Icon name="crop" size={16} />
+          {t('crop.button')}
+          {#if settings.crop && !masking}<span class="dot" aria-label={t('crop.active')}></span>{/if}
+        </button>
+      {/if}
       </div>
 
       <div class="preview-body">
@@ -583,6 +614,8 @@
       <div class="stage {surfaceClass}" style={surface} aria-live="polite">
         {#if settings.sizes.length === 0}
           <p class="note">{t('editor.no_sizes')}</p>
+        {:else if masking && view === 'icon' && picture}
+          <CropTool src={originalUrl} size={picture} bind:rect={frame} aspect={aspectValue(cropAspect)} />
         {:else if converted && tiles.length > 0 && view === 'pixels'}
           <PixelInspector
             bytes={converted.bytes}
@@ -600,6 +633,38 @@
           </figure>
         {/if}
       </div>
+
+      {#if masking && view === 'icon' && picture}
+        <div class="mask-tools">
+          <div class="chips" role="radiogroup" aria-label={t('crop.aspect')}>
+            {#each ASPECTS as choice (choice)}
+              <label class:chosen={cropAspect === choice}>
+                <input type="radio" name="crop-aspect" value={choice} checked={cropAspect === choice} onchange={() => chooseAspect(choice)} />
+                {choice === 'free' ? t('crop.aspect_free') : choice}
+              </label>
+            {/each}
+          </div>
+          <div class="numbers">
+            {#each [['x', 'crop.x'], ['y', 'crop.y'], ['width', 'crop.width'], ['height', 'crop.height']] as [field, label] (field)}
+              <label>
+                <span>{t(label)}</span>
+                <input
+                  type="number"
+                  min="0"
+                  max={field === 'x' || field === 'width' ? picture.width : picture.height}
+                  value={frame[field as keyof Rect]}
+                  onchange={(e) => setFrame(field as keyof Rect, e.currentTarget.valueAsNumber)}
+                />
+              </label>
+            {/each}
+          </div>
+          <p class="hint">{t('crop.hint')}</p>
+          <div class="mask-actions">
+            <button type="button" class="quiet" onclick={() => (frame = fullRect(picture))} disabled={isFull(frame, picture)}>{t('crop.reset')}</button>
+            <button type="button" class="primary" onclick={() => (masking = false)}>{t('crop.done')}</button>
+          </div>
+        </div>
+      {/if}
 
       {#if smaller.length > 0}
         <ul class="tiles {surfaceClass}" style={surface}>
@@ -672,49 +737,6 @@
           <small>{t('advanced.hint')}</small>
         </summary>
         <div class="advanced-body">
-      {#if !opened.vector && picture}
-        <fieldset class:empty={!cropOn}>
-          <legend>
-            <label><input type="checkbox" bind:checked={cropOn} /> {t('crop.use')}</label>
-          </legend>
-          {#if cropOn}
-            <div class="chips" role="radiogroup" aria-label={t('crop.aspect')}>
-              {#each ASPECTS as choice (choice)}
-                <label class:chosen={cropAspect === choice}>
-                  <input
-                    type="radio"
-                    name="crop-aspect"
-                    value={choice}
-                    checked={cropAspect === choice}
-                    onchange={() => chooseAspect(choice)}
-                  />
-                  {choice === 'free' ? t('crop.aspect_free') : choice}
-                </label>
-              {/each}
-            </div>
-            <CropTool src={originalUrl} size={picture} bind:rect={frame} aspect={aspectValue(cropAspect)} />
-            <p class="hint">{t('crop.hint')}</p>
-            <div class="numbers">
-              {#each [['x', 'crop.x'], ['y', 'crop.y'], ['width', 'crop.width'], ['height', 'crop.height']] as [field, label] (field)}
-                <label>
-                  <span>{t(label)}</span>
-                  <input
-                    type="number"
-                    min="0"
-                    max={field === 'x' || field === 'width' ? picture.width : picture.height}
-                    value={frame[field as keyof Rect]}
-                    onchange={(e) => setFrame(field as keyof Rect, e.currentTarget.valueAsNumber)}
-                  />
-                </label>
-              {/each}
-            </div>
-            <button type="button" class="quiet" onclick={() => (frame = fullRect(picture))} disabled={isFull(frame, picture)}>
-              {t('crop.reset')}
-            </button>
-          {/if}
-        </fieldset>
-      {/if}
-
       {#if settings.format !== 'favicon'}
       <fieldset>
         <legend>{t('controls.sizes')}</legend>

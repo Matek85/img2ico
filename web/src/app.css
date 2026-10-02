@@ -2627,3 +2627,64 @@ input[type='range'] {
   font-size: 1.25rem;
   font-weight: 600;
 }
+
+/* =========================================================================
+   The crop frame is set in the preview itself ("mask"): the Crop button next
+   to the views shows the picture with the frame, the tools sit under it.
+   ========================================================================= */
+
+.views-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.9rem;
+}
+
+.views-row .views {
+  margin-bottom: 0;
+}
+
+.crop-toggle {
+  min-height: var(--control);
+  padding: 0 1rem;
+  font-weight: 600;
+}
+
+.crop-toggle .dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  background: var(--accent);
+  border-radius: 50%;
+}
+
+.crop-toggle.chosen .dot {
+  background: var(--accent-text);
+}
+
+.mask-tools {
+  display: grid;
+  gap: 0.6rem;
+  margin: 0.75rem 0;
+  padding: 0.75rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+}
+
+.mask-tools .hint {
+  margin: 0;
+}
+
+.mask-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.stage .crop-stage {
+  max-width: 100%;
+}
