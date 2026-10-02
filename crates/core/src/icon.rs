@@ -1,8 +1,175 @@
-// Reading the pictures inside an .ico file back out as pixels - to look at
-// them exactly as stored (the page's pixel inspector), and the groundwork for
-// extracting and merging icons.
+// Working with .ico files that already exist: reading the pictures inside
+// them back out as pixels (the page's pixel inspector), describing them,
+// extracting them as PNG, selecting some of them and merging several files
+// into one. Every image that is written out again is re-encoded as PNG - full
+// 32-bit color and a clean alpha channel, whatever the source file used.
 
+use image::RgbaImage;
+use std::collections::HashSet;
 use std::io::Cursor;
+
+/// The icon sizes Microsoft recommends, so Windows never has to stretch one at
+/// any display scaling.
+pub const RECOMMENDED_WINDOWS_SIZES: [u32; 10] = [16, 20, 24, 32, 40, 48, 64, 96, 128, 256];
+
+/// The common Windows icon sizes that `present` lacks.
+pub fn missing_windows_sizes(present: &HashSet<u32>) -> Vec<u32> {
+    RECOMMENDED_WINDOWS_SIZES
+        .iter()
+        .copied()
+        .filter(|size| !present.contains(size))
+        .collect()
+}
+
+/// Parses an existing .ico file. `name` is how the file is called in the
+/// message when it cannot be read.
+pub fn read_dir(bytes: &[u8], name: &str) -> Result<ico::IconDir, String> {
+    ico::IconDir::read(Cursor::new(bytes))
+        .map_err(|e| format!("Could not read '{name}' as an ICO file: {e}"))
+}
+
+/// The bytes of an icon directory as an .ico file.
+pub fn write_dir(dir: &ico::IconDir) -> Result<Vec<u8>, String> {
+    let mut bytes = Vec::new();
+    dir.write(&mut bytes)
+        .map_err(|e| format!("Error writing the ICO file: {e}"))?;
+    Ok(bytes)
+}
+
+/// The share (0.0 to 1.0) of an entry's pixels that are not fully opaque -
+/// transparent or translucent - or `None` if the entry cannot be decoded.
+/// For a BMP entry this reflects its 1-bit transparency mask.
+pub fn alpha_share(entry: &ico::IconDirEntry) -> Option<f64> {
+    let image = entry.decode().ok()?;
+    let pixels = image.rgba_data();
+    let not_opaque = pixels
+        .iter()
+        .skip(3)
+        .step_by(4)
+        .filter(|&&alpha| alpha < 255)
+        .count();
+    Some(not_opaque as f64 / (pixels.len() / 4).max(1) as f64)
+}
+
+/// `alpha_share` as a short text.
+pub fn alpha_summary(entry: &ico::IconDirEntry) -> String {
+    match alpha_share(entry) {
+        None => "unknown (could not decode)".to_string(),
+        Some(0.0) => "no (fully opaque)".to_string(),
+        Some(share) => format!("yes ({:.0}% of pixels not fully opaque)", share * 100.0),
+    }
+}
+
+/// A file name `<stem>_<w>x<h>.<extension>` that is not in `taken`: a second
+/// image of the same size becomes `..._2`, and so on.
+pub fn unique_file_name(
+    taken: &[String],
+    stem: &str,
+    width: u32,
+    height: u32,
+    extension: &str,
+) -> String {
+    let mut name = format!("{stem}_{width}x{height}.{extension}");
+    let mut suffix = 2;
+    while taken.contains(&name) {
+        name = format!("{stem}_{width}x{height}_{suffix}.{extension}");
+        suffix += 1;
+    }
+    name
+}
+
+/// Decodes the icon at `index` and re-encodes it as PNG, so it gets the same
+/// full color depth and clean alpha channel as everything else this program
+/// writes, regardless of how the source file encoded it.
+pub fn reencode_as_png(
+    entry: &ico::IconDirEntry,
+    index: usize,
+    name: &str,
+) -> Result<ico::IconDirEntry, String> {
+    let image = entry
+        .decode()
+        .map_err(|e| format!("Could not decode icon at index {index} in '{name}': {e}"))?;
+    ico::IconDirEntry::encode_as_png(&image)
+        .map_err(|e| format!("Could not re-encode icon at index {index}: {e}"))
+}
+
+/// The icon as the bytes of a PNG file.
+pub fn entry_png(entry: &ico::IconDirEntry, name: &str) -> Result<Vec<u8>, String> {
+    let (w, h) = (entry.width(), entry.height());
+    let image = entry
+        .decode()
+        .map_err(|e| format!("Could not decode the {w}x{h} icon in '{name}': {e}"))?;
+    let rgba = RgbaImage::from_raw(w, h, image.into_rgba_data())
+        .ok_or_else(|| format!("Unexpected pixel data size for the {w}x{h} icon"))?;
+    let mut png = Cursor::new(Vec::new());
+    rgba.write_to(&mut png, image::ImageFormat::Png)
+        .map_err(|e| format!("Could not encode the {w}x{h} icon as PNG: {e}"))?;
+    Ok(png.into_inner())
+}
+
+/// An image that `merge` left out because its size was already there.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Skipped {
+    pub width: u32,
+    pub height: u32,
+    /// The name of the file it came from.
+    pub source: String,
+}
+
+/// Merges the icon entries of two or more existing .ico files into one, each
+/// re-encoded as PNG. If two files hold the same size, the first one wins and
+/// the later ones are skipped (and reported): an .ico file is not meant to hold
+/// the same size twice, and most consumers only look at one of them anyway.
+pub fn merge(sources: &[(&str, &ico::IconDir)]) -> Result<(ico::IconDir, Vec<Skipped>), String> {
+    let mut merged = ico::IconDir::new(ico::ResourceType::Icon);
+    let mut seen: HashSet<(u32, u32)> = HashSet::new();
+    let mut skipped = Vec::new();
+
+    for (name, source) in sources {
+        for entry in source.entries() {
+            let size = (entry.width(), entry.height());
+            if !seen.insert(size) {
+                skipped.push(Skipped {
+                    width: size.0,
+                    height: size.1,
+                    source: (*name).to_string(),
+                });
+                continue;
+            }
+            let image = entry.decode().map_err(|e| {
+                format!(
+                    "Could not decode the {}x{} icon in '{name}': {e}",
+                    size.0, size.1
+                )
+            })?;
+            let new_entry = ico::IconDirEntry::encode_as_png(&image)
+                .map_err(|e| format!("Could not re-encode the {}x{} icon: {e}", size.0, size.1))?;
+            merged.add_entry(new_entry);
+        }
+    }
+
+    if merged.entries().is_empty() {
+        return Err("No icons found to merge - the resulting file would be empty.".to_string());
+    }
+    Ok((merged, skipped))
+}
+
+/// A new icon directory with the images at `indices` (in that order),
+/// each re-encoded as PNG.
+pub fn select(dir: &ico::IconDir, indices: &[usize], name: &str) -> Result<ico::IconDir, String> {
+    let entries = dir.entries();
+    let mut out = ico::IconDir::new(ico::ResourceType::Icon);
+    for &index in indices {
+        let entry = entries.get(index).ok_or_else(|| {
+            format!(
+                "Index {index} is out of range for '{name}' - it contains {} icon(s).",
+                entries.len()
+            )
+        })?;
+        out.add_entry(reencode_as_png(entry, index, name)?);
+    }
+    Ok(out)
+}
 
 /// One image of an icon file, decoded: `rgba` holds four bytes (red, green,
 /// blue, alpha - not premultiplied) per pixel, row by row from the top left.
@@ -66,6 +233,90 @@ mod tests {
         assert_eq!(first.rgba, vec![255, 0, 0, 255, 0, 0, 255, 128]);
         // A fully transparent pixel keeps its color: nothing is premultiplied.
         assert_eq!(read_entry(&bytes, 1).unwrap().rgba, vec![1, 2, 3, 0]);
+    }
+
+    fn dir_of(sizes: &[u32]) -> ico::IconDir {
+        let mut dir = ico::IconDir::new(ico::ResourceType::Icon);
+        for &size in sizes {
+            let pixels = [200, 200, 200, 255].repeat((size * size) as usize);
+            let image = ico::IconImage::from_rgba_data(size, size, pixels);
+            dir.add_entry(ico::IconDirEntry::encode_as_png(&image).unwrap());
+        }
+        dir
+    }
+
+    fn sizes_of(dir: &ico::IconDir) -> Vec<u32> {
+        dir.entries().iter().map(|e| e.width()).collect()
+    }
+
+    #[test]
+    fn merging_keeps_the_first_of_each_size_and_reports_the_rest() {
+        let (a, b) = (dir_of(&[16, 32]), dir_of(&[32, 48]));
+        let (merged, skipped) = merge(&[("a.ico", &a), ("b.ico", &b)]).unwrap();
+        assert_eq!(sizes_of(&merged), vec![16, 32, 48]);
+        assert_eq!(
+            skipped,
+            vec![Skipped {
+                width: 32,
+                height: 32,
+                source: "b.ico".to_string()
+            }]
+        );
+        assert!(merge(&[("empty.ico", &ico::IconDir::new(ico::ResourceType::Icon))]).is_err());
+    }
+
+    #[test]
+    fn selecting_takes_the_images_asked_for_in_order() {
+        let dir = dir_of(&[16, 32, 48]);
+        let picked = select(&dir, &[2, 0], "a.ico").unwrap();
+        assert_eq!(sizes_of(&picked), vec![48, 16]);
+        assert!(
+            select(&dir, &[3], "a.ico")
+                .unwrap_err()
+                .contains("out of range")
+        );
+    }
+
+    #[test]
+    fn an_image_can_be_taken_out_as_png() {
+        let dir = dir_of(&[16]);
+        let png = entry_png(&dir.entries()[0], "a.ico").unwrap();
+        assert!(png.starts_with(&[0x89, b'P', b'N', b'G']));
+        let image = image::load_from_memory(&png).unwrap();
+        assert_eq!((image.width(), image.height()), (16, 16));
+    }
+
+    #[test]
+    fn file_names_are_made_unique() {
+        assert_eq!(
+            unique_file_name(&[], "logo", 16, 16, "png"),
+            "logo_16x16.png"
+        );
+        let taken = vec!["logo_16x16.png".to_string()];
+        assert_eq!(
+            unique_file_name(&taken, "logo", 16, 16, "png"),
+            "logo_16x16_2.png"
+        );
+    }
+
+    #[test]
+    fn the_missing_windows_sizes_are_named() {
+        let present: HashSet<u32> = [16, 32, 48, 256].into_iter().collect();
+        assert_eq!(
+            missing_windows_sizes(&present),
+            vec![20, 24, 40, 64, 96, 128]
+        );
+    }
+
+    #[test]
+    fn alpha_is_summarized() {
+        let opaque = dir_of(&[16]);
+        assert_eq!(alpha_summary(&opaque.entries()[0]), "no (fully opaque)");
+        let mut dir = ico::IconDir::new(ico::ResourceType::Icon);
+        let half = ico::IconImage::from_rgba_data(2, 1, vec![0, 0, 0, 255, 0, 0, 0, 0]);
+        dir.add_entry(ico::IconDirEntry::encode_as_png(&half).unwrap());
+        assert_eq!(alpha_share(&dir.entries()[0]), Some(0.5));
+        assert!(alpha_summary(&dir.entries()[0]).starts_with("yes (50%"));
     }
 
     #[test]

@@ -8,7 +8,10 @@ use crate::cli::RECOMMENDED_WINDOWS_SIZES;
 use crate::gif::{count_gif_frames, is_gif};
 use crate::icns::icns_sizes;
 use crate::util::check_overwrite;
-use image::RgbaImage;
+use img2ico_core::icon::{
+    alpha_share, alpha_summary, entry_png, merge, missing_windows_sizes, reencode_as_png,
+    unique_file_name,
+};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
@@ -56,44 +59,22 @@ pub fn merge_icons(
     }
     check_overwrite(output_path, force)?;
 
-    let mut merged = ico::IconDir::new(ico::ResourceType::Icon);
-    // Keeps track of which (width, height) pairs are already in the
-    // output, so we can detect and skip duplicates across source files.
-    let mut seen_sizes: HashSet<(u32, u32)> = HashSet::new();
-
+    let mut sources = Vec::with_capacity(paths.len());
     for path in paths {
-        let source = read_icon_dir(path)?;
-
-        for entry in source.entries() {
-            let size = (entry.width(), entry.height());
-            if !seen_sizes.insert(size) {
-                if !silent {
-                    eprintln!(
-                        "Skipping {}x{} from '{}': that size is already present in the merged output.",
-                        size.0,
-                        size.1,
-                        path.display()
-                    );
-                }
-                continue;
-            }
-
-            let image = entry.decode().map_err(|e| {
-                format!(
-                    "Could not decode the {}x{} icon in '{}': {e}",
-                    size.0,
-                    size.1,
-                    path.display()
-                )
-            })?;
-            let new_entry = ico::IconDirEntry::encode_as_png(&image)
-                .map_err(|e| format!("Could not re-encode the {}x{} icon: {e}", size.0, size.1))?;
-            merged.add_entry(new_entry);
-        }
+        sources.push((path.display().to_string(), read_icon_dir(path)?));
     }
-
-    if merged.entries().is_empty() {
-        return Err("No icons found to merge - the resulting file would be empty.".to_string());
+    let borrowed: Vec<(&str, &ico::IconDir)> = sources
+        .iter()
+        .map(|(name, dir)| (name.as_str(), dir))
+        .collect();
+    let (merged, skipped) = merge(&borrowed)?;
+    if !silent {
+        for image in &skipped {
+            eprintln!(
+                "Skipping {}x{} from '{}': that size is already present in the merged output.",
+                image.width, image.height, image.source
+            );
+        }
     }
 
     write_icon_dir(&merged, output_path)?;
@@ -185,15 +166,6 @@ fn looks_like_ico(path: &Path) -> bool {
     by_name || by_header
 }
 
-/// The common Windows icon sizes that `present` lacks.
-fn missing_windows_sizes(present: &HashSet<u32>) -> Vec<u32> {
-    RECOMMENDED_WINDOWS_SIZES
-        .iter()
-        .copied()
-        .filter(|size| !present.contains(size))
-        .collect()
-}
-
 /// Splits `sizes` into those a source whose longer edge is `native_max` pixels
 /// covers natively and those that would need upscaling.
 fn split_by_coverage(sizes: &[u32], native_max: u32) -> (Vec<u32>, Vec<u32>) {
@@ -267,30 +239,6 @@ fn ico_report_json(path: &Path, dir: &ico::IconDir) -> serde_json::Value {
         "missing_windows_sizes": missing_windows_sizes(&present_sizes),
         "warnings": warnings,
     })
-}
-
-/// The share (0.0 to 1.0) of an entry's pixels that are not fully opaque -
-/// transparent or translucent - or `None` if the entry cannot be decoded.
-/// For a BMP entry this reflects its 1-bit transparency mask.
-fn alpha_share(entry: &ico::IconDirEntry) -> Option<f64> {
-    let image = entry.decode().ok()?;
-    let pixels = image.rgba_data();
-    let not_opaque = pixels
-        .iter()
-        .skip(3)
-        .step_by(4)
-        .filter(|&&alpha| alpha < 255)
-        .count();
-    Some(not_opaque as f64 / (pixels.len() / 4).max(1) as f64)
-}
-
-/// `alpha_share` as the short text of the --inspect report.
-fn alpha_summary(entry: &ico::IconDirEntry) -> String {
-    match alpha_share(entry) {
-        None => "unknown (could not decode)".to_string(),
-        Some(0.0) => "no (fully opaque)".to_string(),
-        Some(share) => format!("yes ({:.0}% of pixels not fully opaque)", share * 100.0),
-    }
 }
 
 /// The JSON form of `inspect_source_image`'s report.
@@ -431,22 +379,6 @@ fn vector_report_json(path: &Path, drawing: &crate::vector::VectorImage) -> serd
 /// already `taken` by appending "_2", "_3", ... if needed. Two entries of
 /// the same size only happen in a broken (or hand-built) .ico file, but
 /// without this one would silently overwrite the other.
-fn unique_file_name(
-    taken: &[String],
-    stem: &str,
-    width: u32,
-    height: u32,
-    extension: &str,
-) -> String {
-    let mut name = format!("{stem}_{width}x{height}.{extension}");
-    let mut suffix = 2;
-    while taken.contains(&name) {
-        name = format!("{stem}_{width}x{height}_{suffix}.{extension}");
-        suffix += 1;
-    }
-    name
-}
-
 /// Extracts every icon size out of an existing .ico file and saves each
 /// one as a separate PNG file into a target directory.
 pub fn extract_icons(input: &Path, output_dir: Option<&Path>, force: bool) -> Result<(), String> {
@@ -497,22 +429,9 @@ pub fn extract_icons(input: &Path, output_dir: Option<&Path>, force: bool) -> Re
     // silently clobbered, actually decode and write every one of them.
     let mut extracted_count = 0u32;
     for (entry, name) in dir.entries().iter().zip(names.iter()) {
-        let (w, h) = (entry.width(), entry.height());
-        let image = entry.decode().map_err(|e| {
-            format!(
-                "Could not decode the {w}x{h} icon in '{}': {e}",
-                input.display()
-            )
-        })?;
-
-        let rgba = RgbaImage::from_raw(w, h, image.into_rgba_data())
-            .ok_or_else(|| format!("Unexpected pixel data size for the {w}x{h} icon"))?;
-
         let out_path = target_dir.join(name);
-        let mut png = std::io::Cursor::new(Vec::new());
-        rgba.write_to(&mut png, image::ImageFormat::Png)
-            .map_err(|e| format!("Could not encode '{}': {e}", out_path.display()))?;
-        crate::util::write_atomic(&out_path, png.get_ref())
+        let png = entry_png(entry, &input.display().to_string())?;
+        crate::util::write_atomic(&out_path, &png)
             .map_err(|e| format!("Could not save '{}': {e}", out_path.display()))?;
         extracted_count += 1;
     }
@@ -628,24 +547,6 @@ pub fn select_icons(
     }
 }
 
-/// Decodes the icon at `index` and re-encodes it as PNG, so it gets the
-/// same full color depth and clean alpha channel as everything else this
-/// program writes, regardless of how the source file encoded it.
-fn reencode_as_png(
-    entry: &ico::IconDirEntry,
-    index: usize,
-    input: &Path,
-) -> Result<ico::IconDirEntry, String> {
-    let image = entry.decode().map_err(|e| {
-        format!(
-            "Could not decode icon at index {index} in '{}': {e}",
-            input.display()
-        )
-    })?;
-    ico::IconDirEntry::encode_as_png(&image)
-        .map_err(|e| format!("Could not re-encode icon at index {index}: {e}"))
-}
-
 /// Writes the selected icons together into ONE .ico file.
 fn select_into_one_file(
     input: &Path,
@@ -658,7 +559,11 @@ fn select_into_one_file(
 
     let mut out_dir = ico::IconDir::new(ico::ResourceType::Icon);
     for &i in indices {
-        out_dir.add_entry(reencode_as_png(&entries[i], i, input)?);
+        out_dir.add_entry(reencode_as_png(
+            &entries[i],
+            i,
+            &input.display().to_string(),
+        )?);
     }
 
     write_icon_dir(&out_dir, output_path)?;
@@ -703,7 +608,11 @@ fn select_into_directory(
     // Second pass: now actually decode and write each one.
     for (&i, name) in indices.iter().zip(&names) {
         let mut single = ico::IconDir::new(ico::ResourceType::Icon);
-        single.add_entry(reencode_as_png(&entries[i], i, input)?);
+        single.add_entry(reencode_as_png(
+            &entries[i],
+            i,
+            &input.display().to_string(),
+        )?);
 
         let out_path = target_dir.join(name);
         write_icon_dir(&single, &out_path)?;
