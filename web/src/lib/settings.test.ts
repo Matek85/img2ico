@@ -20,6 +20,12 @@ describe('toEngineOptions', () => {
     expect(toEngineOptions({ ...settings, backgroundAuto: true }).background?.spec).toBe('auto');
   });
 
+  it('passes a crop only when there is one', () => {
+    expect(toEngineOptions(defaultSettings()).crop).toBeUndefined();
+    const settings = { ...defaultSettings(), crop: { x: 1, y: 2, width: 30, height: 40 } };
+    expect(toEngineOptions(settings).crop).toEqual({ x: 1, y: 2, width: 30, height: 40 });
+  });
+
   it('asks for the format it is given', () => {
     expect(toEngineOptions(defaultSettings(), 'icns').format).toBe('icns');
   });

@@ -53,6 +53,17 @@ export const en = {
   'controls.tolerance_hint': 'How different a color may be and still count as background.',
   'controls.feather': 'Soft edge',
 
+  'crop.use': 'Use only part of the picture',
+  'crop.aspect': 'Shape',
+  'crop.aspect_free': 'Free',
+  'crop.frame': 'Crop frame. Arrow keys move it, Shift makes the steps bigger.',
+  'crop.hint': 'Drag the frame or its handles.',
+  'crop.x': 'Left',
+  'crop.y': 'Top',
+  'crop.width': 'Width',
+  'crop.height': 'Height',
+  'crop.reset': 'Use the whole picture',
+
   'download.format': 'File type',
   'download.ico': 'Windows icon (.ico)',
   'download.icns': 'macOS icon (.icns)',
