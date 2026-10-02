@@ -244,6 +244,7 @@
   </section>
 {:else}
   {#key view.file}
-    <IconFile file={view.file} onback={back} />
+    <IconFile file={view.file} onback={back} onpicture={chooseNext} />
   {/key}
+  <Queue onopen={openFromQueue} onpicture={chooseNext} />
 {/if}

@@ -10,11 +10,21 @@
     validateIco,
   } from '../engine/client';
   import { formatBytes, t } from '../i18n';
-  import { stemOf } from '../lib/batch';
+  import { baseName, stemOf } from '../lib/batch';
   import { ICO_TYPE, PNG_TYPE, ZIP_TYPE, saveBytes } from '../lib/download';
+  import { queue } from '../lib/queue.svelte';
   import type { ValidationReport } from '../lib/report';
 
-  let { file, onback }: { file: File; onback: () => void } = $props();
+  let {
+    file,
+    onback,
+    onpicture,
+  }: {
+    file: File;
+    onback: () => void;
+    /** Opens a picture made from one of the images in the editor (it is put in the queue). */
+    onpicture: (files: File[]) => void;
+  } = $props();
 
   let bytes = new Uint8Array();
   let report = $state<ValidationReport>();
@@ -93,6 +103,38 @@
     run(async () => {
       const indices = [...selected].sort((a, b) => a - b);
       saveBytes(await selectImages(bytes, indices), `${stemOf(file.name)}_selected.ico`, ICO_TYPE);
+    });
+
+  // One image of this file as a picture of its own (the largest one when no index is given).
+  const asPicture = (index?: number) =>
+    run(async () => {
+      const images = description?.images ?? [];
+      const image =
+        index === undefined
+          ? images.reduce((a, b) => (b.width > a.width || (b.width === a.width && b.bits_per_pixel > a.bits_per_pixel) ? b : a))
+          : images.find((candidate) => candidate.index === index);
+      if (!image) return;
+      const png = await extractPng(bytes, image.index);
+      const name = `${stemOf(file.name)}${index === undefined ? '' : '_' + image.width}_edited.png`;
+      onpicture([new File([png as BlobPart], name, { type: PNG_TYPE })]);
+    });
+
+  // This icon as it is, or only the chosen images of it as one icon, into the queue.
+  const addToQueue = (indices?: number[]) =>
+    run(async () => {
+      const images = description?.images ?? [];
+      const wanted = indices ? images.filter((image) => indices.includes(image.index)) : images;
+      if (wanted.length === 0) return;
+      const made = indices ? await selectImages(bytes, [...indices].sort((a, b) => a - b)) : bytes.slice();
+      const largest = wanted.reduce((a, b) => (b.width > a.width ? b : a));
+      const name = indices && indices.length < images.length ? `${stemOf(file.name)}_selected.ico` : baseName(file.name);
+      queue.addIcon(
+        name,
+        new File([made as BlobPart], name),
+        made,
+        [...new Set(wanted.map((image) => image.width))].sort((a, b) => a - b),
+        await extractPng(bytes, largest.index),
+      );
     });
 
   async function addOthers() {
@@ -176,6 +218,9 @@
             <button type="button" class="quiet" disabled={working} onclick={() => savePng(image.index, image.width)}>
               {t('iconfile.save_png')}
             </button>
+            <button type="button" class="quiet" disabled={working} title={t('queue.as_picture_hint')} onclick={() => asPicture(image.index)}>
+              {t('queue.as_picture')}
+            </button>
           </li>
         {/each}
       </ul>
@@ -200,6 +245,15 @@
           {t('iconfile.select_all')}
         </button>
         <button type="button" class="quiet" onclick={() => (selected = [])}>{t('iconfile.select_none')}</button>
+      </div>
+      <div class="actions">
+        <button type="button" class="outline" disabled={working} title={t('queue.as_picture_hint')} onclick={() => asPicture()}>
+          {t('iconfile.as_picture_largest')}
+        </button>
+        <button type="button" class="outline" disabled={working} onclick={() => addToQueue()}>{t('iconfile.add_all')}</button>
+        <button type="button" class="outline" disabled={working || selected.length === 0} onclick={() => addToQueue([...selected])}>
+          {t('iconfile.add_selected', { count: selected.length })}
+        </button>
       </div>
     </section>
   {/if}
