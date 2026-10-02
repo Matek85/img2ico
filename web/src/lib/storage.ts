@@ -8,14 +8,14 @@ import { SIZE_CHOICES, type Settings, defaultSettings } from './settings';
 
 const KEY = 'img2ico.settings.v1';
 const AUTOSAVE_KEY = 'img2ico.autosave.v1';
-const SIDE_KEY = 'img2ico.side.v1';
+const SIDE_KEY = 'img2ico.side.v2';
 
-/** Whether the settings beside the preview are open (they are, unless folded away). */
+/** Whether the settings beside the preview are open (folded away to a rail of icons, unless opened). */
 export function loadSideOpen(): boolean {
   try {
-    return localStorage.getItem(SIDE_KEY) !== '0';
+    return localStorage.getItem(SIDE_KEY) === '1';
   } catch {
-    return true;
+    return false;
   }
 }
 

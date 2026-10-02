@@ -2964,3 +2964,42 @@ button.small {
   color: var(--accent-text);
   border-color: var(--accent);
 }
+
+/* The original picture and its size sit in the top bar, next to the file name. */
+.bar .original {
+  margin-left: auto;
+  gap: 0.6rem;
+}
+
+.bar .original img {
+  max-width: 3rem;
+  max-height: 2.25rem;
+}
+
+.bar .original + .reset {
+  margin-left: 0;
+}
+
+/* A thin line between the groups of the rail. */
+.rail-sep {
+  width: 100%;
+  height: 1px;
+  background: var(--muted);
+  opacity: 0.45;
+}
+
+@media (max-width: 52rem) {
+  .rail-sep {
+    width: 1px;
+    height: 1.5rem;
+  }
+}
+
+.bar {
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+}
+
+.bar button {
+  white-space: nowrap;
+}

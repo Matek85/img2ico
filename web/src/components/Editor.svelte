@@ -485,6 +485,14 @@
   <div class="bar">
     <button type="button" class="quiet" onclick={leave}><Icon name="back" />{t('state.back')}</button>
     <span class="file">{file.name}</span>
+    <figure class="original">
+      <img src={originalUrl} alt={t('editor.source')} />
+      <figcaption>
+        {opened.vector
+          ? t('editor.source_vector', { width: opened.width, height: opened.height })
+          : t('editor.source_size', { width: opened.width, height: opened.height })}
+      </figcaption>
+    </figure>
     <button type="button" class="outline reset" onclick={askReset} disabled={isDefault} title={t('editor.reset_hint')}>
       <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
       {t('editor.reset')}
@@ -715,15 +723,6 @@
           <Icon name="collapse" size={16} />
         </button>
       </div>
-      <figure class="original">
-        <img src={originalUrl} alt={t('editor.source')} />
-        <figcaption>
-          {opened.vector
-            ? t('editor.source_vector', { width: opened.width, height: opened.height })
-            : t('editor.source_size', { width: opened.width, height: opened.height })}
-        </figcaption>
-      </figure>
-
       <fieldset class="presets">
         <legend>{t('presets.title')}</legend>
         {#each [{ label: 'presets.use', list: USE_PRESETS }, { label: 'presets.style', list: STYLE_PRESETS }] as group (group.label)}
