@@ -611,45 +611,11 @@
       </div>
 
       <div class="preview-main">
-      <div class="stage {surfaceClass}" class:masked={masking && view === 'icon' && picture} style={surface} aria-live="polite">
+      <div class="stage {surfaceClass}" style={surface} aria-live="polite">
         {#if settings.sizes.length === 0}
           <p class="note">{t('editor.no_sizes')}</p>
         {:else if masking && view === 'icon' && picture}
-          <div class="mask">
-            <h3 class="mask-title">{t('crop.use')}</h3>
-            <div class="mask-grid">
-            <div class="chips aspects" role="radiogroup" aria-label={t('crop.aspect')}>
-              {#each ASPECTS as choice (choice)}
-                <label class:chosen={cropAspect === choice} title={choice === 'free' ? t('crop.aspect_free') : choice}>
-                  <input type="radio" name="crop-aspect" value={choice} checked={cropAspect === choice} onchange={() => chooseAspect(choice)} />
-                  {choice === 'free' ? t('crop.aspect_free') : choice}
-                </label>
-              {/each}
-            </div>
-            <div class="mask-picture {surfaceClass}" style={surface}>
-              <CropTool src={originalUrl} size={picture} bind:rect={frame} aspect={aspectValue(cropAspect)} />
-            </div>
-            <div class="numbers sides">
-              {#each [['x', 'crop.x', 'cropLeft'], ['y', 'crop.y', 'cropTop'], ['width', 'crop.width', 'cropWidth'], ['height', 'crop.height', 'cropHeight']] as [field, label, icon] (field)}
-                <label title={t(`${label}_hint`)}>
-                  <span><Icon name={icon as IconName} size={22} />{t(label)}</span>
-                  <input
-                    type="number"
-                    min="0"
-                    max={field === 'x' || field === 'width' ? picture.width : picture.height}
-                    value={frame[field as keyof Rect]}
-                    onchange={(e) => setFrame(field as keyof Rect, e.currentTarget.valueAsNumber)}
-                  />
-                </label>
-              {/each}
-            </div>
-            </div>
-            <p class="hint">{t('crop.hint')}</p>
-            <div class="mask-actions">
-              <button type="button" class="quiet small" onclick={() => (frame = fullRect(picture))} disabled={isFull(frame, picture)}><Icon name="reset" size={16} />{t('crop.reset')}</button>
-              <button type="button" class="primary small" onclick={() => (masking = false)}><Icon name="check" size={16} />{t('crop.done')}</button>
-            </div>
-          </div>
+          <CropTool src={originalUrl} size={picture} bind:rect={frame} aspect={aspectValue(cropAspect)} />
         {:else if converted && tiles.length > 0 && view === 'pixels'}
           <PixelInspector
             bytes={converted.bytes}
@@ -667,6 +633,41 @@
           </figure>
         {/if}
       </div>
+
+      {#if masking && view === 'icon' && picture}
+        <div class="mask">
+          <h3 class="mask-title">{t('crop.use')}</h3>
+          <div class="mask-grid">
+    <div class="chips aspects" role="radiogroup" aria-label={t('crop.aspect')}>
+      {#each ASPECTS as choice (choice)}
+        <label class:chosen={cropAspect === choice} title={choice === 'free' ? t('crop.aspect_free') : choice}>
+          <input type="radio" name="crop-aspect" value={choice} checked={cropAspect === choice} onchange={() => chooseAspect(choice)} />
+          {choice === 'free' ? t('crop.aspect_free') : choice}
+        </label>
+      {/each}
+    </div>
+    <div class="numbers sides">
+      {#each [['x', 'crop.x', 'cropLeft'], ['y', 'crop.y', 'cropTop'], ['width', 'crop.width', 'cropWidth'], ['height', 'crop.height', 'cropHeight']] as [field, label, icon] (field)}
+        <label title={t(`${label}_hint`)}>
+          <span><Icon name={icon as IconName} size={22} />{t(label)}</span>
+          <input
+            type="number"
+            min="0"
+            max={field === 'x' || field === 'width' ? picture.width : picture.height}
+            value={frame[field as keyof Rect]}
+            onchange={(e) => setFrame(field as keyof Rect, e.currentTarget.valueAsNumber)}
+          />
+        </label>
+      {/each}
+    </div>
+          </div>
+          <p class="hint">{t('crop.hint')}</p>
+          <div class="mask-actions">
+            <button type="button" class="primary small" onclick={() => (masking = false)}><Icon name="check" size={16} />{t('crop.done')}</button>
+            <button type="button" class="quiet small" onclick={() => (frame = fullRect(picture))} disabled={isFull(frame, picture)}><Icon name="reset" size={16} />{t('crop.reset')}</button>
+          </div>
+        </div>
+      {/if}
 
       {#if smaller.length > 0}
         <ul class="tiles {surfaceClass}" style={surface}>

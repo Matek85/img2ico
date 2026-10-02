@@ -2824,3 +2824,60 @@ button.small {
   justify-content: space-between;
   gap: 0.5rem;
 }
+
+/* The crop box under the picture: the shapes on the left, the four measures
+   (two by two) on the right, the buttons at the end. */
+.preview-main > .mask {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0.75rem 0;
+  padding: 0.75rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+}
+
+.preview-main > .mask .mask-grid {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem 1.25rem;
+}
+
+.preview-main > .mask .aspects,
+.preview-main > .mask .numbers {
+  background: var(--surface);
+}
+
+.preview-main > .mask .aspects {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+
+.preview-main > .mask .aspects label {
+  padding: 0.2rem 0.75rem;
+}
+
+.preview-main > .mask .numbers {
+  display: grid;
+  grid-template-columns: repeat(2, auto);
+  gap: 0.5rem 0.9rem;
+}
+
+.preview-main > .mask .mask-actions {
+  justify-content: flex-start;
+  gap: 0.75rem;
+}
+
+.preview-main > .mask .mask-grid {
+  display: grid;
+  grid-template-columns: auto auto;
+  justify-content: space-between;
+  align-items: start;
+}
+
+.preview-main > .mask .aspects {
+  flex-direction: column;
+  flex-wrap: nowrap;
+}
