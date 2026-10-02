@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, onMount } from 'svelte';
+  import { onDestroy, onMount, tick } from 'svelte';
   import {
     buildZip,
     closePicture,
@@ -230,6 +230,20 @@
     // After picking, show the icon again; from the plain pixel view, stay there.
     if (picking) view = 'icon';
     picking = false;
+    showBackgroundSettings();
+  }
+
+  // Show where the color went: open the advanced editor, bring the background
+  // settings into view and let them flash once.
+  let flashBackground = $state(false);
+  async function showBackgroundSettings() {
+    advanced = true;
+    await tick();
+    document.getElementById('background-settings')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    flashBackground = false;
+    await tick();
+    flashBackground = true;
+    setTimeout(() => (flashBackground = false), 1600);
   }
 
   // Leaving the pixel view ends the picking.
@@ -539,7 +553,7 @@
         <label><input type="checkbox" bind:checked={settings.trim} /> {t('controls.trim')}</label>
       </fieldset>
 
-      <fieldset class:empty={!settings.removeBackground}>
+      <fieldset id="background-settings" class:empty={!settings.removeBackground} class:flash={flashBackground}>
         <legend>
           <label><input type="checkbox" bind:checked={settings.removeBackground} /> {t('controls.background')}</label>
         </legend>

@@ -811,7 +811,25 @@ button:disabled {
 
 .inspector .values .remove {
   margin-left: auto;
+  padding: 0.4rem 0.9rem;
+  font-size: 0.9rem;
   white-space: nowrap;
+}
+
+/* The settings that just changed because of a click elsewhere flash once. */
+.controls fieldset.flash {
+  animation: flash-border 1.6s ease-out;
+}
+
+@keyframes flash-border {
+  0%, 40% { box-shadow: 0 0 0 3px var(--accent); }
+  100% { box-shadow: 0 0 0 3px transparent; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .controls fieldset.flash {
+    animation: none;
+  }
 }
 
 .inspector.picking .surface {

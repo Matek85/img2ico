@@ -126,18 +126,24 @@
     zoom = Math.min(Math.max(Math.round(value), 1), MAX_ZOOM);
   }
 
-  // The mouse wheel zooms while the pointer is over the image, around the pixel
-  // under it; anywhere else it scrolls the page as usual.
+  // The mouse wheel zooms while the pointer is anywhere over the preview box,
+  // around the pixel under it (or the middle of the view when it is beside the
+  // image); outside the box it scrolls the page as usual.
   $effect(() => {
     const viewport = viewportEl;
-    if (!viewport) return;
+    const box = viewport?.closest<HTMLElement>('.preview') ?? viewport;
+    if (!viewport || !box) return;
     const onWheel = async (event: WheelEvent) => {
-      const surface = (event.target as Element).closest('.surface');
+      const surface = viewport.querySelector('.surface');
       if (!surface || !pixels || event.ctrlKey || event.deltaY === 0) return;
       event.preventDefault();
       const before = surface.getBoundingClientRect();
-      const column = (event.clientX - before.left) / zoom;
-      const row = (event.clientY - before.top) / zoom;
+      const view = viewport.getBoundingClientRect();
+      const overImage = (event.target as Element).closest('.surface') !== null;
+      const anchorX = overImage ? event.clientX : view.left + view.width / 2;
+      const anchorY = overImage ? event.clientY : view.top + view.height / 2;
+      const column = (anchorX - before.left) / zoom;
+      const row = (anchorY - before.top) / zoom;
       const direction = event.deltaY < 0 ? 1 : -1;
       let next = Math.round(zoom * (direction > 0 ? 1.2 : 1 / 1.2));
       if (next === zoom) next = zoom + direction;
@@ -147,11 +153,11 @@
       await tick();
       // Keep the pixel under the pointer where it was.
       const after = surface.getBoundingClientRect();
-      viewport.scrollLeft += after.left - (event.clientX - column * next);
-      viewport.scrollTop += after.top - (event.clientY - row * next);
+      viewport.scrollLeft += after.left - (anchorX - column * next);
+      viewport.scrollTop += after.top - (anchorY - row * next);
     };
-    viewport.addEventListener('wheel', onWheel, { passive: false });
-    return () => viewport.removeEventListener('wheel', onWheel);
+    box.addEventListener('wheel', onWheel, { passive: false });
+    return () => box.removeEventListener('wheel', onWheel);
   });
 </script>
 
