@@ -3026,3 +3026,30 @@ button.small {
     animation: none;
   }
 }
+
+/* Zooming in the crop: the picture grows inside a window that scrolls. */
+.crop-viewport {
+  width: 100%;
+  overflow: auto;
+  border-radius: 0.35rem;
+}
+
+.stage:has(.crop-viewport) {
+  position: relative;
+}
+
+.crop-zoom {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.6rem;
+  z-index: 2;
+  background: var(--surface);
+}
+
+.crop-viewport .crop-stage {
+  max-width: none;
+}
+
+.crop-viewport.zoomed {
+  max-height: min(34rem, 70vh);
+}
