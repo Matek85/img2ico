@@ -1,4 +1,5 @@
 import { mount } from 'svelte';
+import '@fontsource-variable/source-sans-3/wght.css';
 import './app.css';
 import App from './App.svelte';
 import { locale, setLocale } from './i18n';

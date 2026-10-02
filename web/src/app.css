@@ -48,7 +48,8 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font: 16px/1.5 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  /* Source Sans (called Source Sans Pro before version 3), delivered with the page. */
+  font: 17px/1.5 'Source Sans 3 Variable', 'Source Sans Pro', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 
 h1 {
@@ -276,6 +277,9 @@ a {
 }
 
 .menu-list a {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
   padding: 0.55rem 0.75rem;
   border-radius: 0.5rem;
   white-space: nowrap;
@@ -285,6 +289,11 @@ a {
 .menu-list a:focus-visible {
   background: var(--tint);
   text-decoration: none;
+}
+
+.menu-list svg {
+  flex-shrink: 0;
+  color: var(--muted);
 }
 
 .menu-list .all {

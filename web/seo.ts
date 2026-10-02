@@ -6,6 +6,7 @@
 // preview picture, sitemap) exist only when the build is told where the page
 // will live: SITE_URL=https://example.org/img2ico/ npm run build
 import type { Plugin } from 'vite';
+import { siApple, siLinux } from 'simple-icons';
 import { en } from './src/i18n/en.ts';
 
 type Messages = Record<string, string>;
@@ -113,16 +114,25 @@ export function artHtml(): string {
         </div>`;
 }
 
+// The logos of the systems: Apple and Tux from Simple Icons (CC0), the four
+// panes of Windows drawn here (Simple Icons has no Windows logo).
+const WINDOWS_LOGO = 'M3 3h8.5v8.5H3zM12.5 3H21v8.5h-8.5zM3 12.5h8.5V21H3zM12.5 12.5H21V21h-8.5z';
+
+function osIcon(path: string): string {
+  return `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="${path}"/></svg>`;
+}
+
 /** The command-line tool: the latest release for each system (GitHub redirects "latest" to the newest one). */
 export function navHtml(m: Messages): string {
   const latest = `${REPOSITORY}/releases/latest/download/`;
-  const item = (file: string, key: string) => `<a href="${latest}${file}">${escapeHtml(m[key])}</a>`;
+  const item = (file: string, key: string, path: string) =>
+    `<a href="${latest}${file}">${osIcon(path)}${escapeHtml(m[key])}</a>`;
   return `<details class="menu">
             <summary>${escapeHtml(m['nav.cli'])}</summary>
             <div class="menu-list">
-              ${item('img2ico-windows.zip', 'nav.cli_windows')}
-              ${item('img2ico-macos.zip', 'nav.cli_macos')}
-              ${item('img2ico-linux.zip', 'nav.cli_linux')}
+              ${item('img2ico-windows.zip', 'nav.cli_windows', WINDOWS_LOGO)}
+              ${item('img2ico-macos.zip', 'nav.cli_macos', siApple.path)}
+              ${item('img2ico-linux.zip', 'nav.cli_linux', siLinux.path)}
               <a class="all" href="${REPOSITORY}/releases/latest">${escapeHtml(m['nav.cli_all'])}</a>
             </div>
           </details>
