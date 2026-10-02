@@ -29,6 +29,14 @@ describe('sanitize', () => {
     expect(sanitize({ sizes: [] }).sizes).toEqual([]);
   });
 
+  it('keeps the website package settings and checks them', () => {
+    const result = sanitize({ format: 'favicon', siteName: 'x'.repeat(100), themeColor: 'red', appleBackground: '#123456' });
+    expect(result.format).toBe('favicon');
+    expect(result.siteName).toHaveLength(60);
+    expect(result.themeColor).toBe('#ffffff');
+    expect(result.appleBackground).toBe('#123456');
+  });
+
   it('never remembers a crop and checks the color', () => {
     expect(sanitize({ crop: { x: 1, y: 1, width: 5, height: 5 } }).crop).toBeNull();
     expect(sanitize({ backgroundColor: 'red' }).backgroundColor).toBe('#00ff00');

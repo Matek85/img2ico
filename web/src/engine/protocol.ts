@@ -2,6 +2,13 @@
 
 import type { EngineOptions } from '../lib/settings';
 
+/** The website icon package the engine made. */
+export interface FaviconPack {
+  zip: Uint8Array;
+  snippet: string;
+  warnings: string[];
+}
+
 export type Request =
   | { id: number; op: 'version' }
   | { id: number; op: 'validate'; bytes: Uint8Array }
@@ -12,6 +19,8 @@ export type Request =
   | { id: number; op: 'extract'; bytes: Uint8Array; index: number }
   | { id: number; op: 'select'; bytes: Uint8Array; indices: number[] }
   | { id: number; op: 'merge'; files: { name: string; bytes: Uint8Array }[] }
+  | { id: number; op: 'faviconPack'; options: EngineOptions; meta: { name: string; themeColor: string; appleBackground: string } }
+  | { id: number; op: 'faviconSnippet'; hasSvg: boolean; themeColor: string }
   | { id: number; op: 'zipOpen'; bytes: Uint8Array }
   | { id: number; op: 'zipRead'; index: number }
   | { id: number; op: 'zipBuild'; files: { name: string; bytes: Uint8Array }[] }
@@ -46,5 +55,6 @@ export type Response =
   | { id: number; ok: true; converted: Converted }
   | { id: number; ok: true; pixels: Pixels }
   | { id: number; ok: true; data: Uint8Array }
+  | { id: number; ok: true; pack: FaviconPack }
   | { id: number; ok: true }
   | { id: number; ok: false; error: string };

@@ -4,7 +4,11 @@
 import type { Rect } from './crop';
 
 export type Fit = 'contain' | 'cover';
-export type Format = 'ico' | 'icns';
+/** What the person wants to end up with: an .ico, an .icns, or a package for a website. */
+export type Format = 'ico' | 'icns' | 'favicon';
+
+/** The file types the engine writes. */
+export type EngineFormat = 'ico' | 'icns' | 'png';
 
 /** The sizes the page offers. An .ico can hold 1 to 256 pixels. */
 export const SIZE_CHOICES = [16, 20, 24, 32, 40, 48, 64, 96, 128, 256] as const;
@@ -29,6 +33,11 @@ export interface Settings {
   tolerance: number;
   feather: number;
   format: Format;
+  /** For the website package: the site's name, and two colors. */
+  siteName: string;
+  themeColor: string;
+  /** The Apple icon is laid on this color: an iPhone fills transparency with black. */
+  appleBackground: string;
 }
 
 export function defaultSettings(): Settings {
@@ -46,12 +55,15 @@ export function defaultSettings(): Settings {
     tolerance: 20,
     feather: 50,
     format: 'ico',
+    siteName: '',
+    themeColor: '#ffffff',
+    appleBackground: '#ffffff',
   };
 }
 
 /** The options as the engine takes them. */
 export interface EngineOptions {
-  format?: Format;
+  format?: EngineFormat;
   sizes?: number[];
   padding?: number;
   cornerRadius?: number;
@@ -59,6 +71,8 @@ export interface EngineOptions {
   grayscale?: boolean;
   trim?: boolean;
   crop?: Rect;
+  /** Lay the icon on this color (no transparency). */
+  flatten?: string;
   background?: {
     spec: string;
     tolerance?: number;
@@ -71,7 +85,7 @@ export interface EngineOptions {
  * .ico of the chosen sizes (an .icns has its own fixed sizes, which would not
  * show what the person picked).
  */
-export function toEngineOptions(settings: Settings, format: Format = 'ico'): EngineOptions {
+export function toEngineOptions(settings: Settings, format: EngineFormat = 'ico'): EngineOptions {
   const options: EngineOptions = {
     format,
     sizes: [...settings.sizes].sort((a, b) => a - b),
@@ -97,6 +111,18 @@ export function toEngineOptions(settings: Settings, format: Format = 'ico'): Eng
 /** The name of the download: the picture's name with the icon's extension. */
 export function downloadName(pictureName: string, format: Format): string {
   const dot = pictureName.lastIndexOf('.');
-  const base = dot > 0 ? pictureName.slice(0, dot) : pictureName;
-  return `${base || 'icon'}.${format}`;
+  const base = (dot > 0 ? pictureName.slice(0, dot) : pictureName) || 'icon';
+  return format === 'favicon' ? `${base}_favicon.zip` : `${base}.${format}`;
+}
+
+/** The sizes of the favicon.ico in the website package. */
+export const FAVICON_SIZES = [16, 32, 48];
+
+/** The package's settings for the engine. */
+export function packMeta(settings: Settings): { name: string; themeColor: string; appleBackground: string } {
+  return {
+    name: settings.siteName,
+    themeColor: settings.themeColor,
+    appleBackground: settings.appleBackground,
+  };
 }
