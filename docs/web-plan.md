@@ -54,11 +54,12 @@ Pull requests that only change `web/`, `docs/` or Markdown files skip the Rust c
 
 ## Order of work
 
-1. Workspace, shared core, bindings, CI paths (done: the validator is the first piece in the core).
-2. The page's foundation: build setup, worker, message catalogue, a first working screen (open an `.ico`, validate it).
-3. Move the conversion pipeline into the core, with structured errors; byte-identical output to the command line is checked by a test.
-4. Convert: drop an image, get an `.ico`; then preview, settings, crop.
-5. Inspect, merge, extract; ZIP; presets; the favicon package.
-6. Deployment to github.io, offline use.
+1. Workspace, shared core, bindings, CI paths. (Done.)
+2. The page's foundation: build setup, worker, message catalogue, a first working screen. (Done: open an `.ico`, validate it.)
+3. The conversion pipeline in the core, byte-identical to the command line. (Done: the command line itself runs on it, so there is one implementation. Errors are still English sentences; codes for translation come when the first translation does.)
+4. Convert: drop or paste a picture, live preview of every size on four backgrounds, settings (sizes, margin, rounded corners, fit, black and white, trim, background removal), download as `.ico` or `.icns`. (Done in its first form.)
+5. Features, until every one of them works and has been checked (the list above, in smaller steps): crop frame, before/after, pixel inspector, presets, inspect/merge/extract, ZIP, the favicon package.
+6. Design: only once all features work. The page is looked at and reworked until it looks the way its owner wants.
+7. Deployment to github.io, offline use: only once the design is approved. Until then the page is developed and tried locally (`npm run dev`) and nothing is published.
 
 SVG text is an open question: the browser has no system fonts for the engine's SVG renderer. Either a font is bundled (bigger download) or SVGs are drawn by the browser's own renderer; this is decided after measuring.
