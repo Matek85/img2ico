@@ -12,7 +12,21 @@
     pixelAt,
   } from '../lib/pixels';
 
-  let { bytes, sizes }: { bytes: Uint8Array; sizes: number[] } = $props();
+  let {
+    bytes,
+    sizes,
+    picking = false,
+    onuse,
+    oncancel,
+  }: {
+    bytes: Uint8Array;
+    sizes: number[];
+    /** A click takes the pixel's color (for the background removal) instead of only looking at it. */
+    picking?: boolean;
+    onuse?: (color: string) => void;
+    oncancel?: () => void;
+  } = $props();
+  let transparentNote = $state(false);
 
   // Which image is looked at: the largest until another is chosen.
   let picked = $state<number | null>(null);
@@ -72,10 +86,27 @@
     return cellAt(event.clientX - box.left, event.clientY - box.top, zoom, pixels.width, pixels.height);
   }
 
+  // While picking, a pixel with a color is taken at once; a transparent one is said so.
+  function take(cell: { x: number; y: number } | null) {
+    if (!picking || !cell || !pixels) return;
+    const pixel = pixelAt(pixels.rgba, pixels.width, cell.x, cell.y);
+    if (pixel.a === 0) {
+      transparentNote = true;
+    } else {
+      transparentNote = false;
+      onuse?.(hexOf(pixel));
+    }
+  }
+
   function key(event: KeyboardEvent) {
     if (!pixels) return;
     if (event.key === 'Escape') {
+      if (picking) oncancel?.();
       pinned = null;
+      return;
+    }
+    if (event.key === 'Enter' && pinned) {
+      take(pinned);
       return;
     }
     const start = pinned ?? hover ?? { x: Math.floor(pixels.width / 2), y: Math.floor(pixels.height / 2) };
@@ -91,7 +122,13 @@
   }
 </script>
 
-<div class="inspector">
+<div class="inspector" class:picking>
+  {#if picking}
+    <div class="pickbar" role="status">
+      <p>{transparentNote ? t('picker.clear') : t('picker.hint')}</p>
+      <button type="button" class="outline" onclick={() => oncancel?.()}>{t('picker.cancel')}</button>
+    </div>
+  {/if}
   <div class="tools">
     <label class="select">
       <span>{t('pixels.image')}</span>
@@ -131,7 +168,10 @@
         style="width:{pixels.width * zoom}px;height:{pixels.height * zoom}px"
         onpointermove={(e) => (hover = pointed(e))}
         onpointerleave={() => (hover = null)}
-        onclick={(e) => (pinned = pointed(e as unknown as PointerEvent))}
+        onclick={(e) => {
+          pinned = pointed(e as unknown as PointerEvent);
+          take(pinned);
+        }}
         onkeydown={key}
       >
         <canvas bind:this={canvas} style="width:100%;height:100%"></canvas>

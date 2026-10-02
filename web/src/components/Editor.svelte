@@ -13,7 +13,6 @@
   import { t } from '../i18n';
   import Compare from './Compare.svelte';
   import PixelInspector from './PixelInspector.svelte';
-  import ColorPicker from './ColorPicker.svelte';
   import CropTool from './CropTool.svelte';
   import {
     ASPECTS,
@@ -90,7 +89,8 @@
   let cropOn = $state(false);
   // The detailed controls are folded away until asked for.
   let advanced = $state(false);
-  // Picking the color to remove from the picture itself.
+  // Picking the color to remove: the pixel view is shown, without the background
+  // removal (or the color would already be gone), and a click on a pixel takes it.
   let picking = $state(false);
   let cropAspect = $state<AspectChoice>('free');
   let frame = $state<Rect>({ x: 0, y: 0, width: 1, height: 1 });
@@ -137,7 +137,11 @@
     if (!opened || running) return;
     // The website package has a favicon.ico of fixed sizes, and an Apple icon.
     const favicon = settings.format === 'favicon' && !batch;
-    const options = toEngineOptions(favicon ? { ...settings, sizes: FAVICON_SIZES } : settings);
+    const options = toEngineOptions({
+      ...settings,
+      ...(favicon ? { sizes: FAVICON_SIZES } : {}),
+      removeBackground: settings.removeBackground && !picking,
+    });
     const apple = settings.appleBackground;
     if (!favicon && settings.sizes.length === 0) {
       converted = undefined;
@@ -211,6 +215,26 @@
   }
 
   let isDefault = $derived(JSON.stringify($state.snapshot(settings)) === JSON.stringify(defaultSettings()));
+
+  function startPicking() {
+    picking = true;
+    view = 'pixels';
+    document.getElementById('preview-title')?.scrollIntoView({ block: 'nearest' });
+  }
+
+  // A click on a pixel: its color is the one to remove, and the removal is on.
+  function usePicked(color: string) {
+    settings.backgroundColor = color;
+    settings.backgroundAuto = false;
+    settings.removeBackground = true;
+    picking = false;
+    view = 'icon';
+  }
+
+  // Leaving the pixel view ends the picking.
+  $effect(() => {
+    if (view !== 'pixels') picking = false;
+  });
 
   function chooseAspect(choice: AspectChoice) {
     cropAspect = choice;
@@ -342,7 +366,13 @@
         {#if settings.sizes.length === 0}
           <p class="note">{t('editor.no_sizes')}</p>
         {:else if converted && tiles.length > 0 && view === 'pixels'}
-          <PixelInspector bytes={converted.bytes} sizes={tiles.map((tile) => tile.size)} />
+          <PixelInspector
+            bytes={converted.bytes}
+            sizes={tiles.map((tile) => tile.size)}
+            {picking}
+            onuse={usePicked}
+            oncancel={() => (picking = false)}
+          />
         {:else if largest && view === 'compare' && picture}
           <Compare before={originalUrl} after={largest.url} {picture} crop={settings.crop} />
         {:else if largest}
@@ -519,24 +549,13 @@
               <span>{t('controls.bg_color')}</span>
               <input type="color" bind:value={settings.backgroundColor} />
             </label>
-            <div class="pick-row">
-              <button type="button" class="outline" onclick={() => (picking = !picking)} aria-expanded={picking}>
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m2 22 1-1h3l9-9"/><path d="M3 21v-3l9-9"/><path d="m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3z"/></svg>
-                {t('picker.open')}
-              </button>
-            </div>
-            {#if picking}
-              <ColorPicker
-                src={originalUrl}
-                size={{ width: opened.width, height: opened.height }}
-                onpick={(color) => {
-                  settings.backgroundColor = color;
-                  picking = false;
-                }}
-                oncancel={() => (picking = false)}
-              />
-            {/if}
           {/if}
+          <div class="pick-row">
+            <button type="button" class="outline" onclick={startPicking} disabled={settings.sizes.length === 0}>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m2 22 1-1h3l9-9"/><path d="M3 21v-3l9-9"/><path d="m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3z"/></svg>
+              {t('picker.open')}
+            </button>
+          </div>
           <label class="slider">
             <span>{t('controls.tolerance')}</span>
             <input type="range" min="0" max="100" bind:value={settings.tolerance} />
