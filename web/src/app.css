@@ -218,6 +218,12 @@ a {
   gap: 1.5rem;
 }
 
+.topbar nav > a {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
 .topbar nav a,
 .menu summary {
   color: var(--text);

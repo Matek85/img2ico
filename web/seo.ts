@@ -6,7 +6,7 @@
 // preview picture, sitemap) exist only when the build is told where the page
 // will live: SITE_URL=https://example.org/img2ico/ npm run build
 import type { Plugin } from 'vite';
-import { siApple, siLinux } from 'simple-icons';
+import { siApple, siGithub, siLinux } from 'simple-icons';
 import { en } from './src/i18n/en.ts';
 
 type Messages = Record<string, string>;
@@ -114,7 +114,7 @@ export function artHtml(): string {
         </div>`;
 }
 
-// The logos of the systems: Apple and Tux from Simple Icons (CC0), the four
+// The logos of the systems (and GitHub): Apple, Tux and GitHub from Simple Icons (CC0), the four
 // panes of Windows drawn here (Simple Icons has no Windows logo).
 const WINDOWS_LOGO = 'M3 3h8.5v8.5H3zM12.5 3H21v8.5h-8.5zM3 12.5h8.5V21H3zM12.5 12.5H21V21h-8.5z';
 
@@ -136,7 +136,7 @@ export function navHtml(m: Messages): string {
               <a class="all" href="${REPOSITORY}/releases/latest">${escapeHtml(m['nav.cli_all'])}</a>
             </div>
           </details>
-          <a href="${REPOSITORY}">${escapeHtml(m['nav.github'])}</a>`;
+          <a href="${REPOSITORY}">${osIcon(siGithub.path)}${escapeHtml(m['nav.github'])}</a>`;
 }
 
 /** The text under the converter. */
