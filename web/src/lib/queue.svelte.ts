@@ -1,6 +1,7 @@
 // The queue itself: what was added, kept while the page is open. Nothing leaves
 // the browser, and nothing is kept after it is closed.
 import { outputName } from './batch';
+import { histories } from './history';
 import { iconEntries } from './ico';
 import { moveItem } from './queue';
 import type { Settings } from './settings';
@@ -184,6 +185,7 @@ export const queue = {
   remove(id: number) {
     const gone = items.find((item) => item.id === id);
     if (gone) release(gone);
+    histories.drop(id);
     items = items.filter((item) => item.id !== id);
   },
 
@@ -197,6 +199,7 @@ export const queue = {
 
   clear() {
     items.forEach(release);
+    histories.clear();
     items = [];
     problems = [];
   },

@@ -3933,3 +3933,87 @@ body.wide .ai-note {
   margin: 1rem 0 0;
   text-align: center;
 }
+
+/* The list of changes under the editor: what each step changed, and the picture as it was when pointed at. */
+.changes {
+  margin-top: 1.25rem;
+}
+
+.changes-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.change-list {
+  flex: 1 1 18rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  max-height: 14rem;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+button.change {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.4rem 0.7rem;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+button.change:hover,
+button.change:focus-visible {
+  border-color: var(--accent);
+}
+
+button.change.now {
+  background: var(--tint);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+/* Steps that were undone and can be brought back. */
+button.change.undone {
+  color: var(--muted);
+  font-style: italic;
+}
+
+button.change .badge {
+  color: var(--accent);
+  font-size: 0.85rem;
+}
+
+.past {
+  display: grid;
+  place-items: center;
+  flex: 0 0 9rem;
+  height: 9rem;
+  padding: 0.5rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  text-align: center;
+}
+
+.past.empty {
+  visibility: hidden;
+}
+
+.past img {
+  max-width: 100%;
+  max-height: 100%;
+  image-rendering: auto;
+}

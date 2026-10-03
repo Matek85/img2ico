@@ -47,7 +47,8 @@
   import { type Preset, STYLE_PRESETS, USE_PRESETS, isActive, withPreset } from '../lib/presets';
   import { stemOf } from '../lib/batch';
   import { ICNS_TYPE, ICO_TYPE, ZIP_TYPE, saveBytes } from '../lib/download';
-  import { History } from '../lib/history';
+  import { History, histories } from '../lib/history';
+  import { changedGroups } from '../lib/changes';
   import { type Imported, MAX_FILE_BYTES, type Problem, SettingsFileError, exportSettings, importSettings } from '../lib/settingsFile';
   import { type QueueItem, queue } from '../lib/queue.svelte';
   import { loadAutoSave, loadSettings, loadSideOpen, saveAutoSave, saveSettings, saveSideOpen } from '../lib/storage';
@@ -333,6 +334,10 @@
     else if (originalUrl) URL.revokeObjectURL(originalUrl);
     if (appleUrl) URL.revokeObjectURL(appleUrl);
     revoke(tiles);
+    for (const url of pastPictures.values()) URL.revokeObjectURL(url);
+    // The timeline stays with the icon of the queue (an icon made from here too).
+    if (opened) settleHistory();
+    if (editId !== undefined) histories.keep(editId, history);
     closePicture().catch(() => {});
   });
 
@@ -471,26 +476,38 @@
   // Every change of the settings (the crop frame, the turn and the mirror included) can be taken back. A run of
   // small changes - a slider dragged along, a frame pulled - is one: the state before it is kept once the settings
   // have been still for a moment. The frame of an animated GIF is left out; it moves by itself while it plays.
-  const history = new History<Settings>(100);
-  let committed: Settings | null = null;
+  // The timeline belongs to the icon of the queue this picture is: leaving it and coming back finds it again.
+  // svelte-ignore state_referenced_locally
+  const history = (editing && histories.take<Settings>(editing.id)) || new History<Settings>(100);
+  let taken = false;
   let settleTimer: ReturnType<typeof setTimeout> | undefined;
   let canUndo = $state(false);
   let canRedo = $state(false);
+  // The timeline as the list shows it: the states, oldest first, and the one the person is at.
+  let timeline = $state<{ states: Settings[]; at: number }>({ states: [], at: 0 });
   const stateKey = (state: Settings) => JSON.stringify({ ...state, gifFrame: 0 });
   const shownKeys = () => {
-    canUndo = history.canUndo || stateKey(committed ?? settings) !== stateKey($state.snapshot(settings) as Settings);
+    const pending = history.started && stateKey(history.current) !== stateKey($state.snapshot(settings) as Settings);
+    canUndo = history.canUndo || pending;
     canRedo = history.canRedo;
+    timeline = { states: history.all, at: history.index };
   };
 
   $effect(() => {
     if (!opened) return;
     const current = $state.snapshot(settings) as Settings;
-    if (committed === null) {
-      committed = current;
+    // A timeline that was kept is only taken up if the icon is still as it was left.
+    if (!taken) {
+      taken = true;
+      if (history.started && stateKey(history.current) !== stateKey(current)) history.start(current);
+    }
+    if (!history.started) {
+      history.start(current);
+      shownKeys();
       return;
     }
     clearTimeout(settleTimer);
-    if (stateKey(current) === stateKey(committed)) {
+    if (stateKey(current) === stateKey(history.current)) {
       shownKeys();
       return;
     }
@@ -498,14 +515,11 @@
     settleTimer = setTimeout(settleHistory, 500);
   });
 
-  /** The settings have changed and are still: the state before is kept for Undo. */
+  /** The settings have changed and are still: the new state is a step of the timeline. */
   function settleHistory() {
     clearTimeout(settleTimer);
     const current = $state.snapshot(settings) as Settings;
-    if (committed !== null && stateKey(current) !== stateKey(committed)) {
-      history.push(committed);
-      committed = current;
-    }
+    if (history.started && stateKey(current) !== stateKey(history.current)) history.record(current);
     shownKeys();
   }
 
@@ -513,7 +527,6 @@
   function restore(state: Settings) {
     if (!opened) return;
     const next = { ...state, gifFrame: settings.gifFrame };
-    committed = next;
     const turned = turnedSize(opened, next.rotate);
     settings = next;
     frame = next.crop ? { ...next.crop } : fullRect(turned);
@@ -523,15 +536,76 @@
 
   function undo() {
     settleHistory();
-    const previous = committed ? history.undo(committed) : null;
+    const previous = history.undo();
     if (previous) restore(previous);
   }
 
   function redo() {
     settleHistory();
-    const next = committed ? history.redo(committed) : null;
+    const next = history.redo();
     if (next) restore(next);
   }
+
+  /** Goes to any point of the timeline at once. */
+  function goTo(index: number) {
+    settleHistory();
+    const state = history.goTo(index);
+    if (state) restore(state);
+  }
+
+  // The list of changes: what each step changed, newest first.
+  let changeList = $derived(
+    timeline.states
+      .map((state, index) => {
+        const groups = index === 0 ? [] : changedGroups(timeline.states[index - 1], state);
+        const names = groups.map((group) => t(`history.what.${group}`));
+        const shown = names.slice(0, 3).join(', ');
+        const label = index === 0 ? t('history.start') : names.length > 3 ? `${shown} ${t('history.more', { count: names.length - 3 })}` : shown;
+        return { index, label };
+      })
+      .reverse(),
+  );
+
+  // The picture as it was at a step, made small on request (the engine has the open picture); kept for the next time.
+  const pastPictures = new Map<string, string>();
+  let lookedAt = $state<number | null>(null);
+  let pastUrl = $state('');
+  let hoverTimer: ReturnType<typeof setTimeout> | undefined;
+  async function showPast(index: number) {
+    lookedAt = index;
+    clearTimeout(hoverTimer);
+    const state = timeline.states[index];
+    if (!state) return;
+    const key = stateKey(state);
+    const known = pastPictures.get(key);
+    if (known) {
+      pastUrl = known;
+      return;
+    }
+    pastUrl = '';
+    hoverTimer = setTimeout(async () => {
+      try {
+        const options = toEngineOptions({ ...state, sizes: [128] }, 'png');
+        const result = await convert(options);
+        const url = URL.createObjectURL(new Blob([result.bytes as BlobPart], { type: 'image/png' }));
+        pastPictures.set(key, url);
+        if (lookedAt === index) pastUrl = url;
+      } catch {
+        // No preview is better than a failure in a list that only looks back.
+      }
+    }, 120);
+  }
+  function hidePast() {
+    lookedAt = null;
+    clearTimeout(hoverTimer);
+    pastUrl = '';
+  }
+  // A different frame of a GIF is a different picture: what was made before no longer shows it.
+  $effect(() => {
+    void pictureVersion;
+    for (const url of pastPictures.values()) URL.revokeObjectURL(url);
+    pastPictures.clear();
+  });
 
   const modifier = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : `${t('keys.ctrl')}+`;
 
@@ -1501,6 +1575,45 @@
     </aside>
     {/if}
   </div>
+
+  {#if opened && timeline.states.length > 1}
+    <section class="changes" aria-labelledby="changes-title">
+      <h2 id="changes-title">{t('history.title')}</h2>
+      <p class="hint">{t('history.hint')}</p>
+      <div class="changes-body">
+        <ol class="change-list">
+          {#each changeList as entry (entry.index)}
+            <li>
+              <button
+                type="button"
+                class="change"
+                class:now={entry.index === timeline.at}
+                class:undone={entry.index > timeline.at}
+                aria-current={entry.index === timeline.at ? 'step' : undefined}
+                onclick={() => goTo(entry.index)}
+                onpointerenter={() => showPast(entry.index)}
+                onpointerleave={hidePast}
+                onfocus={() => showPast(entry.index)}
+                onblur={hidePast}
+              >
+                <span class="step-label">{entry.label}</span>
+                {#if entry.index === timeline.at}<span class="badge">{t('history.current')}</span>{/if}
+              </button>
+            </li>
+          {/each}
+        </ol>
+        <div class="past" class:empty={lookedAt === null}>
+          {#if lookedAt !== null}
+            {#if pastUrl}
+              <img src={pastUrl} alt={t('history.preview_alt')} />
+            {:else}
+              <span class="hint">{t('history.loading')}</span>
+            {/if}
+          {/if}
+        </div>
+      </div>
+    </section>
+  {/if}
 
   </div>
   <dialog class="site-dialog" bind:this={siteDialog} aria-labelledby="site-title" onclick={(e) => e.target === siteDialog && siteDialog?.close()}>
