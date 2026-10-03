@@ -2,9 +2,13 @@
   import { onMount } from 'svelte';
   import Dropzone from './components/Dropzone.svelte';
   import Editor from './components/Editor.svelte';
+  import Icon from './components/Icon.svelte';
   import IconFile from './components/IconFile.svelte';
   import Queue from './components/Queue.svelte';
+  import ShortcutsDialog from './components/ShortcutsDialog.svelte';
+  import { keys } from './lib/keys.svelte';
   import { type QueueItem, queue } from './lib/queue.svelte';
+  import { isTyping, shortcutOf } from './lib/shortcuts';
   import { type Settings, toEngineOptions } from './lib/settings';
   import { loadSettings } from './lib/storage';
   import {
@@ -21,6 +25,7 @@
   import { type BatchItem, MAX_BATCH, baseName, isIconName, isPictureName, isZipName } from './lib/batch';
   import { explain } from './lib/messages';
   import { shortName } from './lib/names';
+  import { toggleTheme } from './theme';
 
   type View =
     | { kind: 'start' }
@@ -226,13 +231,31 @@
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
   });
+
+  // The shortcuts that need no picture work here too (the editor has its own handler): light or dark, and the list of keys.
+  let shortcutsDialog = $state<ShortcutsDialog>();
+
+  function onKeydown(event: KeyboardEvent) {
+    if (view.kind === 'editor' || !keys.on || event.defaultPrevented || isTyping(event.target)) return;
+    if (document.querySelector('dialog[open]')) return;
+    const id = shortcutOf(event);
+    if (id === 'theme') toggleTheme();
+    else if (id === 'help') shortcutsDialog?.show();
+    else return;
+    event.preventDefault();
+  }
 </script>
+
+<svelte:window onkeydown={onKeydown} />
 
 {#if view.kind === 'start'}
   <Dropzone onfiles={choose} />
   {#if problem}<p class="failure" role="alert">{problem}</p>{/if}
   {#if queue.items.length > 0}<p class="hint next">{t('queue.next')}</p>{/if}
   <Queue onopen={openFromQueue} onpicture={chooseNext} />
+  <p class="start-keys">
+    <button type="button" class="quiet" onclick={() => shortcutsDialog?.show()}><Icon name="keyboard" size={16} />{t('keys.open')}</button>
+  </p>
 {:else if view.kind === 'editor'}
   {#key view}
     <Editor file={view.file} editing={view.editing} onopenitem={openFromQueue} onnext={chooseNext} onback={back} />
@@ -250,4 +273,8 @@
     <IconFile file={view.file} onback={back} onpicture={chooseNext} />
   {/key}
   <Queue onopen={openFromQueue} onpicture={chooseNext} />
+{/if}
+
+{#if view.kind !== 'editor'}
+  <ShortcutsDialog bind:this={shortcutsDialog} />
 {/if}
