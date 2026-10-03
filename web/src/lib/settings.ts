@@ -23,7 +23,9 @@ export interface Settings {
   fit: Fit;
   grayscale: boolean;
   trim: boolean;
-  /** The part of the picture to use, in its pixels; `null` is all of it. */
+  /** The picture is turned clockwise by this many degrees (0 to 359) before it is cropped. */
+  rotate: number;
+  /** The part of the (turned) picture to use, in its pixels; `null` is all of it. */
   crop: Rect | null;
   /** The frame of an animated GIF the icon is made from, counted from 0. */
   gifFrame: number;
@@ -50,6 +52,7 @@ export function defaultSettings(): Settings {
     fit: 'contain',
     grayscale: false,
     trim: false,
+    rotate: 0,
     crop: null,
     gifFrame: 0,
     removeBackground: false,
@@ -73,6 +76,7 @@ export interface EngineOptions {
   fit?: Fit;
   grayscale?: boolean;
   trim?: boolean;
+  rotate?: number;
   crop?: Rect;
   /** Lay the icon on this color (no transparency). */
   flatten?: string;
@@ -98,6 +102,9 @@ export function toEngineOptions(settings: Settings, format: EngineFormat = 'ico'
     grayscale: settings.grayscale,
     trim: settings.trim,
   };
+  if (settings.rotate) {
+    options.rotate = settings.rotate;
+  }
   if (settings.crop) {
     options.crop = { ...settings.crop };
   }

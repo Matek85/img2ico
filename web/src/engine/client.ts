@@ -40,6 +40,7 @@ type Call =
   | { op: 'gifOpen'; bytes: Uint8Array; name: string }
   | { op: 'gifFrame'; index: number }
   | { op: 'gifSelect'; index: number }
+  | { op: 'rotatedPreview'; degrees: number; maxEdge: number }
   | { op: 'pixels'; bytes: Uint8Array; index: number }
   | { op: 'describe'; bytes: Uint8Array }
   | { op: 'extract'; bytes: Uint8Array; index: number }
@@ -183,6 +184,14 @@ export async function gifFramePng(index: number): Promise<Uint8Array> {
 /** Makes frame `index` (from 0) the open picture, as if it had been opened on its own. */
 export async function selectGifFrame(index: number): Promise<Opened> {
   return field(await call({ op: 'gifSelect', index }), 'opened');
+}
+
+/**
+ * The open picture turned clockwise by `degrees`, as a PNG for the crop view: at most `maxEdge`
+ * pixels on its longer side, but with the canvas of the full-size turn (the page scales it).
+ */
+export async function rotatedPreview(degrees: number, maxEdge: number): Promise<Uint8Array> {
+  return field(await call({ op: 'rotatedPreview', degrees, maxEdge }), 'data');
 }
 
 /** Lets the engine forget the open picture. */

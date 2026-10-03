@@ -1,6 +1,6 @@
 // Remembering the settings between visits. They live in this browser only
 // (localStorage) and are never sent anywhere. The crop frame is not kept: it
-// belongs to one picture. Reading is defensive: whatever is stored is checked
+// and the turn belong to one picture. Reading is defensive: whatever is stored is checked
 // and anything unusable falls back to the defaults, so a damaged or outdated
 // entry can never break the page.
 
@@ -88,6 +88,7 @@ export function sanitize(raw: unknown): Settings {
     fit: data.fit === 'cover' ? 'cover' : 'contain',
     grayscale: data.grayscale === true,
     trim: data.trim === true,
+    rotate: 0,
     crop: null,
     gifFrame: 0,
     removeBackground: data.removeBackground === true,
@@ -115,7 +116,7 @@ export function loadSettings(): Settings {
 /** Remembers the settings; does nothing where storage is not available. */
 export function saveSettings(settings: Settings): void {
   try {
-    localStorage.setItem(KEY, JSON.stringify({ ...settings, crop: null, gifFrame: 0 }));
+    localStorage.setItem(KEY, JSON.stringify({ ...settings, rotate: 0, crop: null, gifFrame: 0 }));
   } catch {
     // Private window, storage full or blocked: the page works without it.
   }

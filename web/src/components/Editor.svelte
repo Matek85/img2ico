@@ -10,6 +10,7 @@
     openGif,
     openPicture,
     pngZip,
+    rotatedPreview,
     selectGifFrame,
   } from '../engine/client';
   import type { Converted, GifInfo, Opened } from '../engine/protocol';
@@ -34,8 +35,11 @@
     rotateRect,
     clampRect,
     fitAspect,
+    followTurn,
     fullRect,
     isFull,
+    normalizeTurn,
+    turnedSize,
   } from '../lib/crop';
   import { type IconEntry, iconEntries } from '../lib/ico';
   import { type Preset, STYLE_PRESETS, USE_PRESETS, isActive, withPreset } from '../lib/presets';
@@ -169,7 +173,8 @@
   let picking = $state(false);
   let cropAspect = $state<AspectChoice>('free');
   let frame = $state<Rect>({ x: 0, y: 0, width: 1, height: 1 });
-  let picture = $derived(opened ? { width: opened.width, height: opened.height } : undefined);
+  // The picture the frame is placed on: the open picture, turned.
+  let picture = $derived(opened ? turnedSize({ width: opened.width, height: opened.height }, settings.rotate) : undefined);
 
   $effect(() => {
     settings.crop = picture && cropOn && !isFull(frame, picture) ? { ...frame } : null;
@@ -221,7 +226,7 @@
       const forGif = isGif ? new Uint8Array(bytes) : undefined;
       opened = await openPicture(bytes, file.name, startFrame + 1);
       // An icon from the queue comes back with its crop frame.
-      frame = startCrop ? { ...startCrop } : fullRect(opened);
+      frame = startCrop ? { ...startCrop } : fullRect(turnedSize(opened, settings.rotate));
       cropOn = startCrop !== null;
       if (forGif) {
         try {
@@ -245,7 +250,50 @@
     }
   });
 
+  // The turned picture, as the engine makes it, for the crop view and the comparison (a small copy:
+  // the page scales it to the size of the full turn).
+  let turnedUrl = $state('');
+  let turnedFor = $state(0);
+  let shownOriginal = $derived(settings.rotate === 0 || !turnedUrl ? originalUrl : turnedUrl);
+  $effect(() => {
+    const degrees = settings.rotate;
+    // A different frame of a GIF is a different picture.
+    void pictureVersion;
+    if (!opened || opened.vector || degrees === 0) return;
+    const timer = setTimeout(async () => {
+      try {
+        const png = await rotatedPreview(degrees, 1600);
+        if (degrees !== settings.rotate) return;
+        const url = URL.createObjectURL(new Blob([png as BlobPart], { type: 'image/png' }));
+        if (turnedUrl) URL.revokeObjectURL(turnedUrl);
+        turnedUrl = url;
+        turnedFor = degrees;
+      } catch (error) {
+        convertFailure = explain(error);
+      }
+    }, 60);
+    return () => clearTimeout(timer);
+  });
+
+  // Turns the picture to `degrees`; the crop frame goes with it (the picture turns beneath the frame).
+  function setTurn(degrees: number) {
+    if (!opened || opened.vector || !Number.isFinite(degrees)) return;
+    const next = normalizeTurn(degrees);
+    const delta = next - settings.rotate;
+    if (delta === 0 || !picture) return;
+    const to = turnedSize({ width: opened.width, height: opened.height }, next);
+    let moved = followTurn(frame, picture, to, delta);
+    const ratio = aspectValue(cropAspect);
+    if (ratio !== null) moved = fitAspect(moved, ratio, to);
+    frame = moved;
+    settings.rotate = next;
+  }
+  const turnBy = (delta: number) => setTurn(settings.rotate + delta);
+  // The slider and the number go from -180 to 180: a small turn to the left is -5, not 355.
+  let turnShown = $derived(settings.rotate > 180 ? settings.rotate - 360 : settings.rotate);
+
   onDestroy(() => {
+    if (turnedUrl) URL.revokeObjectURL(turnedUrl);
     if (gif) frameUrls.forEach((url) => URL.revokeObjectURL(url));
     else if (originalUrl) URL.revokeObjectURL(originalUrl);
     if (appleUrl) URL.revokeObjectURL(appleUrl);
@@ -660,6 +708,11 @@
         else turnFrame();
         return;
       }
+      if ((letter === 'z' || letter === 'x') && cropLocked && !opened?.vector) {
+        event.preventDefault();
+        turnBy(letter === 'z' ? -90 : 90);
+        return;
+      }
     }
     const id = shortcutOf(event);
     if (!id) return;
@@ -842,7 +895,7 @@
         {#if settings.sizes.length === 0}
           <p class="note">{t('editor.no_sizes')}</p>
         {:else if masking && view === 'icon' && picture}
-          <CropTool src={originalUrl} size={picture} bind:rect={frame} aspect={aspectValue(cropAspect)} locked={cropLocked} ontogglelock={() => (cropLocked = !cropLocked)} />
+          <CropTool src={shownOriginal} size={picture} bind:rect={frame} aspect={aspectValue(cropAspect)} locked={cropLocked} ontogglelock={() => (cropLocked = !cropLocked)} />
         {:else if converted && tiles.length > 0 && view === 'pixels'}
           <PixelInspector
             bytes={converted.bytes}
@@ -852,7 +905,7 @@
             oncancel={() => (picking = false)}
           />
         {:else if largest && view === 'compare' && picture}
-          <Compare before={originalUrl} after={largest.url} {picture} crop={settings.crop} />
+          <Compare before={shownOriginal} after={largest.url} {picture} crop={settings.crop} />
         {:else if largest}
           <figure class="big">
             <img src={largest.url} alt="" width={largest.size} height={largest.size} />
@@ -893,7 +946,7 @@
           <button
             type="button"
             class="place-button"
-            class:chosen={spot.x === frame.x && spot.y === frame.y}
+            class:chosen={spot.x === frame.x && spot.y === frame.y && !isFull(frame, picture)}
             title={keys.on ? `${name} (${t('keys.numpad')} ${numberOfPlace(h, v)})` : name}
             aria-label={name}
             onclick={() => place(h, v)}
@@ -915,6 +968,47 @@
       </button>
     </div>
     </div>
+    {#if cropLocked && !opened.vector}
+      <div class="turn" role="group" aria-label={t('turn.title')}>
+        <div class="turn-line">
+          <span class="turn-title"><Icon name="rotateRight" size={22} />{t('turn.title')}</span>
+          <input
+            type="range"
+            min="-180"
+            max="180"
+            step="1"
+            value={turnShown}
+            aria-label={t('turn.slider')}
+            oninput={(e) => setTurn(e.currentTarget.valueAsNumber)}
+          />
+          <input
+            type="number"
+            class="turn-number"
+            min="-180"
+            max="180"
+            step="1"
+            value={turnShown}
+            aria-label={t('turn.number')}
+            onchange={(e) => setTurn(e.currentTarget.valueAsNumber)}
+          />
+          <span aria-hidden="true">°</span>
+          <button type="button" class="quiet small icon-button" disabled={settings.rotate === 0} title={t('turn.none')} aria-label={t('turn.none')} onclick={() => setTurn(0)}>
+            <Icon name="close" size={16} />
+          </button>
+        </div>
+        <div class="turn-buttons">
+          <button type="button" class="outline small" title={keys.on ? `${t('turn.left')} (Z)` : t('turn.left')} aria-label={t('turn.left')} onclick={() => turnBy(-90)}>
+            <Icon name="rotateLeft" size={16} />{t('turn.degrees', { degrees: 90 })}
+          </button>
+          <button type="button" class="outline small" title={t('turn.half')} aria-label={t('turn.half')} onclick={() => turnBy(180)}>
+            {t('turn.degrees', { degrees: 180 })}
+          </button>
+          <button type="button" class="outline small" title={keys.on ? `${t('turn.right')} (X)` : t('turn.right')} aria-label={t('turn.right')} onclick={() => turnBy(90)}>
+            <Icon name="rotateRight" size={16} />{t('turn.degrees', { degrees: 90 })}
+          </button>
+        </div>
+      </div>
+    {/if}
     <div class="numbers sides">
       {#each [['x', 'crop.x', 'cropLeft'], ['y', 'crop.y', 'cropTop'], ['width', 'crop.width', 'cropWidth'], ['height', 'crop.height', 'cropHeight']] as [field, label, icon] (field)}
         <label title={t(`${label}_hint`)}>

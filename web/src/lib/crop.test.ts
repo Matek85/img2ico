@@ -6,8 +6,11 @@ import {
   type Rect,
   alignRect,
   aspectValue,
+  followTurn,
   growRect,
+  normalizeTurn,
   rotateRect,
+  turnedSize,
   clampRect,
   dragRect,
   fitAspect,
@@ -190,6 +193,55 @@ describe('zooming the frame', () => {
     const tiny = zoomRect(square, 0.001, 0.5, 0.5, bounds);
     expect(tiny.width).toBeGreaterThanOrEqual(4);
     expect(tiny.height).toBeGreaterThanOrEqual(4);
+  });
+});
+
+describe('turnedSize', () => {
+  it('swaps the sides for a quarter turn and grows the canvas for any other turn', () => {
+    expect(turnedSize({ width: 200, height: 100 }, 0)).toEqual({ width: 200, height: 100 });
+    expect(turnedSize({ width: 200, height: 100 }, 180)).toEqual({ width: 200, height: 100 });
+    expect(turnedSize({ width: 200, height: 100 }, 90)).toEqual({ width: 100, height: 200 });
+    expect(turnedSize({ width: 200, height: 100 }, -90)).toEqual({ width: 100, height: 200 });
+    expect(turnedSize({ width: 100, height: 100 }, 45)).toEqual({ width: 142, height: 142 });
+  });
+
+  it('gives the numbers the engine gives (see rotated_size in crates/core/src/rotate.rs)', () => {
+    expect(turnedSize({ width: 100, height: 100 }, 1)).toEqual({ width: 102, height: 102 });
+    expect(turnedSize({ width: 7000, height: 5000 }, 30)).toEqual({ width: 8563, height: 7831 });
+  });
+});
+
+describe('normalizeTurn', () => {
+  it('is 0 to 359', () => {
+    expect([-90, 360, 450, -1, 0, 359.6].map(normalizeTurn)).toEqual([270, 0, 90, 359, 0, 0]);
+  });
+});
+
+describe('followTurn', () => {
+  const picture = { width: 1000, height: 600 };
+
+  it('makes a frame around the whole picture the whole turned picture', () => {
+    expect(followTurn({ x: 0, y: 0, ...picture }, picture, { width: 600, height: 1000 }, 90)).toEqual({ x: 0, y: 0, width: 600, height: 1000 });
+  });
+
+  it('keeps a frame in the middle in the middle, with its size', () => {
+    const frame = { x: 400, y: 250, width: 200, height: 100 };
+    expect(followTurn(frame, picture, { width: 600, height: 1000 }, 90)).toEqual({ x: 200, y: 450, width: 200, height: 100 });
+  });
+
+  it('moves a frame to the right of the middle to below it after a quarter turn clockwise', () => {
+    const frame = { x: 700, y: 250, width: 200, height: 100 };
+    const moved = followTurn(frame, picture, { width: 600, height: 1000 }, 90);
+    // Its middle was 300 right of the picture's middle; now it is 300 below it.
+    expect(moved.x + moved.width / 2).toBe(300);
+    expect(moved.y + moved.height / 2).toBe(800);
+  });
+
+  it('makes a frame that no longer fits smaller, in the same shape', () => {
+    const frame = { x: 100, y: 50, width: 800, height: 400 };
+    const moved = followTurn(frame, picture, { width: 600, height: 1000 }, 90);
+    expect(moved.width).toBe(600);
+    expect(moved.height).toBe(300);
   });
 });
 
