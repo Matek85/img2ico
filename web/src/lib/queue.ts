@@ -13,6 +13,19 @@ export function moveItem<T>(list: readonly T[], index: number, delta: number): T
   return copy;
 }
 
+/**
+ * Where a row dragged to the height `y` would be dropped: the number of rows whose middle is above `y`
+ * (0 is before the first row, `middles.length` after the last).
+ */
+export function dropSlot(middles: readonly number[], y: number): number {
+  return middles.filter((middle) => middle < y).length;
+}
+
+/** The place of the dragged row in the list once it is dropped in `slot` (a slot counts the row itself). */
+export function placeAfterDrop(from: number, slot: number): number {
+  return slot > from ? slot - 1 : slot;
+}
+
 /** The sizes of the images, as text: "16, 32, 48". */
 export function sizesText(sizes: readonly number[]): string {
   return sizes.join(', ');

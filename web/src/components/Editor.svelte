@@ -4,6 +4,7 @@
     closePicture,
     convert,
     convertLatest,
+    convertOnce,
     faviconPack,
     faviconSnippet,
     gifFramePng,
@@ -60,6 +61,7 @@
   } from '../lib/settings';
   import { describeMessage, explain } from '../lib/messages';
   import { shortName } from '../lib/names';
+  import { PARTS, type Part, mergeSettings } from '../lib/applyAll';
   import { keys } from '../lib/keys.svelte';
   import { type ShortcutId, isTyping, shortcutOf, withKey } from '../lib/shortcuts';
   import { toggleTheme } from '../theme';
@@ -752,6 +754,47 @@
     runShortcut(id);
   }
 
+  // --- Using the settings of this icon for the others of the queue ------------------------------------------
+  let applyDialog = $state<HTMLDialogElement>();
+  let applyParts = $state<Part[]>([...PARTS]);
+  let applying = $state<{ done: number; total: number; name: string } | null>(null);
+  let applyFailures = $state<string[]>([]);
+  let applyDone = $state(-1);
+  // The other icons made from pictures (an .ico file added as it is has no picture to make again).
+  let others = $derived(queue.items.filter((item) => item.kind === 'picture' && item.settings && item.id !== editId));
+
+  function openApply() {
+    applyFailures = [];
+    applyDone = -1;
+    applyDialog?.showModal();
+  }
+
+  async function applyToOthers() {
+    const targets = [...others];
+    const chosen = [...applyParts];
+    const source = $state.snapshot(settings) as Settings;
+    applyFailures = [];
+    applyDone = -1;
+    let updated = 0;
+    for (const [at, item] of targets.entries()) {
+      applying = { done: at, total: targets.length, name: item.fileName };
+      try {
+        const merged = mergeSettings(item.settings as Settings, source, chosen);
+        const format = merged.format === 'icns' ? 'icns' : 'ico';
+        const bytes = new Uint8Array(await item.file.arrayBuffer());
+        const jobs = [toEngineOptions(merged, 'ico'), ...(format === 'icns' ? [toEngineOptions(merged, 'icns')] : [])];
+        const made = await convertOnce(bytes, item.file.name, merged.gifFrame + 1, jobs);
+        updated += 1;
+        // The last change shows the queue; the others change quietly.
+        queue.update(item.id, { file: item.file, settings: merged, format, bytes: made[format === 'icns' ? 1 : 0].bytes, preview: made[0].bytes }, at === targets.length - 1);
+      } catch (error) {
+        applyFailures = [...applyFailures, `${item.fileName}: ${explain(error)}`];
+      }
+    }
+    applying = null;
+    applyDone = updated;
+  }
+
   // The largest image is shown big; the others are shown at their real size.
   let largest = $derived(tiles.length > 0 ? tiles[tiles.length - 1] : undefined);
   let smaller = $derived(tiles.slice(0, -1));
@@ -800,6 +843,9 @@
         <input type="checkbox" bind:checked={autoSave} onchange={() => saveAutoSave(autoSave)} />
         {t('queue.autosave')}
       </label>
+      <button type="button" class="quiet small" disabled={others.length === 0} title={others.length === 0 ? t('queue.apply_none') : t('queue.apply_hint')} onclick={openApply}>
+        <Icon name="layers" size={16} />{t('queue.apply')}
+      </button>
       <span class="save-state" class:pending={dirty || saving}>
         {dirty || saving ? (autoSave ? t('queue.saving') : t('queue.unsaved')) : t('queue.saved')}
       </span>
@@ -1289,6 +1335,32 @@
       </div>
     <div class="dialog-actions">
       <button type="button" class="primary" onclick={() => siteDialog?.close()}><Icon name="check" />{t('site.done')}</button>
+    </div>
+  </dialog>
+  <dialog class="site-dialog apply-dialog" bind:this={applyDialog} aria-labelledby="apply-title" onclick={(e) => e.target === applyDialog && !applying && applyDialog?.close()}>
+    <h3 id="apply-title"><Icon name="layers" />{t('queue.apply_title')}</h3>
+    <p class="hint">{t('queue.apply_intro')}</p>
+    <fieldset class="apply-parts" disabled={applying !== null}>
+      {#each PARTS as part (part)}
+        <label><input type="checkbox" value={part} bind:group={applyParts} /> {t(`queue.apply_${part}`)}</label>
+      {/each}
+    </fieldset>
+    {#if applying}
+      <p class="hint" role="status">{t('batch.working', { done: applying.done + 1, total: applying.total, name: shortName(applying.name) })}</p>
+    {:else if applyDone >= 0}
+      <p class="hint" role="status">{t('queue.apply_done', { count: applyDone })}</p>
+    {/if}
+    {#if applyFailures.length > 0}
+      <div class="findings warn" role="alert">
+        <p>{t('queue.apply_failed')}</p>
+        <ul>{#each applyFailures as failure}<li>{failure}</li>{/each}</ul>
+      </div>
+    {/if}
+    <div class="dialog-actions">
+      <button type="button" class="primary" disabled={applying !== null || applyParts.length === 0 || others.length === 0} onclick={applyToOthers}>
+        <Icon name="queueAdd" />{t('queue.apply_go', { count: others.length })}
+      </button>
+      <button type="button" class="quiet" disabled={applying !== null} onclick={() => applyDialog?.close()}><Icon name="close" />{t('queue.sub_close')}</button>
     </div>
   </dialog>
   <ShortcutsDialog bind:this={shortcutsDialog} />

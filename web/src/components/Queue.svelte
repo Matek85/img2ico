@@ -4,7 +4,7 @@
   import { t } from '../i18n';
   import { ICNS_TYPE, ICO_TYPE, ZIP_TYPE, saveBytes } from '../lib/download';
   import { type QueueItem, queue } from '../lib/queue.svelte';
-  import { sizesText } from '../lib/queue';
+  import { dropSlot, placeAfterDrop, sizesText } from '../lib/queue';
   import { stemOf } from '../lib/batch';
   import Compare from './Compare.svelte';
   import Icon from './Icon.svelte';
@@ -52,6 +52,37 @@
   const BACKDROPS = ['checker', 'light', 'dark', 'gray'] as const;
   let pair = $derived(selected.map((id) => queue.find(id)).filter((item): item is QueueItem => item !== undefined));
   let comparing = $derived(pair.length === 2 ? pair : null);
+
+  // --- Changing the order by dragging a row by its grip (the arrow buttons do the same by keyboard) ---------
+  let listEl = $state<HTMLOListElement>();
+  // The row being dragged (its place in the list) and the slot it would be dropped in.
+  let dragging = $state<{ id: number; from: number; slot: number } | null>(null);
+
+  function startDrag(event: PointerEvent, id: number, from: number) {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    event.preventDefault();
+    // The list keeps the pointer, so the drag goes on even where the pointer leaves it.
+    listEl?.setPointerCapture(event.pointerId);
+    dragging = { id, from, slot: from };
+  }
+
+  function dragMove(event: PointerEvent) {
+    if (!dragging || !listEl) return;
+    const rows = Array.from(listEl.querySelectorAll<HTMLElement>(':scope > li'));
+    const middles = rows.map((row) => {
+      const box = row.getBoundingClientRect();
+      return box.top + box.height / 2;
+    });
+    dragging = { ...dragging, slot: dropSlot(middles, event.clientY) };
+  }
+
+  function dragEnd(event: PointerEvent, drop: boolean) {
+    if (!dragging) return;
+    const { id, from, slot } = dragging;
+    dragging = null;
+    if (listEl?.hasPointerCapture(event.pointerId)) listEl.releasePointerCapture(event.pointerId);
+    if (drop) queue.move(id, placeAfterDrop(from, slot) - from);
+  }
 
   function toggle(id: number) {
     selected = selected.includes(id) ? selected.filter((other) => other !== id) : [...selected.slice(-1), id];
@@ -210,13 +241,37 @@
     });
 </script>
 
+<!-- Escape stops a drag, wherever the keyboard focus is. -->
+<svelte:window onkeydown={(event) => event.key === 'Escape' && dragging && (dragging = null)} />
+
 {#if queue.items.length > 0}
   <section class="queue" class:flash bind:this={root} aria-labelledby="queue-title">
     <h2 id="queue-title">{t('queue.title', { count: queue.items.length })}</h2>
     {#if onopen}<p class="hint">{t('queue.jump_hint')}</p>{/if}
-    <ol class="queue-list">
+    <!-- The drag is an extra for the pointer: the arrow buttons of each row change the order by keyboard. -->
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+    <ol
+      class="queue-list"
+      class:sorting={dragging !== null}
+      bind:this={listEl}
+      onpointermove={dragMove}
+      onpointerup={(event) => dragEnd(event, true)}
+      onpointercancel={(event) => dragEnd(event, false)}
+    >
       {#each queue.items as item, at (item.id)}
-        <li class:active={item.id === activeId} class:fresh={item.id === queue.fresh}>
+        {@const moves = dragging !== null && placeAfterDrop(dragging.from, dragging.slot) !== dragging.from}
+        <li
+          class:active={item.id === activeId}
+          class:fresh={item.id === queue.fresh}
+          class:dragged={dragging?.id === item.id}
+          class:drop-above={moves && dragging?.slot === at}
+          class:drop-below={moves && dragging?.slot === queue.items.length && at === queue.items.length - 1}
+        >
+          {#if queue.items.length > 1}
+            <span class="grip" title={t('queue.drag')} aria-hidden="true" onpointerdown={(event) => startDrag(event, item.id, at)}>
+              <Icon name="grip" size={16} />
+            </span>
+          {/if}
           {#if queue.items.length > 1}
             <input
               type="checkbox"

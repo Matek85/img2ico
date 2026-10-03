@@ -110,6 +110,23 @@ self.onmessage = async (event: MessageEvent<Request>) => {
         response = { id: request.id, ok: true, converted };
         break;
       }
+      case 'convertOnce': {
+        const temporary = Source.open(request.bytes, request.name, request.gifFrame);
+        try {
+          const many = request.jobs.map((options) => {
+            const output = temporary.convert(JSON.stringify(options));
+            const bytes = output.bytes();
+            const converted = { bytes, sizes: Array.from(output.sizes()), warnings: JSON.parse(output.warnings()) as EngineMessage[] };
+            output.free();
+            transfer.push(bytes.buffer);
+            return converted;
+          });
+          response = { id: request.id, ok: true, many };
+        } finally {
+          temporary.free();
+        }
+        break;
+      }
       case 'pixels': {
         const image = icon_pixels(request.bytes, request.index);
         const rgba = image.rgba();
