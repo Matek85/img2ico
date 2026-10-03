@@ -27,10 +27,13 @@ export const helpPtBr: Record<keyof typeof helpEn, string> = {
     'Acima da pré-visualização, escolha o tipo de arquivo: **Windows .ico**, **macOS .icns** ou **ZIP para site**, e clique no botão de download. A barra fica à vista enquanto você rola a página. O botão de arquivo ao lado dele salva cada tamanho como um arquivo PNG, em um ZIP.',
   'help.start.14.h2': 'Criar vários ícones',
   'help.start.15.p':
-    '**Adicionar à fila** guarda o ícone e deixa você escolher a próxima imagem. A fila fica ao lado do editor: mude a ordem, abra qualquer ícone para alterá-lo de novo (as alterações são salvas nele sozinhas), compare dois ícones e baixe todos como um ZIP ou um de cada vez. A fila só existe enquanto a página está aberta.',
+    '**Adicionar à fila** guarda o ícone e deixa você escolher a próxima imagem. A fila fica ao lado do editor: mude a ordem (arraste uma linha pela alça ou use os botões de seta), abra qualquer ícone para alterá-lo de novo (as alterações são salvas nele sozinhas), compare dois ícones e baixe todos como um ZIP ou um de cada vez. Enquanto você edita um ícone da fila, **Usar em todos os ícones** cria de novo os outros ícones com os tamanhos, a aparência ou a remoção do fundo deste. A fila só existe enquanto a página está aberta.',
   'help.start.16.h2': 'Suas configurações são lembradas',
   'help.start.17.p':
     'A página lembra suas últimas configurações neste navegador, para que a próxima imagem comece como você deixou. **Restaurar padrões**, no canto superior direito do editor, volta tudo ao início (pergunta antes). O corte e a rotação pertencem a uma imagem e não são lembrados. [Privacidade](help:privacy) diz o que o navegador guarda.',
+  'help.start.18.h2': 'Idioma e modo claro ou escuro',
+  'help.start.19.p':
+    'O menu **Idioma** na barra superior mostra a página em inglês, alemão, espanhol, português do Brasil ou francês. Na primeira vez, a página escolhe o idioma do seu navegador; sua escolha é lembrada. Algumas traduções foram feitas por uma IA, e a página avisa isso no topo. O círculo meio preenchido ao lado alterna entre o modo claro e o escuro; até você usá-lo, a página segue o seu sistema.',
 
   // ---- As configurações explicadas
   'help.settings.01.h2': 'Início rápido',
@@ -173,6 +176,7 @@ export const helpPtBr: Record<keyof typeof helpEn, string> = {
   'help.privacy.05.ul.3': 'se as configurações estão recolhidas',
   'help.privacy.05.ul.4': 'modo claro ou escuro, se você escolheu um',
   'help.privacy.05.ul.5': 'se os atalhos de teclado estão ligados',
+  'help.privacy.05.ul.6': 'o idioma que você escolheu',
   'help.privacy.06.p':
     'A fila e suas imagens só existem na memória da página enquanto ela está aberta: recarregar ou fechar a página as esvazia.',
   'help.privacy.07.h2': 'O que a página não faz',

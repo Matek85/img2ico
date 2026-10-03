@@ -27,10 +27,13 @@ export const helpFr: Record<keyof typeof helpEn, string> = {
     'Au-dessus de l’aperçu, choisissez le type de fichier : **Windows .ico**, **macOS .icns** ou **ZIP pour site web**, puis cliquez sur le bouton de téléchargement. La barre reste visible pendant que vous faites défiler la page. Le bouton d’archive à côté enregistre chaque taille en fichier PNG, dans un ZIP.',
   'help.start.14.h2': 'Créer plusieurs icônes',
   'help.start.15.p':
-    '**Ajouter à la file d’attente** garde l’icône et vous laisse choisir l’image suivante. La file d’attente se trouve à côté de l’éditeur : changez l’ordre, ouvrez n’importe quelle icône pour la modifier de nouveau (les modifications y sont enregistrées toutes seules), comparez deux icônes et téléchargez-les toutes en un ZIP ou une par une. La file d’attente n’existe que tant que la page est ouverte.',
+    '**Ajouter à la file d’attente** garde l’icône et vous laisse choisir l’image suivante. La file d’attente se trouve à côté de l’éditeur : changez l’ordre (faites glisser une ligne par sa poignée ou utilisez les boutons fléchés), ouvrez n’importe quelle icône pour la modifier de nouveau (les modifications y sont enregistrées toutes seules), comparez deux icônes et téléchargez-les toutes en un ZIP ou une par une. Pendant que vous modifiez une icône de la file d’attente, **Utiliser pour toutes les icônes** recrée les autres icônes avec les tailles, l’aspect ou la suppression de l’arrière-plan de celle-ci. La file d’attente n’existe que tant que la page est ouverte.',
   'help.start.16.h2': 'Vos réglages sont mémorisés',
   'help.start.17.p':
     'La page mémorise vos derniers réglages dans ce navigateur, pour que l’image suivante commence comme vous l’avez laissé. **Rétablir les valeurs par défaut**, en haut à droite de l’éditeur, remet tout (il demande confirmation). Le recadrage et la rotation appartiennent à une image et ne sont pas mémorisés. [Confidentialité](help:privacy) dit ce que le navigateur conserve.',
+  'help.start.18.h2': 'Langue et mode clair ou sombre',
+  'help.start.19.p':
+    'Le menu **Langue** de la barre du haut affiche la page en anglais, allemand, espagnol, portugais du Brésil ou français. La première fois, la page choisit la langue de votre navigateur ; votre choix est mémorisé. Certaines traductions ont été faites par une IA, et la page l’indique en haut. Le cercle à moitié plein à côté bascule entre le mode clair et le mode sombre ; tant que vous ne l’utilisez pas, la page suit votre système.',
 
   // ---- Les réglages expliqués
   'help.settings.01.h2': 'Démarrage rapide',
@@ -173,6 +176,7 @@ export const helpFr: Record<keyof typeof helpEn, string> = {
   'help.privacy.05.ul.3': 'si les réglages sont repliés',
   'help.privacy.05.ul.4': 'le mode clair ou sombre, si vous en avez choisi un',
   'help.privacy.05.ul.5': 'si les raccourcis clavier sont activés',
+  'help.privacy.05.ul.6': 'la langue que vous avez choisie',
   'help.privacy.06.p':
     'La file d’attente et vos images n’existent que dans la mémoire de la page tant qu’elle est ouverte : recharger ou fermer la page les vide.',
   'help.privacy.07.h2': 'Ce que la page ne fait pas',

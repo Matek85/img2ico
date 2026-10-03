@@ -50,7 +50,11 @@ The heavy work is in WebAssembly; the page itself is mostly state: many controls
 
 **First versions:** drag and drop, paste from the clipboard (also screenshots), a warning when the source is too small, a live preview with all sizes, before/after, light/dark/grey/custom backgrounds, Windows- and file-manager-style views at true size, zoom, pixel grid and pixel inspector (colour and alpha), a preview of the actual saved file, an interactive crop frame with aspect-ratio presets, keyboard operation and accessibility, touch, tooltips and help at the control, remembering the last settings, presets (such as Windows app, macOS, favicon), quick size switching, reset for each setting, version and changelog, an example image.
 
-**Later:** a light/dark/automatic theme switch, keyboard shortcuts, undo/redo, rotate and mirror, comparing variants, crop per size, exporting and importing settings as a file, applying settings to several files, custom presets, copying the result to the clipboard.
+**Built since:** the light/dark/automatic theme switch, keyboard shortcuts, turning the picture, using the settings of one icon for the others, sorting the queue by dragging, a working indicator, five languages.
+
+**Later:** undo/redo, mirroring, comparing variants, crop per size, exporting and importing settings as a file, custom presets, copying the result to the clipboard.
+
+**Web only for now:** turning the picture (`rotate` in the engine; the command line has no flag for it yet, it is on the backlog).
 
 **Not planned:** everything that belongs to a desktop program (target folders, opening folders, tray, sounds, shell integration, plugins, tabs, a separate preview window, recent files), a customizable interface, and image-editor features (pixel editor, shapes, lines, watermarks, palettes, guides).
 
@@ -98,13 +102,13 @@ Pull requests that only change `web/`, `docs/` or Markdown files skip the Rust c
 
 1. Workspace, shared core, bindings, CI paths. (Done.)
 2. The page's foundation: build setup, worker, message catalogue, a first working screen. (Done: open an `.ico`, validate it.)
-3. The conversion pipeline in the core, byte-identical to the command line. (Done: the command line itself runs on it, so there is one implementation. Errors are still English sentences; codes for translation come when the first translation does.)
+3. The conversion pipeline in the core, byte-identical to the command line. (Done: the command line itself runs on it, so there is one implementation. The engine's messages carry a code and values, so the page writes them in its own language.)
 4. Convert: drop or paste a picture, live preview of every size on four backgrounds, settings (sizes, margin, rounded corners, fit, black and white, trim, background removal), download as `.ico` or `.icns`. (Done in its first form.)
 5. Features, until every one of them works and has been checked. (Done: crop frame, before/after, pixel inspector, presets and remembered settings, inspect/extract/select of `.ico` files, several pictures or a ZIP at once, PNG ZIPs, the website icon package.)
-6. Design: only once all features work. The page is looked at and reworked until it looks the way its owner wants. (Done in this branch; the first big pull request carries it.)
+6. Design: only once all features work. The page is looked at and reworked until it looks the way its owner wants. (Done.)
 7. Deployment to github.io, offline use: only once the design is approved. Until then the page is developed and tried locally (`npm run dev`) and nothing is published.
 
-After the first big pull request, in this order: the translations (with the page per language and the language switcher), the help pages, the light/dark switch, keyboard shortcuts, codes instead of sentences for engine messages; the API last (see below).
+After the first big pull request, in this order, all done: codes instead of sentences for engine messages, the help pages shell and then their content, the light/dark switch, keyboard shortcuts, the translations (a page per language, the language switcher, detection), the working indicator, the queue (sorting, shared settings), the layout of the start page text. Still open: speed with huge pictures, the API (see below), and then the deployment (step 7), which is the very last step.
 
 **API (a fun feature, last).** A static page cannot receive HTTP requests, so a way to hand it a settings JSON and one encoded picture and get an encoded `.ico` back would be a `window.postMessage` protocol (with an allow-list of origins), a global function for scripts, and, for real programs, the engine as an npm package. Nothing is uploaded in any of them.
 

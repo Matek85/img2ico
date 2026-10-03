@@ -26,10 +26,13 @@ export const helpDe: Record<keyof typeof helpEn, string> = {
     'Wähle über der Vorschau den Dateityp: **Windows .ico**, **macOS .icns** oder **Website-ZIP**, und drücke dann auf den Download-Knopf. Die Leiste bleibt beim Scrollen im Blick. Der Archiv-Knopf daneben speichert jede Größe als PNG-Datei, in einer ZIP-Datei.',
   'help.start.14.h2': 'Mehrere Icons machen',
   'help.start.15.p':
-    '**Zur Warteschlange hinzufügen** behält das Icon und lässt dich das nächste Bild wählen. Die Warteschlange steht neben dem Editor: Ändere die Reihenfolge, öffne jedes Icon, um es erneut zu ändern (die Änderungen werden von selbst darin gespeichert), vergleiche zwei Icons und lade alle als eine ZIP-Datei oder einzeln herunter. Die Warteschlange gibt es nur, solange die Seite offen ist.',
+    '**Zur Warteschlange hinzufügen** behält das Icon und lässt dich das nächste Bild wählen. Die Warteschlange steht neben dem Editor: Ändere die Reihenfolge (ziehe eine Zeile am Griff oder nimm die Pfeilknöpfe), öffne jedes Icon, um es erneut zu ändern (die Änderungen werden von selbst darin gespeichert), vergleiche zwei Icons und lade alle als eine ZIP-Datei oder einzeln herunter. Während du ein Icon der Warteschlange bearbeitest, macht **Für alle Icons verwenden** die anderen Icons noch einmal mit den Größen, dem Aussehen oder dem Entfernen des Hintergrunds dieses Icons. Die Warteschlange gibt es nur, solange die Seite offen ist.',
   'help.start.16.h2': 'Deine Einstellungen werden gemerkt',
   'help.start.17.p':
     'Die Seite merkt sich deine letzten Einstellungen in diesem Browser, damit das nächste Bild so beginnt, wie du aufgehört hast. **Auf Standard zurücksetzen**, oben rechts im Editor, setzt alles zurück (es fragt vorher nach). Zuschnitt und Drehung gehören zu einem Bild und werden nicht gemerkt. [Datenschutz](help:privacy) sagt, was der Browser speichert.',
+  'help.start.18.h2': 'Sprache und heller oder dunkler Modus',
+  'help.start.19.p':
+    'Das Menü **Sprache** in der oberen Leiste zeigt die Seite auf Englisch, Deutsch, Spanisch, brasilianischem Portugiesisch oder Französisch. Beim ersten Besuch wählt die Seite die Sprache deines Browsers; deine Wahl wird gemerkt. Manche Übersetzungen hat eine KI gemacht, und die Seite sagt es oben. Der halb gefüllte Kreis daneben wechselt zwischen hellem und dunklem Modus; bis du ihn benutzt, folgt die Seite deinem System.',
 
   // ---- Die Einstellungen erklärt
   'help.settings.01.h2': 'Schnellstart',
@@ -172,6 +175,7 @@ export const helpDe: Record<keyof typeof helpEn, string> = {
   'help.privacy.05.ul.3': 'ob die Einstellungen eingeklappt sind',
   'help.privacy.05.ul.4': 'heller oder dunkler Modus, falls du einen gewählt hast',
   'help.privacy.05.ul.5': 'ob die Tastenkürzel an sind',
+  'help.privacy.05.ul.6': 'die Sprache, die du gewählt hast',
   'help.privacy.06.p':
     'Die Warteschlange und deine Bilder gibt es nur im Speicher der Seite, solange sie offen ist: Neu laden oder Schließen der Seite leert sie.',
   'help.privacy.07.h2': 'Was die Seite nicht tut',

@@ -27,10 +27,13 @@ export const helpEs: Record<keyof typeof helpEn, string> = {
     'Sobre la vista previa, elige el tipo de archivo: **Windows .ico**, **macOS .icns** o **ZIP para sitio web**, y pulsa el botón de descarga. La barra se mantiene a la vista mientras te desplazas. El botón de archivo junto a él guarda cada tamaño como un archivo PNG, en un ZIP.',
   'help.start.14.h2': 'Crear varios iconos',
   'help.start.15.p':
-    '**Añadir a la cola** guarda el icono y te deja elegir la siguiente imagen. La cola está junto al editor: cambia el orden, abre cualquier icono para cambiarlo otra vez (los cambios se guardan en él solos), compara dos iconos y descárgalos todos como un ZIP o uno a uno. La cola solo existe mientras la página está abierta.',
+    '**Añadir a la cola** guarda el icono y te deja elegir la siguiente imagen. La cola está junto al editor: cambia el orden (arrastra una fila por su asa o usa los botones de flecha), abre cualquier icono para cambiarlo otra vez (los cambios se guardan en él solos), compara dos iconos y descárgalos todos como un ZIP o uno a uno. Mientras editas un icono de la cola, **Usar para todos los iconos** vuelve a crear los demás iconos con los tamaños, el aspecto o la eliminación del fondo de este. La cola solo existe mientras la página está abierta.',
   'help.start.16.h2': 'Tus ajustes se recuerdan',
   'help.start.17.p':
     'La página recuerda tus últimos ajustes en este navegador, para que la siguiente imagen empiece como lo dejaste. **Restablecer valores**, arriba a la derecha del editor, lo devuelve todo (pregunta antes). El recorte y el giro pertenecen a una imagen y no se recuerdan. [Privacidad](help:privacy) explica qué guarda el navegador.',
+  'help.start.18.h2': 'Idioma y modo claro u oscuro',
+  'help.start.19.p':
+    'El menú **Idioma** de la barra superior muestra la página en inglés, alemán, español, portugués de Brasil o francés. La primera vez, la página elige el idioma de tu navegador; tu elección se recuerda. Algunas traducciones las ha hecho una IA, y la página lo indica arriba. El círculo medio lleno de al lado cambia entre el modo claro y el oscuro; hasta que lo uses, la página sigue a tu sistema.',
 
   // ---- Los ajustes explicados
   'help.settings.01.h2': 'Inicio rápido',
@@ -173,6 +176,7 @@ export const helpEs: Record<keyof typeof helpEn, string> = {
   'help.privacy.05.ul.3': 'si los ajustes están plegados',
   'help.privacy.05.ul.4': 'modo claro u oscuro, si elegiste uno',
   'help.privacy.05.ul.5': 'si los atajos de teclado están activados',
+  'help.privacy.05.ul.6': 'el idioma que elegiste',
   'help.privacy.06.p':
     'La cola y tus imágenes solo existen en la memoria de la página mientras está abierta: al recargar o cerrar la página se vacían.',
   'help.privacy.07.h2': 'Lo que la página no hace',
