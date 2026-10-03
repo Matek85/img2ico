@@ -98,6 +98,12 @@ jobs:
   ci:
     name: CI
     needs: check
+    # A called workflow gets at most what its caller grants: the CI workflow asks for these three
+    # read permissions (its "changes" job), so they are spelled out here, or the run does not start.
+    permissions:
+      contents: read
+      pull-requests: read
+      checks: read
     uses: ./.github/workflows/ci.yml
 
   # Builds a native release binary on real Windows, macOS and Linux
