@@ -207,7 +207,14 @@ fn resolve_background(
     let spec = background.spec.trim();
 
     if !spec.eq_ignore_ascii_case("auto") {
-        let color = parse_hex_color(spec).map_err(|e| format!("Invalid {flag} value: {e}"))?;
+        let color = parse_hex_color(spec).map_err(|e| {
+            crate::msg!(
+                "convert.invalid_background_value",
+                "Invalid {flag} value: {e}",
+                flag = flag,
+                e = e
+            )
+        })?;
         return Ok(Some(BackgroundTarget {
             flag,
             color,
@@ -291,8 +298,10 @@ pub fn check_vector_options(options: &Options) -> Result<(), String> {
 
 /// The message for an option an SVG cannot honor.
 pub fn vector_refusal(option: &str) -> String {
-    format!(
-        "{option} does not apply to an SVG: it names pixel positions, and an SVG is drawn anew at every size. Use --chroma-key to remove a background color, --trim to cut the empty margin, or convert to a raster image first."
+    crate::msg!(
+        "convert.vector_option",
+        "{option} does not apply to an SVG: it names pixel positions, and an SVG is drawn anew at every size. Use --chroma-key to remove a background color, --trim to cut the empty margin, or convert to a raster image first.",
+        option = option
     )
 }
 
@@ -360,16 +369,18 @@ fn trim_source(source: &mut RgbaImage, options: &Options, notes: &dyn Notes) {
         }
         Trimmed::NothingToCut => warn(
             options.silent,
-            format_args!(
-                "Warning: {}--trim found no transparent margin to cut - the image has content up to its edges. For a solid-color background, remove it first (--chroma-key).",
-                file_prefix()
+            crate::msg!(
+                "trim.nothing_to_cut",
+                "Warning: {prefix}--trim found no transparent margin to cut - the image has content up to its edges. For a solid-color background, remove it first (--chroma-key).",
+                prefix = file_prefix()
             ),
         ),
         Trimmed::Empty => warn(
             options.silent,
-            format_args!(
-                "Warning: {}--trim found nothing to keep - the image is completely transparent.",
-                file_prefix()
+            crate::msg!(
+                "trim.empty",
+                "Warning: {prefix}--trim found nothing to keep - the image is completely transparent.",
+                prefix = file_prefix()
             ),
         ),
     }
@@ -570,16 +581,26 @@ fn encode(
             let size = sizes
                 .first()
                 .copied()
-                .ok_or_else(|| "A PNG needs a size.".to_string())?;
+                .ok_or_else(|| crate::msg!("convert.png_needs_size", "A PNG needs a size."))?;
             if !(1..=MAX_PNG_SIZE).contains(&size) {
-                return Err(format!(
-                    "A PNG can be 1 to {MAX_PNG_SIZE} pixels wide; {size} is not."
+                return Err(crate::msg!(
+                    "convert.png_size_range",
+                    "A PNG can be 1 to {max} pixels wide; {size} is not.",
+                    max = MAX_PNG_SIZE,
+                    size = size
                 ));
             }
             let mut png = std::io::Cursor::new(Vec::new());
             render(size)
                 .write_to(&mut png, image::ImageFormat::Png)
-                .map_err(|e| format!("Could not encode the {size}x{size} PNG: {e}"))?;
+                .map_err(|e| {
+                    crate::msg!(
+                        "convert.png_encode_failed",
+                        "Could not encode the {size}x{size} PNG: {e}",
+                        size = size,
+                        e = e
+                    )
+                })?;
             Ok(Converted {
                 bytes: png.into_inner(),
                 sizes: vec![size],
@@ -633,9 +654,12 @@ pub fn encode_ico(
             if !fits {
                 warn(
                     silent,
-                    format_args!(
-                        "{}Skipping size {size} (valid range: 1-{MAX_ICO_SIZE}).",
-                        file_prefix()
+                    crate::msg!(
+                        "convert.size_skipped",
+                        "{prefix}Skipping size {size} (valid range: 1-{max}).",
+                        prefix = file_prefix(),
+                        size = size,
+                        max = MAX_ICO_SIZE
                     ),
                 );
             }
@@ -670,8 +694,14 @@ pub fn encode_ico(
         // was required for "transparency as a feature". PNG-in-ICO has been
         // supported by Windows since Vista (2007), so it's safe for
         // practically any use case.
-        ico::IconDirEntry::encode_as_png(&icon_image)
-            .map_err(|e| format!("Could not encode size {size}: {e}"))
+        ico::IconDirEntry::encode_as_png(&icon_image).map_err(|e| {
+            crate::msg!(
+                "convert.size_encode_failed",
+                "Could not encode size {size}: {e}",
+                size = size,
+                e = e
+            )
+        })
     });
 
     for (&size, entry) in valid.iter().zip(entries) {
@@ -689,9 +719,13 @@ pub fn encode_ico(
 
     // Write all the collected resolutions into one buffer.
     let mut buffer = Vec::new();
-    icon_dir
-        .write(&mut buffer)
-        .map_err(|e| format!("Error writing ICO file: {e}"))?;
+    icon_dir.write(&mut buffer).map_err(|e| {
+        crate::msg!(
+            "convert.ico_write_failed",
+            "Error writing ICO file: {e}",
+            e = e
+        )
+    })?;
 
     Ok((buffer, written))
 }

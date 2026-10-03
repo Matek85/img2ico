@@ -70,7 +70,14 @@ pub fn encode_icns(
         let mut png_bytes: Vec<u8> = Vec::new();
         image::codecs::png::PngEncoder::new(&mut png_bytes)
             .write_image(square.as_raw(), size, size, image::ExtendedColorType::Rgba8)
-            .map_err(|e| format!("Could not encode the {size}x{size} icon as PNG: {e}"))?;
+            .map_err(|e| {
+                crate::msg!(
+                    "icns.png_encode_failed",
+                    "Could not encode the {size}x{size} icon as PNG: {e}",
+                    size = size,
+                    e = e
+                )
+            })?;
         Ok::<_, String>(png_bytes)
     });
 
@@ -104,8 +111,14 @@ pub fn is_icns(bytes: &[u8]) -> bool {
 /// messages. Icons the `icns` crate can't decode (some JPEG 2000 entries) are
 /// passed over; it is an error only if none can be decoded.
 pub fn decode_icns(bytes: &[u8], name: &str) -> Result<RgbaImage, String> {
-    let family = icns::IconFamily::read(Cursor::new(bytes))
-        .map_err(|e| format!("Could not read '{name}' as an ICNS file: {e}"))?;
+    let family = icns::IconFamily::read(Cursor::new(bytes)).map_err(|e| {
+        crate::msg!(
+            "icns.unreadable",
+            "Could not read '{name}' as an ICNS file: {e}",
+            name = name,
+            e = e
+        )
+    })?;
 
     let mut best: Option<icns::Image> = None;
     let mut last_error: Option<String> = None;
@@ -125,12 +138,22 @@ pub fn decode_icns(bytes: &[u8], name: &str) -> Result<RgbaImage, String> {
     }
 
     let image = best.ok_or_else(|| match last_error {
-        Some(e) => format!("No icon in '{name}' could be decoded: {e}"),
-        None => format!("'{name}' contains no icons."),
+        Some(e) => crate::msg!(
+            "icns.undecodable",
+            "No icon in '{name}' could be decoded: {e}",
+            name = name,
+            e = e
+        ),
+        None => crate::msg!("icns.empty", "'{name}' contains no icons.", name = name),
     })?;
     let rgba = image.convert_to(icns::PixelFormat::RGBA);
-    RgbaImage::from_raw(rgba.width(), rgba.height(), rgba.data().to_vec())
-        .ok_or_else(|| format!("Unexpected pixel data in '{name}'."))
+    RgbaImage::from_raw(rgba.width(), rgba.height(), rgba.data().to_vec()).ok_or_else(|| {
+        crate::msg!(
+            "icns.pixel_data",
+            "Unexpected pixel data in '{name}'.",
+            name = name
+        )
+    })
 }
 
 #[cfg(test)]

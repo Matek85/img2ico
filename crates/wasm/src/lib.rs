@@ -16,6 +16,7 @@ use img2ico_core::icon::{
     select, unique_file_name, write_dir,
 };
 use img2ico_core::layout::{CropRect, FitMode, Layout, MAX_CORNER_RADIUS};
+use img2ico_core::msg;
 use img2ico_core::source::{
     Artwork, GifFrame, decode_gif_frames_from_bytes, decode_source_bytes,
     extract_gif_frame_from_bytes, is_gif_bytes,
@@ -29,6 +30,39 @@ use wasm_bindgen::prelude::*;
 /// 6300 x 6300 image. A page has far less memory to work with than a program
 /// does, and the conversion keeps a few copies of the picture.
 const WEB_MAX_PIXELS: u64 = 40_000_000;
+
+/// Remembers the code and values of every message, so the page can be handed them.
+#[wasm_bindgen(start)]
+fn start() {
+    img2ico_core::msg::remember_messages();
+}
+
+/// A message as the page gets it: `{ code, params, text }`. `params` hold text, or - where a value
+/// is itself a message (the reason inside "could not read ...") - the same structure again.
+/// A sentence that has no code of its own comes as `{ code: "other", params: {}, text }`.
+fn structured(text: &str) -> Value {
+    let Some(known) = msg::lookup(text) else {
+        return serde_json::json!({ "code": "other", "params": {}, "text": text });
+    };
+    let params: Map<String, Value> = known
+        .params
+        .iter()
+        .map(|(name, value)| {
+            let shown = if msg::lookup(value).is_some() {
+                structured(value)
+            } else {
+                Value::String(value.clone())
+            };
+            ((*name).to_string(), shown)
+        })
+        .collect();
+    serde_json::json!({ "code": known.code, "params": params, "text": text })
+}
+
+/// The error the page gets for a message: its structure as JSON text.
+fn failure(message: String) -> JsError {
+    JsError::new(&structured(&message).to_string())
+}
 
 /// The version of the engine, shown in the page footer.
 #[wasm_bindgen]
@@ -47,7 +81,13 @@ pub fn validate_ico(bytes: &[u8]) -> String {
             .findings
             .iter()
             .filter(|f| f.severity == severity)
-            .map(|f| serde_json::json!({ "image": f.entry, "message": f.message }))
+            .map(|f| {
+                serde_json::json!({
+                    "image": f.entry,
+                    "message": f.message,
+                    "info": structured(&f.message),
+                })
+            })
             .collect()
     };
     let images: Vec<serde_json::Value> = report
@@ -96,9 +136,9 @@ impl FaviconPack {
         self.snippet.clone()
     }
 
-    /// The warnings raised while making the pictures, as JSON text (a list of strings).
+    /// The warnings raised while making the pictures, as JSON text (a list of messages, see `structured`).
     pub fn warnings(&self) -> String {
-        Value::from(self.warnings.clone()).to_string()
+        Value::Array(self.warnings.iter().map(|w| structured(w)).collect()).to_string()
     }
 }
 
@@ -142,7 +182,7 @@ pub fn icon_pixels(bytes: &[u8], index: usize) -> Result<IconPixels, JsError> {
             height: image.height,
             rgba: image.rgba,
         })
-        .map_err(|message| JsError::new(&message))
+        .map_err(failure)
 }
 
 /// Describes the images of an .ico file as JSON text:
@@ -150,19 +190,19 @@ pub fn icon_pixels(bytes: &[u8], index: usize) -> Result<IconPixels, JsError> {
 /// non_opaque_share }], missing_windows_sizes: [...] }`.
 #[wasm_bindgen]
 pub fn icon_describe(bytes: &[u8]) -> Result<String, JsError> {
-    describe_icon(bytes).map_err(|message| JsError::new(&message))
+    describe_icon(bytes).map_err(failure)
 }
 
 /// Image number `index` (from 0) of an .ico file as the bytes of a PNG file.
 #[wasm_bindgen]
 pub fn icon_extract_png(bytes: &[u8], index: usize) -> Result<Vec<u8>, JsError> {
-    extract_png(bytes, index).map_err(|message| JsError::new(&message))
+    extract_png(bytes, index).map_err(failure)
 }
 
 /// A new .ico file with only the images at `indices` (in that order).
 #[wasm_bindgen]
 pub fn icon_select(bytes: &[u8], indices: &[u32]) -> Result<Vec<u8>, JsError> {
-    select_images(bytes, indices).map_err(|message| JsError::new(&message))
+    select_images(bytes, indices).map_err(failure)
 }
 
 /// A ZIP file that has been opened: its pictures can be listed and unpacked
@@ -178,7 +218,7 @@ impl ZipReader {
     pub fn open(bytes: &[u8]) -> Result<ZipReader, JsError> {
         ZipArchive::open(bytes.to_vec())
             .map(|archive| ZipReader { archive })
-            .map_err(|message| JsError::new(&message))
+            .map_err(failure)
     }
 
     /// The files in the ZIP as JSON text: `[{ index, name, size }]`. Folders,
@@ -195,9 +235,7 @@ impl ZipReader {
 
     /// Unpacks the file with this `index` (as listed by `files`).
     pub fn read(&self, index: usize) -> Result<Vec<u8>, JsError> {
-        self.archive
-            .read(index)
-            .map_err(|message| JsError::new(&message))
+        self.archive.read(index).map_err(failure)
     }
 }
 
@@ -219,7 +257,7 @@ impl ZipBuilder {
     }
 
     pub fn finish(&self) -> Result<Vec<u8>, JsError> {
-        write_zip(&self.files).map_err(|message| JsError::new(&message))
+        write_zip(&self.files).map_err(failure)
     }
 }
 
@@ -232,14 +270,17 @@ impl Default for ZipBuilder {
 /// Every image of an .ico file as a PNG, in a ZIP, named `<stem>_<w>x<h>.png`.
 #[wasm_bindgen]
 pub fn icon_png_zip(bytes: &[u8], stem: &str) -> Result<Vec<u8>, JsError> {
-    png_zip(bytes, stem).map_err(|message| JsError::new(&message))
+    png_zip(bytes, stem).map_err(failure)
 }
 
 /// `icon_png_zip` without the JavaScript error type.
 pub fn png_zip(bytes: &[u8], stem: &str) -> Result<Vec<u8>, String> {
     let dir = read_dir(bytes, "the icon file")?;
     if dir.entries().is_empty() {
-        return Err("The icon file has no images.".to_string());
+        return Err(img2ico_core::msg!(
+            "icon.no_images",
+            "The icon file has no images."
+        ));
     }
     let mut names: Vec<String> = Vec::new();
     let mut files = Vec::new();
@@ -267,14 +308,14 @@ impl Merger {
 
     /// Adds an .ico file. `name` is how it is called in messages.
     pub fn add(&mut self, bytes: &[u8], name: &str) -> Result<(), JsError> {
-        let dir = read_dir(bytes, name).map_err(|message| JsError::new(&message))?;
+        let dir = read_dir(bytes, name).map_err(failure)?;
         self.files.push((name.to_string(), dir));
         Ok(())
     }
 
     /// The merged file; `warnings` of the result say which images were left out.
     pub fn merge(&self) -> Result<Output, JsError> {
-        self.merge_files().map_err(|message| JsError::new(&message))
+        self.merge_files().map_err(failure)
     }
 }
 
@@ -302,9 +343,12 @@ impl Merger {
             warnings: skipped
                 .iter()
                 .map(|image| {
-                    format!(
-                        "Skipped {}x{} from '{}': that size is already in the merged file.",
-                        image.width, image.height, image.source
+                    img2ico_core::msg!(
+                        "icon.merge_skipped",
+                        "Skipped {width}x{height} from '{source}': that size is already in the merged file.",
+                        width = image.width,
+                        height = image.height,
+                        source = image.source
                     )
                 })
                 .collect(),
@@ -344,9 +388,11 @@ pub fn describe_icon(bytes: &[u8]) -> Result<String, String> {
 pub fn extract_png(bytes: &[u8], index: usize) -> Result<Vec<u8>, String> {
     let dir = read_dir(bytes, "the icon file")?;
     let entry = dir.entries().get(index).ok_or_else(|| {
-        format!(
-            "The icon file has {} image(s); there is no image number {index}.",
-            dir.entries().len()
+        img2ico_core::msg!(
+            "icon.no_such_image",
+            "The icon file has {count} image(s); there is no image number {index}.",
+            count = dir.entries().len(),
+            index = index
         )
     })?;
     entry_png(entry, "the icon file")
@@ -355,7 +401,10 @@ pub fn extract_png(bytes: &[u8], index: usize) -> Result<Vec<u8>, String> {
 /// `icon_select` without the JavaScript error type.
 pub fn select_images(bytes: &[u8], indices: &[u32]) -> Result<Vec<u8>, String> {
     if indices.is_empty() {
-        return Err("Choose at least one image.".to_string());
+        return Err(img2ico_core::msg!(
+            "select.none_chosen",
+            "Choose at least one image."
+        ));
     }
     let dir = read_dir(bytes, "the icon file")?;
     let indices: Vec<usize> = indices.iter().map(|&i| i as usize).collect();
@@ -375,7 +424,7 @@ impl GifFrames {
     pub fn open(bytes: &[u8], name: &str) -> Result<GifFrames, JsError> {
         decode_gif_frames_from_bytes(bytes, name, WEB_MAX_PIXELS)
             .map(|frames| GifFrames { frames })
-            .map_err(|message| JsError::new(&message))
+            .map_err(failure)
     }
 
     /// How many frames the GIF has.
@@ -400,7 +449,7 @@ impl GifFrames {
 
     /// Frame `index` as a PNG, to show it.
     pub fn frame_png(&self, index: usize) -> Result<Vec<u8>, JsError> {
-        gif_frame_png(&self.frames, index).map_err(|message| JsError::new(&message))
+        gif_frame_png(&self.frames, index).map_err(failure)
     }
 }
 
@@ -409,10 +458,11 @@ pub fn gif_frame_png(frames: &[GifFrame], index: usize) -> Result<Vec<u8>, Strin
     use image::{DynamicImage, ImageFormat};
     use std::io::Cursor;
     let frame = frames.get(index).ok_or_else(|| {
-        format!(
-            "The GIF has {} frame(s); there is no frame number {}.",
-            frames.len(),
-            index + 1
+        img2ico_core::msg!(
+            "gif.no_such_frame",
+            "The GIF has {count} frame(s); there is no frame number {number}.",
+            count = frames.len(),
+            number = index + 1
         )
     })?;
     let mut bytes = Cursor::new(Vec::new());
@@ -458,7 +508,7 @@ impl Source {
                 .then(|| bytes.to_vec()),
                 picture,
             })
-            .map_err(|message| JsError::new(&message))
+            .map_err(failure)
     }
 
     /// The picture that is frame `index` (from 0) of an animated GIF that was
@@ -493,14 +543,12 @@ impl Source {
     /// `parse_options`; the sizes and the format are decided here) and
     /// `meta`: `{ "name", "themeColor", "appleBackground" }`.
     pub fn favicon_pack(&self, options: &str, meta: &str) -> Result<FaviconPack, JsError> {
-        self.pack_with(options, meta)
-            .map_err(|message| JsError::new(&message))
+        self.pack_with(options, meta).map_err(failure)
     }
 
     /// Makes the icon file the options (JSON text, see `parse_options`) ask for.
     pub fn convert(&self, options: &str) -> Result<Output, JsError> {
-        self.convert_with(options)
-            .map_err(|message| JsError::new(&message))
+        self.convert_with(options).map_err(failure)
     }
 }
 
@@ -516,9 +564,9 @@ impl Output {
         self.sizes.clone()
     }
 
-    /// The warnings raised while converting, as JSON text (a list of strings).
+    /// The warnings raised while converting, as JSON text (a list of messages, see `structured`).
     pub fn warnings(&self) -> String {
-        Value::from(self.warnings.clone()).to_string()
+        Value::Array(self.warnings.iter().map(|w| structured(w)).collect()).to_string()
     }
 }
 
@@ -629,9 +677,14 @@ pub fn open_source(bytes: &[u8], name: &str, gif_frame: usize) -> Result<Picture
         return extract_gif_frame_from_bytes(bytes, name, gif_frame.max(1), WEB_MAX_PIXELS)
             .map(Picture::Raster);
     }
-    match decode_source_bytes(bytes, name, WEB_MAX_PIXELS)
-        .map_err(|e| format!("Could not read '{name}': {e}"))?
-    {
+    match decode_source_bytes(bytes, name, WEB_MAX_PIXELS).map_err(|e| {
+        img2ico_core::msg!(
+            "source.unreadable",
+            "Could not read '{name}': {e}",
+            name = name,
+            e = e
+        )
+    })? {
         Artwork::Raster(image) => Ok(Picture::Raster(image.into_rgba8())),
         Artwork::Vector(drawing) => Ok(Picture::Vector(drawing)),
     }
@@ -978,8 +1031,48 @@ mod tests {
         let output = source(&png(20, 20))
             .convert_with(r#"{"sizes": [256]}"#)
             .unwrap();
-        let warnings: Vec<String> = serde_json::from_str(&output.warnings()).unwrap();
+        let warnings: Vec<Value> = serde_json::from_str(&output.warnings()).unwrap();
         assert!(!warnings.is_empty(), "{warnings:?}");
+        assert!(warnings[0]["text"].as_str().unwrap().contains("upscaled"));
+    }
+
+    #[test]
+    fn a_message_comes_back_as_a_code_with_its_values() {
+        msg::remember_messages();
+        // a 20-pixel picture scaled to 256 is a stretch
+        let output = source(&png(20, 20))
+            .convert_with(r#"{"sizes": [256]}"#)
+            .unwrap();
+        let warnings: Vec<Value> = serde_json::from_str(&output.warnings()).unwrap();
+        assert_eq!(warnings[0]["code"], "resize.upscaled");
+        assert_eq!(warnings[0]["params"]["source_width"], "20");
+        assert_eq!(warnings[0]["params"]["sizes"], "[256]");
+    }
+
+    #[test]
+    fn a_reason_inside_a_message_is_a_message_too_and_unknown_text_is_other() {
+        msg::remember_messages();
+        let error = open_source(&[0u8; 8], "x.png", 1).err().unwrap();
+        let shown = structured(&error);
+        assert_eq!(shown["code"], "source.unreadable");
+        assert_eq!(shown["params"]["name"], "x.png");
+        // the reason comes from the image library: no code of ours
+        assert!(shown["params"]["e"].is_string());
+        assert_eq!(structured("something else")["code"], "other");
+
+        // a limit error nested in a "could not read" is a message of its own
+        let big = img2ico_core::source::check_pixel_limit(9000, 9000, 40_000_000).unwrap_err();
+        let outer = img2ico_core::msg!(
+            "source.unreadable",
+            "Could not read '{name}': {e}",
+            name = "big.png",
+            e = big
+        );
+        assert_eq!(
+            structured(&outer)["params"]["e"]["code"],
+            "source.too_many_pixels"
+        );
+        assert_eq!(structured(&outer)["params"]["e"]["params"]["width"], "9000");
     }
 
     #[test]

@@ -19,11 +19,15 @@ pub fn warn_about_upscaling(source_width: u32, source_height: u32, sizes: &[u32]
     let native_max = source_width.max(source_height);
     let upscaled: Vec<u32> = sizes.iter().copied().filter(|&s| s > native_max).collect();
     if !upscaled.is_empty() {
-        let prefix = file_prefix();
         warn(
             silent,
-            format_args!(
-                "Warning: {prefix}the source image is {source_width}x{source_height} pixels, smaller than {upscaled:?} - those sizes will be upscaled and may look soft or blurry rather than sharp. For crisp results at every size, use a higher-resolution source image."
+            crate::msg!(
+                "resize.upscaled",
+                "Warning: {prefix}the source image is {source_width}x{source_height} pixels, smaller than {sizes} - those sizes will be upscaled and may look soft or blurry rather than sharp. For crisp results at every size, use a higher-resolution source image.",
+                prefix = file_prefix(),
+                source_width = source_width,
+                source_height = source_height,
+                sizes = format!("{upscaled:?}")
             ),
         );
     }
@@ -88,12 +92,13 @@ pub fn warn_about_thin_content(
         .collect();
 
     if !affected.is_empty() {
-        let prefix = file_prefix();
         warn(
             silent,
-            format_args!(
-                "Warning: {prefix}at these sizes, only a thin sliver of the actual artwork will be visible: {} - this can be caused by an elongated source image, a high --padding value, or both. Consider a less elongated source image and/or less padding if that looks too thin.",
-                affected.join(", ")
+            crate::msg!(
+                "resize.thin_sliver",
+                "Warning: {prefix}at these sizes, only a thin sliver of the actual artwork will be visible: {sizes} - this can be caused by an elongated source image, a high --padding value, or both. Consider a less elongated source image and/or less padding if that looks too thin.",
+                prefix = file_prefix(),
+                sizes = affected.join(", ")
             ),
         );
     }

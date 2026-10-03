@@ -31,21 +31,31 @@ pub fn parse_hex_color(input: &str) -> Result<[u8; 3], String> {
     // inside "Ø". Checking is_ascii() first guarantees every byte is
     // exactly one character, so the slicing below can never panic.
     if !hex.is_ascii() {
-        return Err(format!(
-            "'{input}' is not a valid hex color code (must be plain ASCII hex digits)"
+        return Err(crate::msg!(
+            "color.not_ascii",
+            "'{input}' is not a valid hex color code (must be plain ASCII hex digits)",
+            input = input
         ));
     }
 
     if hex.len() != 6 {
-        return Err(format!(
-            "'{input}' is not a valid hex color code (expected exactly 6 hexadecimal digits, e.g. 00FF00)"
+        return Err(crate::msg!(
+            "color.wrong_length",
+            "'{input}' is not a valid hex color code (expected exactly 6 hexadecimal digits, e.g. 00FF00)",
+            input = input
         ));
     }
 
     // u8::from_str_radix(_, 16) interprets a text as a hexadecimal number.
     // We split the string into three two-character chunks (RR, GG, BB).
     let parse_byte = |s: &str| -> Result<u8, String> {
-        u8::from_str_radix(s, 16).map_err(|_| format!("'{s}' is not a valid hexadecimal number"))
+        u8::from_str_radix(s, 16).map_err(|_| {
+            crate::msg!(
+                "color.not_hex",
+                "'{s}' is not a valid hexadecimal number",
+                s = s
+            )
+        })
     };
 
     let r = parse_byte(&hex[0..2])?;
@@ -247,11 +257,16 @@ fn flood_fill_from_candidates(
     // then works exactly as normal, via the candidate mask.
     for &(x, y) in extra_seeds {
         if x >= width || y >= height {
-            let prefix = file_prefix();
             warn(
                 silent,
-                format_args!(
-                    "Warning: {prefix}seed point ({x},{y}) is outside the image ({width}x{height}) and will be ignored."
+                crate::msg!(
+                    "chroma.seed_outside",
+                    "Warning: {prefix}seed point ({x},{y}) is outside the image ({width}x{height}) and will be ignored.",
+                    prefix = file_prefix(),
+                    x = x,
+                    y = y,
+                    width = width,
+                    height = height
                 ),
             );
             continue;
@@ -458,24 +473,33 @@ pub fn warn_about_removal_extent(affected: usize, total: usize, color: &str, sil
     if affected == 0 {
         warn(
             silent,
-            format_args!(
-                "Warning: {prefix}nothing was removed - no pixel connected to the image border is close to {color}. Check the color and --tolerance (or let img2ico detect it with --chroma-key auto)."
+            crate::msg!(
+                "chroma.nothing_removed",
+                "Warning: {prefix}nothing was removed - no pixel connected to the image border is close to {color}. Check the color and --tolerance (or let img2ico detect it with --chroma-key auto).",
+                prefix = prefix,
+                color = color
             ),
         );
     } else if share < MIN_EXPECTED_SHARE {
         warn(
             silent,
-            format_args!(
-                "Warning: {prefix}only {:.1}% of the image matched the background color {color} - almost nothing was removed. Check the color and --tolerance.",
-                share * 100.0
+            crate::msg!(
+                "chroma.almost_nothing_removed",
+                "Warning: {prefix}only {percent}% of the image matched the background color {color} - almost nothing was removed. Check the color and --tolerance.",
+                prefix = prefix,
+                percent = format!("{:.1}", share * 100.0),
+                color = color
             ),
         );
     } else if share > MAX_EXPECTED_SHARE {
         warn(
             silent,
-            format_args!(
-                "Warning: {prefix}{:.1}% of the image matched the background color {color} - almost everything was removed. The color may be too close to the artwork's, or --tolerance too high.",
-                share * 100.0
+            crate::msg!(
+                "chroma.almost_everything_removed",
+                "Warning: {prefix}{percent}% of the image matched the background color {color} - almost everything was removed. The color may be too close to the artwork's, or --tolerance too high.",
+                prefix = prefix,
+                percent = format!("{:.1}", share * 100.0),
+                color = color
             ),
         );
     }
@@ -524,7 +548,10 @@ pub fn detect_background_color(
 ) -> Result<DetectedBackground, String> {
     let (width, height) = img.dimensions();
     if width == 0 || height == 0 {
-        return Err("The image is empty - there is no background to detect.".to_string());
+        return Err(crate::msg!(
+            "chroma.empty_image",
+            "The image is empty - there is no background to detect."
+        ));
     }
 
     // Every border pixel once: the top and bottom rows, and the left and
@@ -544,10 +571,10 @@ pub fn detect_background_color(
     }
     let opaque: Vec<&Rgba<u8>> = border.into_iter().filter(|p| p[3] != 0).collect();
     if opaque.is_empty() {
-        return Err(
+        return Err(crate::msg!(
+            "chroma.border_transparent",
             "The border of the image is already fully transparent - there is no background color to detect."
-                .to_string(),
-        );
+        ));
     }
 
     // bucket -> (pixel count, sum of the red, green and blue values).
@@ -584,10 +611,12 @@ pub fn detect_background_color(
     let coverage = within as f32 / opaque.len() as f32;
 
     if coverage < MIN_BORDER_COVERAGE {
-        return Err(format!(
-            "Could not detect a single background color: the most common color along the border, {}, covers only {:.0}% of it (within a tolerance of {tolerance_percent}%). The background may be a gradient or a photo. Give the color yourself with --chroma-key #RRGGBB, or raise --tolerance.",
-            format_hex(color),
-            coverage * 100.0
+        return Err(crate::msg!(
+            "chroma.no_single_color",
+            "Could not detect a single background color: the most common color along the border, {color}, covers only {percent}% of it (within a tolerance of {tolerance_percent}%). The background may be a gradient or a photo. Give the color yourself with --chroma-key #RRGGBB, or raise --tolerance.",
+            color = format_hex(color),
+            percent = format!("{:.0}", coverage * 100.0),
+            tolerance_percent = tolerance_percent
         ));
     }
     Ok(DetectedBackground { color, coverage })

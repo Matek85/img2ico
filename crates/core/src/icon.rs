@@ -24,15 +24,26 @@ pub fn missing_windows_sizes(present: &HashSet<u32>) -> Vec<u32> {
 /// Parses an existing .ico file. `name` is how the file is called in the
 /// message when it cannot be read.
 pub fn read_dir(bytes: &[u8], name: &str) -> Result<ico::IconDir, String> {
-    ico::IconDir::read(Cursor::new(bytes))
-        .map_err(|e| format!("Could not read '{name}' as an ICO file: {e}"))
+    ico::IconDir::read(Cursor::new(bytes)).map_err(|e| {
+        crate::msg!(
+            "icon.unreadable",
+            "Could not read '{name}' as an ICO file: {e}",
+            name = name,
+            e = e
+        )
+    })
 }
 
 /// The bytes of an icon directory as an .ico file.
 pub fn write_dir(dir: &ico::IconDir) -> Result<Vec<u8>, String> {
     let mut bytes = Vec::new();
-    dir.write(&mut bytes)
-        .map_err(|e| format!("Error writing the ICO file: {e}"))?;
+    dir.write(&mut bytes).map_err(|e| {
+        crate::msg!(
+            "icon.write_failed",
+            "Error writing the ICO file: {e}",
+            e = e
+        )
+    })?;
     Ok(bytes)
 }
 
@@ -86,24 +97,57 @@ pub fn reencode_as_png(
     index: usize,
     name: &str,
 ) -> Result<ico::IconDirEntry, String> {
-    let image = entry
-        .decode()
-        .map_err(|e| format!("Could not decode icon at index {index} in '{name}': {e}"))?;
-    ico::IconDirEntry::encode_as_png(&image)
-        .map_err(|e| format!("Could not re-encode icon at index {index}: {e}"))
+    let image = entry.decode().map_err(|e| {
+        crate::msg!(
+            "icon.entry_undecodable",
+            "Could not decode icon at index {index} in '{name}': {e}",
+            index = index,
+            name = name,
+            e = e
+        )
+    })?;
+    ico::IconDirEntry::encode_as_png(&image).map_err(|e| {
+        crate::msg!(
+            "icon.entry_not_reencoded",
+            "Could not re-encode icon at index {index}: {e}",
+            index = index,
+            e = e
+        )
+    })
 }
 
 /// The icon as the bytes of a PNG file.
 pub fn entry_png(entry: &ico::IconDirEntry, name: &str) -> Result<Vec<u8>, String> {
     let (w, h) = (entry.width(), entry.height());
-    let image = entry
-        .decode()
-        .map_err(|e| format!("Could not decode the {w}x{h} icon in '{name}': {e}"))?;
-    let rgba = RgbaImage::from_raw(w, h, image.into_rgba_data())
-        .ok_or_else(|| format!("Unexpected pixel data size for the {w}x{h} icon"))?;
+    let image = entry.decode().map_err(|e| {
+        crate::msg!(
+            "icon.size_undecodable",
+            "Could not decode the {w}x{h} icon in '{name}': {e}",
+            w = w,
+            h = h,
+            name = name,
+            e = e
+        )
+    })?;
+    let rgba = RgbaImage::from_raw(w, h, image.into_rgba_data()).ok_or_else(|| {
+        crate::msg!(
+            "icon.pixel_data_size",
+            "Unexpected pixel data size for the {w}x{h} icon",
+            w = w,
+            h = h
+        )
+    })?;
     let mut png = Cursor::new(Vec::new());
     rgba.write_to(&mut png, image::ImageFormat::Png)
-        .map_err(|e| format!("Could not encode the {w}x{h} icon as PNG: {e}"))?;
+        .map_err(|e| {
+            crate::msg!(
+                "icon.png_encode_failed",
+                "Could not encode the {w}x{h} icon as PNG: {e}",
+                w = w,
+                h = h,
+                e = e
+            )
+        })?;
     Ok(png.into_inner())
 }
 
@@ -137,19 +181,33 @@ pub fn merge(sources: &[(&str, &ico::IconDir)]) -> Result<(ico::IconDir, Vec<Ski
                 continue;
             }
             let image = entry.decode().map_err(|e| {
-                format!(
-                    "Could not decode the {}x{} icon in '{name}': {e}",
-                    size.0, size.1
+                crate::msg!(
+                    "icon.size_undecodable",
+                    "Could not decode the {w}x{h} icon in '{name}': {e}",
+                    w = size.0,
+                    h = size.1,
+                    name = name,
+                    e = e
                 )
             })?;
-            let new_entry = ico::IconDirEntry::encode_as_png(&image)
-                .map_err(|e| format!("Could not re-encode the {}x{} icon: {e}", size.0, size.1))?;
+            let new_entry = ico::IconDirEntry::encode_as_png(&image).map_err(|e| {
+                crate::msg!(
+                    "icon.size_not_reencoded",
+                    "Could not re-encode the {w}x{h} icon: {e}",
+                    w = size.0,
+                    h = size.1,
+                    e = e
+                )
+            })?;
             merged.add_entry(new_entry);
         }
     }
 
     if merged.entries().is_empty() {
-        return Err("No icons found to merge - the resulting file would be empty.".to_string());
+        return Err(crate::msg!(
+            "icon.nothing_to_merge",
+            "No icons found to merge - the resulting file would be empty."
+        ));
     }
     Ok((merged, skipped))
 }
@@ -161,9 +219,12 @@ pub fn select(dir: &ico::IconDir, indices: &[usize], name: &str) -> Result<ico::
     let mut out = ico::IconDir::new(ico::ResourceType::Icon);
     for &index in indices {
         let entry = entries.get(index).ok_or_else(|| {
-            format!(
-                "Index {index} is out of range for '{name}' - it contains {} icon(s).",
-                entries.len()
+            crate::msg!(
+                "icon.index_out_of_range",
+                "Index {index} is out of range for '{name}' - it contains {count} icon(s).",
+                index = index,
+                name = name,
+                count = entries.len()
             )
         })?;
         out.add_entry(reencode_as_png(entry, index, name)?);
@@ -182,25 +243,42 @@ pub struct IconImage {
 
 /// How many images the .ico file in `bytes` holds.
 pub fn entry_count(bytes: &[u8]) -> Result<usize, String> {
-    let dir = ico::IconDir::read(Cursor::new(bytes))
-        .map_err(|e| format!("Could not read the icon file: {e}"))?;
+    let dir = ico::IconDir::read(Cursor::new(bytes)).map_err(|e| {
+        crate::msg!(
+            "icon.file_unreadable",
+            "Could not read the icon file: {e}",
+            e = e
+        )
+    })?;
     Ok(dir.entries().len())
 }
 
 /// Decodes image number `index` (counted from 0, in the order of the file's
 /// directory) of the .ico file in `bytes`.
 pub fn read_entry(bytes: &[u8], index: usize) -> Result<IconImage, String> {
-    let dir = ico::IconDir::read(Cursor::new(bytes))
-        .map_err(|e| format!("Could not read the icon file: {e}"))?;
-    let entry = dir.entries().get(index).ok_or_else(|| {
-        format!(
-            "The icon file has {} image(s); there is no image number {index}.",
-            dir.entries().len()
+    let dir = ico::IconDir::read(Cursor::new(bytes)).map_err(|e| {
+        crate::msg!(
+            "icon.file_unreadable",
+            "Could not read the icon file: {e}",
+            e = e
         )
     })?;
-    let image = entry
-        .decode()
-        .map_err(|e| format!("Could not decode image {index}: {e}"))?;
+    let entry = dir.entries().get(index).ok_or_else(|| {
+        crate::msg!(
+            "icon.no_such_image",
+            "The icon file has {count} image(s); there is no image number {index}.",
+            count = dir.entries().len(),
+            index = index
+        )
+    })?;
+    let image = entry.decode().map_err(|e| {
+        crate::msg!(
+            "icon.image_undecodable",
+            "Could not decode image {index}: {e}",
+            index = index,
+            e = e
+        )
+    })?;
     Ok(IconImage {
         width: image.width(),
         height: image.height(),
