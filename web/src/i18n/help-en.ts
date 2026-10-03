@@ -31,10 +31,13 @@ export const helpEn = {
     'Above the preview, choose the file type: **Windows .ico**, **macOS .icns** or **Website ZIP**, then press the download button. The bar stays in view while you scroll. The archive button next to it saves every size as a PNG file, in a ZIP.',
   'help.start.14.h2': 'Make several icons',
   'help.start.15.p':
-    '**Add to queue** keeps the icon and lets you choose the next picture. The queue sits beside the editor: change the order, open any icon to change it again (the changes are saved to it by themselves), compare two icons, and download them all as one ZIP or one at a time. The queue exists only while the page is open.',
+    '**Add to queue** keeps the icon and lets you choose the next picture. The queue sits beside the editor: change the order (drag a row by its grip, or use the arrow buttons), open any icon to change it again (the changes are saved to it by themselves), compare two icons, and download them all as one ZIP or one at a time. While you edit an icon of the queue, **Use for all icons** makes the other icons again with the sizes, the look or the background removal of this one. The queue exists only while the page is open.',
   'help.start.16.h2': 'Your settings are remembered',
   'help.start.17.p':
     'The page remembers your last settings in this browser, so the next picture starts the way you left it. **Reset to defaults**, at the top right of the editor, puts everything back (it asks first). The crop and the turn belong to one picture and are not remembered. [Privacy](help:privacy) says what the browser keeps.',
+  'help.start.18.h2': 'Language and light or dark mode',
+  'help.start.19.p':
+    'The **Language** menu in the top bar shows the page in English, German, Spanish, Brazilian Portuguese or French. The first time, the page chooses the language of your browser; your choice is remembered. Some translations were made by an AI, and the page says so at the top. The half-filled circle next to it switches between light and dark mode; until you use it, the page follows your system.',
 
   // ---- The settings explained
   'help.settings.01.h2': 'Quick start',
@@ -177,6 +180,7 @@ export const helpEn = {
   'help.privacy.05.ul.3': 'whether the settings are folded away',
   'help.privacy.05.ul.4': 'light or dark mode, if you chose one',
   'help.privacy.05.ul.5': 'whether the keyboard shortcuts are on',
+  'help.privacy.05.ul.6': 'the language you chose',
   'help.privacy.06.p':
     'The queue and your pictures exist only in the memory of the page while it is open: reloading or closing the page empties them.',
   'help.privacy.07.h2': 'What the page does not do',
