@@ -120,3 +120,12 @@ describe('the help pages and the top bar menus', () => {
     for (const topic of HELP_TOPICS) expect(map).toContain(`https://example.org/img2ico/help/${topic.slug}/`);
   });
 });
+
+describe('the theme the visitor chose', () => {
+  it('is set before the page is drawn, on every page', () => {
+    for (const tags of [headTags(en, ''), headTags(en, '', helpPageInfo(en, 'privacy'))]) {
+      expect(tags).toContain("localStorage.getItem('img2ico.theme.v1')");
+      expect(tags).toContain('document.documentElement.dataset.theme');
+    }
+  });
+});

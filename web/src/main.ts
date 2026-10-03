@@ -8,5 +8,7 @@ setLocale(navigator.language);
 document.documentElement.lang = locale();
 
 import './menus';
+import { startThemeSwitch } from './theme';
 
+startThemeSwitch();
 mount(App, { target: document.getElementById('app')! });
