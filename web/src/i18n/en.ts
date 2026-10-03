@@ -581,7 +581,7 @@ export const en = {
   'iconfile.missing': 'Sizes Windows would like but this file lacks (it will scale a nearby one): {sizes}.',
 
 
-  'footer.engine': 'Engine {version}',
+  'footer.build': 'Build {date} · {commit}',
 } as const;
 
 export type MessageKey = keyof typeof en;

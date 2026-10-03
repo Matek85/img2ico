@@ -15,8 +15,18 @@ writeLanguagePages(new URL('.', import.meta.url));
 // address (canonical link, link preview picture, sitemap) are written only
 // when the build is told where the page will live, see seo.ts:
 //   SITE_URL=https://example.org/img2ico/ npm run build
+// The footer says when the page was built and from which commit (CI knows it; a local build says "dev").
+const BUILD = {
+  date: new Date().toISOString().slice(0, 10),
+  commit: process.env.GITHUB_SHA?.slice(0, 7) ?? 'dev',
+};
+
 export default defineConfig({
   base: './',
+  define: {
+    __BUILD_DATE__: JSON.stringify(BUILD.date),
+    __BUILD_COMMIT__: JSON.stringify(BUILD.commit),
+  },
   plugins: [svelte(), seo(process.env.SITE_URL)],
   worker: { format: 'es' },
   // The converter and the help pages are pages of their own (each a folder with an index.html).

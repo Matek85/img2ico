@@ -581,5 +581,5 @@ export const fr: Record<MessageKey, string> = {
   'iconfile.select_none': 'Ne rien choisir',
   'iconfile.missing': 'Tailles que Windows aimerait avoir et qui manquent à ce fichier (il en redimensionnera une proche) : {sizes}.',
 
-  'footer.engine': 'Moteur {version}',
+  'footer.build': 'Version du {date} · {commit}',
 };
