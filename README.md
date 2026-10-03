@@ -52,7 +52,7 @@ img2ico --version
 ```
 
 ```
-img2ico 1.8.0
+img2ico 1.9.0
 target:   x86_64-pc-windows-msvc
 compiler: rustc 1.99.0 (b940084d7 2026-09-28)
 ```
@@ -972,6 +972,7 @@ img2ico assets/ -o icons/ -j 1           # strictly one thing after the other
 - The progress lines of a batch (`[3/40] …`) still come out **in input order**. Warnings and `--verbose` notes of different files can interleave; every line names its file. That is why a `--verbose` run and a `--find` preview — whose report is several lines per file — work one file at a time unless you give `--jobs` yourself.
 - **The first failure** stops a batch from starting new files; files already under way are finished (and listed in the report), so with several threads a file or two after the failing one may have been converted. `--jobs 1` gives the strict one-after-the-other stop. With `--keep-going` nothing changes: everything else is converted.
 - **Memory is rationed:** the workers together hold at most about 150 megapixels of decoded images, so a batch of large photos takes turns instead of using up the machine's memory. A single 6000×6000 image needs about 170 MB.
+- **Huge pictures are made smaller once:** when the source is much larger than the largest icon, it is shrunk by a whole factor first (transparency counted in), and every size is made from that, instead of each size being scaled down from the full picture. This is much faster for photos of many megapixels; the icons differ from a direct scaling only slightly.
 - A small source (under about 250,000 pixels) is scaled to its sizes on one thread — it is done in milliseconds, and starting threads would cost more than it saves.
 
 **Large and hostile images (`--max-pixels`).** A source image with more than **100 million pixels** (a 10000×10000 picture, about 400 MB once decoded) is refused with a message — *before* it is decoded, from the size its header states. This protects a pipeline against "decompression bombs": a file of a few kilobytes that claims to be a hundred thousand pixels wide and would otherwise eat all memory. Change the limit with `--max-pixels` (digits, or with a `K` / `M` suffix: `--max-pixels 50M`) or `max-pixels` in a settings file; `0` turns it off for files you trust. It applies to raster images from files and from standard input, GIFs included; an SVG is only drawn at the icon sizes and has no such limit.
