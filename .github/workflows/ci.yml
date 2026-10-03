@@ -142,7 +142,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -175,7 +175,7 @@ jobs:
     steps:
       - name: Check out repository
         if: needs.changes.outputs.rust == 'true'
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Install Rust toolchain
         if: needs.changes.outputs.rust == 'true'
@@ -215,7 +215,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       # Keep this in step with rust-version in Cargo.toml.
       - name: Install Rust 1.88
@@ -242,7 +242,7 @@ jobs:
     runs-on: macos-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
