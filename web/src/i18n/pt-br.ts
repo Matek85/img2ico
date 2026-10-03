@@ -350,6 +350,7 @@ export const ptBr: Record<MessageKey, string> = {
   'queue.sub_add_chosen': 'Adicionar as {count} escolhidas juntas como um ícone',
   'queue.sub_add_chosen_none': 'Marque duas ou mais para adicioná-las juntas como um ícone',
   'queue.sub_close': 'Fechar',
+  'queue.inspect_hint': 'Olhar dentro deste arquivo de ícone: verificar, desmontar e salvar as imagens',
   'queue.look': 'Olhar dentro de {name}',
   'queue.as_it_is': 'arquivo de ícone como está',
   'queue.next_button': 'Adicionar a próxima imagem',

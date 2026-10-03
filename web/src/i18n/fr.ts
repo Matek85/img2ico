@@ -351,6 +351,7 @@ export const fr: Record<MessageKey, string> = {
   'queue.sub_add_chosen': 'Ajouter les {count} choisies ensemble comme une icône',
   'queue.sub_add_chosen_none': 'Cochez-en deux ou plus pour les ajouter ensemble comme une icône',
   'queue.sub_close': 'Fermer',
+  'queue.inspect_hint': 'Regarder dans ce fichier d’icône : le vérifier, le décomposer, enregistrer ses images',
   'queue.look': 'Regarder dans {name}',
   'queue.as_it_is': 'fichier d’icône tel quel',
   'queue.next_button': 'Ajouter l’image suivante',

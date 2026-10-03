@@ -350,6 +350,7 @@ export const de: Record<MessageKey, string> = {
   'queue.sub_add_chosen': 'Die {count} gewählten zusammen als ein Icon hinzufügen',
   'queue.sub_add_chosen_none': 'Hake zwei oder mehr an, um sie zusammen als ein Icon hinzuzufügen',
   'queue.sub_close': 'Schließen',
+  'queue.inspect_hint': 'In diese Icon-Datei hineinschauen: prüfen, zerlegen, Bilder speichern',
   'queue.look': 'In {name} hineinschauen',
   'queue.as_it_is': 'Icon-Datei unverändert',
   'queue.next_button': 'Das nächste Bild hinzufügen',

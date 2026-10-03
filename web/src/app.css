@@ -2818,6 +2818,10 @@ input[type='range'] {
   box-shadow: 0 1.5rem 4rem rgba(0, 0, 0, 0.45);
 }
 
+.inspect-dialog {
+  width: min(60rem, calc(100vw - 2rem));
+}
+
 .site-dialog::backdrop {
   background: rgba(8, 12, 24, 0.6);
 }

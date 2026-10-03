@@ -350,6 +350,7 @@ export const en = {
   'queue.sub_add_chosen': 'Add the {count} chosen together as one icon',
   'queue.sub_add_chosen_none': 'Tick two or more to add them together as one icon',
   'queue.sub_close': 'Close',
+  'queue.inspect_hint': 'Look into this icon file: check it, take it apart, save its images',
   'queue.look': 'Look into {name}',
   'queue.as_it_is': 'icon file as it is',
   'queue.next_button': 'Add the next picture',
