@@ -32,8 +32,10 @@ export type ShortcutGroup = 'view' | 'edit' | 'save' | 'page' | 'gif';
 
 export interface Shortcut {
   id: ShortcutId;
-  /** The key as the page shows it. */
+  /** The key as the page shows it (where the layout is not known). */
   label: string;
+  /** Set where the key is meant by its position, not its letter (the pair beside each other, see `shortcutOf`). */
+  code?: string;
   group: ShortcutGroup;
 }
 
@@ -48,21 +50,22 @@ export const SHORTCUTS: readonly Shortcut[] = [
   { id: 'download', label: 'D', group: 'save' },
   { id: 'queueAdd', label: 'Q', group: 'save' },
   { id: 'play', label: 'P', group: 'gif' },
-  { id: 'framePrev', label: ',', group: 'gif' },
-  { id: 'frameNext', label: '.', group: 'gif' },
+  { id: 'framePrev', label: ',', code: 'Comma', group: 'gif' },
+  { id: 'frameNext', label: '.', code: 'Period', group: 'gif' },
   { id: 'theme', label: 'T', group: 'page' },
   { id: 'help', label: '?', group: 'page' },
 ];
 
 /** The keys of the crop (handled by the crop itself, see CropTool.svelte), for the list. */
-export const CROP_KEYS: readonly { label: string; action: string; letter?: string; also?: string; labelKey?: string }[] = [
+export const CROP_KEYS: readonly { label: string; action: string; letter?: string; also?: string; code?: string; labelKey?: string }[] = [
   { label: 'Space', labelKey: 'keys.space', action: 'lock' },
   { label: '← ↑ → ↓', action: 'move' },
   { label: '+ −', action: 'zoom' },
   { label: 'Num 1–9', labelKey: 'keys.num_range', action: 'place' },
-  // Y does the same as Z: on a German keyboard (QWERTZ) the key beside X is the Y.
-  { label: 'Z / Y', action: 'turnLeft', letter: 'z', also: 'y' },
-  { label: 'X', action: 'turnRight', letter: 'x' },
+  // The two keys of the turn are meant by position (bottom left, side by side): Z and X on QWERTY, Y and X on
+  // QWERTZ, W and X on AZERTY. The letters Z and Y work as well, wherever they are.
+  { label: 'Z / Y / W', action: 'turnLeft', letter: 'z', also: 'y', code: 'KeyZ' },
+  { label: 'X', action: 'turnRight', letter: 'x', code: 'KeyX' },
   { label: 'M', action: 'shape', letter: 'm' },
   { label: 'F', action: 'grow', letter: 'f' },
   { label: 'O', action: 'rotate', letter: 'o' },
@@ -110,6 +113,10 @@ export function shortcutOf(event: KeyInfo): ShortcutId | null {
   // "?" needs Shift on most keyboards; for any other key Shift means it is not ours.
   if (event.key === '?') return 'help';
   if (event.shiftKey) return null;
+  // The frames of a GIF are the two keys beside each other by the M: "," and "." on most keyboards, but ";" and ":"
+  // on a French one (where "." needs Shift), so they are found by position as well.
+  if (event.code === 'Comma') return 'framePrev';
+  if (event.code === 'Period') return 'frameNext';
   return BY_LETTER[event.key.toLowerCase()] ?? null;
 }
 
@@ -129,5 +136,25 @@ export function isTyping(target: EventTarget | null): boolean {
 /** The text of a control with its key, like "Crop (C)"; the text alone where the shortcuts are off. */
 export function withKey(text: string, id: ShortcutId, on: boolean): string {
   const shortcut = SHORTCUTS.find((s) => s.id === id);
-  return on && shortcut ? `${text} (${shortcut.label})` : text;
+  return on && shortcut ? `${text} (${labelOf(shortcut)})` : text;
+}
+
+// What is printed on a key of this keyboard, if the page knows (see layout.svelte.ts; the page plugs it in, so this
+// file stays free of the browser and of Svelte: the build's scripts read it too).
+let nameOfKey: (code: string | undefined, fallback: string) => string = (_code, fallback) => fallback;
+
+/** Lets the page say what is printed on the keys. */
+export function useKeyNames(resolve: (code: string | undefined, fallback: string) => string): void {
+  nameOfKey = resolve;
+}
+
+/** The key as it is printed on this keyboard where that is known and the key is meant by its position. */
+export function labelOf(key: { label: string; code?: string }): string {
+  return nameOfKey(key.code, key.label);
+}
+
+/** The name of a key of the crop for the list and the tooltips ("Z / Y / W", or "Y" where the layout is known). */
+export function cropKeyLabel(action: string): string {
+  const key = CROP_KEYS.find((entry) => entry.action === action);
+  return key ? labelOf(key) : '';
 }

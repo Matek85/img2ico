@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CROP_KEYS, type KeyInfo, SHORTCUTS, isTyping, shortcutOf, withKey } from './shortcuts';
+import { CROP_KEYS, type KeyInfo, SHORTCUTS, cropKeyLabel, isTyping, shortcutOf, useKeyNames, withKey } from './shortcuts';
 
 function press(key: string, more: Partial<KeyInfo> = {}): KeyInfo {
   const code = /^\d$/.test(key) ? `Digit${key}` : /^[a-z]$/i.test(key) ? `Key${key.toUpperCase()}` : '';
@@ -92,5 +92,28 @@ describe('withKey', () => {
   it('adds the key to a text while the shortcuts are on', () => {
     expect(withKey('Crop', 'crop', true)).toBe('Crop (C)');
     expect(withKey('Crop', 'crop', false)).toBe('Crop');
+  });
+});
+
+describe('keys meant by their position', () => {
+  it('finds the frames of a GIF on a French keyboard (";" and ":" sit where "," and "." are)', () => {
+    expect(shortcutOf({ ...press(';'), code: 'Comma' })).toBe('framePrev');
+    expect(shortcutOf({ ...press(':'), code: 'Period' })).toBe('frameNext');
+    expect(shortcutOf({ ...press(','), code: 'Comma', shiftKey: true })).toBeNull();
+  });
+
+  it('shows the letter printed on the key where the layout is known, the usual names otherwise', () => {
+    expect(cropKeyLabel('turnLeft')).toBe('Z / Y / W');
+    expect(withKey('Previous', 'framePrev', true)).toBe('Previous (,)');
+    const french: Record<string, string> = { KeyZ: 'w', KeyX: 'x', Comma: ';', Period: ':' };
+    useKeyNames((code, fallback) => (code && french[code] ? french[code].toUpperCase() : fallback));
+    try {
+      expect(cropKeyLabel('turnLeft')).toBe('W');
+      expect(cropKeyLabel('turnRight')).toBe('X');
+      expect(withKey('Previous', 'framePrev', true)).toBe('Previous (;)');
+      expect(withKey('Crop', 'crop', true)).toBe('Crop (C)');
+    } finally {
+      useKeyNames((_code, fallback) => fallback);
+    }
   });
 });
