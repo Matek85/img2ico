@@ -10,6 +10,12 @@ when cutting a release.
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-10-03
+
+Mirror and turn the picture (`--flip-horizontal`, `--flip-vertical`, `--rotate`), and faster work on very
+large pictures. The same code now also drives the browser version, whose settings file is the TOML this
+program reads.
+
 ### Added
 
 - `--rotate DEGREES` turns the picture clockwise (a negative number the other
@@ -24,6 +30,10 @@ when cutting a release.
 
 ### Changed
 
+- A very large picture (much larger than the largest icon) is made smaller once, by a whole factor with
+  transparency counted in, and all sizes are made from that, instead of each size being scaled down from the
+  full picture. This is much faster; the icons differ from a direct scaling only slightly. The warnings about
+  a small or thin source still go by the real size of the picture.
 - A picture turned by a free angle and cropped is made faster: only the pixels of
   the crop frame are turned, not the whole enlarged canvas. The icon is the same,
   pixel for pixel (a 40-megapixel picture with a frame of 6 megapixels: 0.8 s
