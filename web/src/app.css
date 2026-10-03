@@ -3135,6 +3135,7 @@ button.small {
 
 .topbar .shell {
   padding-block: 0.5rem;
+}
 
 /* A very long name never pushes anything wider than the page: it wraps where it must. */
 .editing-note,
@@ -3153,4 +3154,9 @@ button.small {
 .download-actions .primary {
   max-width: 100%;
   min-width: 0;
+}
+
+/* The icon of the theme switch sits in the middle of its circle (the logos of the other links are raised to share a line with their text). */
+.topbar nav .theme-switch svg {
+  transform: none;
 }
