@@ -20,3 +20,39 @@ updates:
         update-types:
           - minor
           - patch
+
+  # The web page's npm packages (web/package.json, web/package-lock.json).
+  # The page is built by CI on every pull request (the "Web" workflow), so an
+  # update that breaks the type check, the tests or the build shows up there.
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps"
+    labels:
+      - dependencies
+    groups:
+      npm-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  # The actions the workflows use (uses: ... in .github/workflows).
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci"
+    labels:
+      - dependencies
+    groups:
+      actions:
+        update-types:
+          - minor
+          - patch
