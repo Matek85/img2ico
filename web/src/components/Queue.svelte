@@ -9,6 +9,7 @@
   import Compare from './Compare.svelte';
   import Icon from './Icon.svelte';
   import { explain } from '../lib/messages';
+  import { shortName } from '../lib/names';
 
   let {
     activeId,
@@ -235,7 +236,7 @@
           >
             {#if item.thumb}<img src={item.thumb} alt="" width="40" height="40" />{:else}<span class="blank"></span>{/if}
             <span class="what">
-              <strong>{item.fileName}</strong>
+              <strong title={item.fileName}>{shortName(item.fileName, 40)}</strong>
               <span class="hint">
                 {item.id === activeId ? t('queue.editing') + ' · ' : ''}{item.format === 'ico' ? sizesText(item.sizes) : t('queue.icns_sizes')}{item.kind === 'icon' ? ' · ' + t('queue.as_it_is') : ''}
               </span>
@@ -276,7 +277,7 @@
       {@const source = queue.find(sub.id)}
       <div class="subqueue" bind:this={subRoot}>
         <div class="queue-compare-head">
-          <h3>{t('queue.sub_title', { name: source?.fileName ?? '' })}</h3>
+          <h3>{t('queue.sub_title', { name: shortName(source?.fileName ?? '') })}</h3>
           <button type="button" class="quiet" onclick={closeSub}><Icon name="close" />{t('queue.sub_close')}</button>
         </div>
         <p class="hint">{t('queue.sub_hint')}</p>
@@ -325,7 +326,7 @@
     {#if comparing}
       <div class="queue-compare">
         <div class="queue-compare-head">
-          <h3>{t('queue.compare_title', { a: comparing[0].fileName, b: comparing[1].fileName })}</h3>
+          <h3>{t('queue.compare_title', { a: shortName(comparing[0].fileName, 20), b: shortName(comparing[1].fileName, 20) })}</h3>
           <button type="button" class="quiet icon-button" title={t('queue.compare_close')} aria-label={t('queue.compare_close')} onclick={() => (selected = [])}><Icon name="close" /></button>
         </div>
         <div class="backdrops" role="radiogroup" aria-label={t('editor.background')}>
@@ -361,7 +362,7 @@
 
     <div class="queue-actions">
       {#if queue.items.length === 1}
-        <button type="button" class="primary" onclick={downloadOne}><Icon name="download" />{t('queue.single', { name: queue.items[0].fileName })}</button>
+        <button type="button" class="primary" onclick={downloadOne}><Icon name="download" />{t('queue.single', { name: shortName(queue.items[0].fileName, 20) })}</button>
       {:else}
         <button type="button" class="primary" onclick={downloadZip} disabled={working}><Icon name="archive" />{t('queue.zip')}</button>
       {/if}

@@ -20,6 +20,7 @@
   import { t } from './i18n';
   import { type BatchItem, MAX_BATCH, baseName, isIconName, isPictureName, isZipName } from './lib/batch';
   import { explain } from './lib/messages';
+  import { shortName } from './lib/names';
 
   type View =
     | { kind: 'start' }
@@ -241,7 +242,7 @@
     <h2>{t('queue.filling')}</h2>
     {#if filling}
       <progress max={filling.total} value={filling.done} aria-label={t('batch.progress')}></progress>
-      <p class="hint">{t('batch.working', { done: filling.done + 1, total: filling.total, name: filling.name })}</p>
+      <p class="hint">{t('batch.working', { done: filling.done + 1, total: filling.total, name: shortName(filling.name) })}</p>
     {/if}
   </section>
 {:else}
