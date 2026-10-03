@@ -52,6 +52,8 @@ When a test fails, `playwright-report/` and `test-results/` (screenshots, traces
 
 `SITE_URL=https://example.org/img2ico/ npm run build` also writes the canonical link, the link-preview address and `sitemap.xml` (without it they are left out, so the build works from any address). See the search engine section of `docs/web-plan.md`.
 
+The page is published on GitHub Pages (<https://matek85.github.io/img2ico/>) by the workflow `.github/workflows/pages.yml`: when a change to `web/`, `crates/` or the lock files reaches `main` it builds the page with `SITE_URL` set to that address and publishes it, and "Run workflow" in the Actions tab publishes again. The checks of the page are those of the "Web" workflow on the pull request; the publishing workflow does not repeat them. To move the page to another address, change `SITE_URL` in that workflow (it also sets the canonical links, the sitemap and the link-preview picture) and point the new host at the built folder; the page itself uses only relative paths.
+
 Rules for changes to the page:
 
 - **A new or changed text goes into every language.** The page is in English, German, Spanish, Brazilian Portuguese and French (`web/src/i18n/en.ts`, `de.ts`, `es.ts`, `pt-br.ts`, `fr.ts`, and the same with `help-` for the help pages). A test fails when a language lacks a key, has one too many, uses other `{values}`, loses a mark or a link, or still has an English sentence; the French file keeps a no-break space before `: ; ? ! %`. Spanish, Portuguese and French are translated by an AI and are said to be so on the page; German is reviewed by the maintainer. To add a language: its two files, an entry in `LANGUAGES` (`web/seo.ts`), the loader in `web/src/i18n/index.ts` and the catalogue in `web/catalogues.ts`.
