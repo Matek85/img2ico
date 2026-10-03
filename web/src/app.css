@@ -412,6 +412,7 @@ a {
 }
 
 .topbar nav > a:hover,
+.nav-links > a:hover,
 .menu summary:hover {
   text-decoration: underline;
 }
@@ -3337,6 +3338,55 @@ button.small {
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 0.5rem 1.25rem;
+}
+
+/* The links (help, command line, source) and, set off by a line, the page's own settings (language, light/dark). */
+.nav-links,
+.nav-tools {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.nav-links summary,
+.nav-tools summary,
+.nav-links > a {
+  white-space: nowrap;
+}
+
+.nav-links > a {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.nav-tools {
+  gap: 1rem;
+  padding-left: 1.25rem;
+  border-left: 1px solid rgb(255 255 255 / 0.22);
+}
+
+@media (max-width: 40rem) {
+  /* On a phone the brand has a row of its own and the menus wrap below it. */
+  .topbar .shell {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .topbar nav {
+    flex: 1 1 100%;
+    justify-content: space-between;
+  }
+
+  .nav-links,
+  .nav-tools {
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
+  }
+
+  .nav-tools {
+    padding-left: 0.75rem;
+  }
 }
 
 .help-main {

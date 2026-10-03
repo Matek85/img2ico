@@ -205,7 +205,7 @@ const THEME_ICON =
 
 /**
  * The top bar's menus, from the left: help, the command-line tool (the latest release for each system:
- * GitHub redirects "latest" to the newest one), the language, the light/dark switch, GitHub. `prefix` leads
+ * GitHub redirects "latest" to the newest one), GitHub; then, set off, the language and the light/dark switch. `prefix` leads
  * from the page to the site's root ("./", "../", "../../" or "../../../"), `lang` is the language of the page and
  * `pagePath` the page below the language's folder ("" or "help/<topic>/"), so each language leads to the same page.
  */
@@ -221,7 +221,9 @@ export function navHtml(m: Messages, prefix = './', lang: string = 'en', pagePat
     (language) =>
       `<a href="${prefix}${langDir(language.code)}${pagePath}" lang="${langTag(language.code)}" hreflang="${langTag(language.code)}" data-lang="${language.code}"${language.code === current.code ? ' aria-current="true"' : ''}>${flag(language.flag)}${escapeHtml(language.name)}</a>`,
   ).join('\n              ');
-  return `<details class="menu">
+  // Two groups: the links to the help, the command line and the source, and (set off at the right) the settings of the page.
+  return `<div class="nav-links">
+          <details class="menu">
             <summary>${escapeHtml(m['nav.help'])}</summary>
             <div class="menu-list">
               ${help}
@@ -236,6 +238,9 @@ export function navHtml(m: Messages, prefix = './', lang: string = 'en', pagePat
               <a class="all" href="${REPOSITORY}/releases/latest">${escapeHtml(m['nav.cli_all'])}</a>
             </div>
           </details>
+          <a href="${REPOSITORY}">${osIcon(siGithub.path)}${escapeHtml(m['nav.github'])}</a>
+          </div>
+          <div class="nav-tools">
           <details class="menu lang">
             <summary aria-label="${escapeHtml(m['nav.language'])}: ${escapeHtml(current.name)}">${flag(current.flag)}${escapeHtml(current.name)}</summary>
             <div class="menu-list">
@@ -243,7 +248,7 @@ export function navHtml(m: Messages, prefix = './', lang: string = 'en', pagePat
             </div>
           </details>
           <button type="button" class="theme-switch" disabled title="${escapeHtml(m['nav.theme'])}" aria-label="${escapeHtml(m['nav.theme'])}">${THEME_ICON}</button>
-          <a href="${REPOSITORY}">${osIcon(siGithub.path)}${escapeHtml(m['nav.github'])}</a>`;
+          </div>`;
 }
 
 /** A help page: the list of topics on the left, the page on the right. */
