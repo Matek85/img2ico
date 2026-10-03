@@ -861,10 +861,10 @@
           class="chip crop-toggle"
           class:chosen={masking}
           aria-pressed={masking}
-          title={hint(t('crop.use'), 'crop')}
+          title={hint(t('crop.button_hint'), 'crop')}
           onclick={toggleMask}
         >
-          <Icon name="crop" size={16} />
+          <Icon name="edit" size={16} />
           {t('crop.button')}
           {#if settings.crop && !masking}<span class="dot" aria-label={t('crop.active')}></span>{/if}
         </button>
