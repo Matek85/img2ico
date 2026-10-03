@@ -30,6 +30,8 @@
     type Place,
     alignRect,
     aspectValue,
+    growRect,
+    rotateRect,
     clampRect,
     fitAspect,
     fullRect,
@@ -445,6 +447,18 @@
   function place(h: Place, v: Place) {
     if (picture) frame = alignRect(frame, picture, h, v);
   }
+  // The largest frame of this shape, and the frame turned by a quarter (wide becomes tall).
+  let grown = $derived(picture ? growRect(frame, aspectValue(cropAspect), picture) : frame);
+  let canGrow = $derived(grown.x !== frame.x || grown.y !== frame.y || grown.width !== frame.width || grown.height !== frame.height);
+  function growFrame() {
+    if (canGrow) frame = grown;
+  }
+  function turnFrame() {
+    if (!picture || frame.width === frame.height) return;
+    frame = rotateRect(frame, picture);
+    // A turned 4:3 is no longer one of the shapes offered.
+    if (aspectValue(cropAspect) !== null && cropAspect !== '1:1') cropAspect = 'free';
+  }
   const numberOfPlace = (h: Place, v: Place) => 7 - 3 * v + h;
 
   function setFrame(field: keyof Rect, value: number) {
@@ -637,6 +651,15 @@
       event.preventDefault();
       place((index % 3) as Place, (2 - Math.floor(index / 3)) as Place);
       return;
+    }
+    if (masking && picture && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      const letter = event.key.toLowerCase();
+      if (letter === 'f' || letter === 'o') {
+        event.preventDefault();
+        if (letter === 'f') growFrame();
+        else turnFrame();
+        return;
+      }
     }
     const id = shortcutOf(event);
     if (!id) return;
@@ -861,6 +884,7 @@
         </label>
       {/each}
     </div>
+    <div class="place-group">
     <div class="place" role="group" aria-label={t('crop.place')}>
       {#each PLACES as v (v)}
         {#each PLACES as h (h)}
@@ -881,6 +905,15 @@
           </button>
         {/each}
       {/each}
+    </div>
+    <div class="place-tools">
+      <button type="button" class="place-button" disabled={!canGrow} title={keys.on ? `${t('crop.grow')} (F)` : t('crop.grow')} aria-label={t('crop.grow')} onclick={growFrame}>
+        <Icon name="maximize" size={20} />
+      </button>
+      <button type="button" class="place-button" disabled={frame.width === frame.height} title={keys.on ? `${t('crop.rotate')} (O)` : t('crop.rotate')} aria-label={t('crop.rotate')} onclick={turnFrame}>
+        <Icon name="rotateFrame" size={20} />
+      </button>
+    </div>
     </div>
     <div class="numbers sides">
       {#each [['x', 'crop.x', 'cropLeft'], ['y', 'crop.y', 'cropTop'], ['width', 'crop.width', 'cropWidth'], ['height', 'crop.height', 'cropHeight']] as [field, label, icon] (field)}

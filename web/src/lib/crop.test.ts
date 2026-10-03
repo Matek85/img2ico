@@ -6,6 +6,8 @@ import {
   type Rect,
   alignRect,
   aspectValue,
+  growRect,
+  rotateRect,
   clampRect,
   dragRect,
   fitAspect,
@@ -188,6 +190,45 @@ describe('zooming the frame', () => {
     const tiny = zoomRect(square, 0.001, 0.5, 0.5, bounds);
     expect(tiny.width).toBeGreaterThanOrEqual(4);
     expect(tiny.height).toBeGreaterThanOrEqual(4);
+  });
+});
+
+describe('growRect', () => {
+  const picture = { width: 1000, height: 600 };
+
+  it('makes a square as big as the picture allows, around the old middle where it fits', () => {
+    expect(growRect({ x: 100, y: 100, width: 100, height: 100 }, 1, picture)).toEqual({ x: 0, y: 0, width: 600, height: 600 });
+    expect(growRect({ x: 700, y: 100, width: 100, height: 100 }, 1, picture)).toEqual({ x: 400, y: 0, width: 600, height: 600 });
+  });
+
+  it('keeps the shape of a free frame', () => {
+    expect(growRect({ x: 400, y: 250, width: 200, height: 100 }, null, picture)).toEqual({ x: 0, y: 50, width: 1000, height: 500 });
+    const tall = growRect({ x: 400, y: 250, width: 100, height: 200 }, null, picture);
+    expect(tall).toEqual({ x: 300, y: 0, width: 300, height: 600 });
+  });
+
+  it('leaves the whole picture as it is', () => {
+    expect(growRect({ x: 0, y: 0, ...picture }, null, picture)).toEqual({ x: 0, y: 0, ...picture });
+  });
+});
+
+describe('rotateRect', () => {
+  const picture = { width: 1000, height: 600 };
+
+  it('swaps width and height around the middle', () => {
+    expect(rotateRect({ x: 400, y: 250, width: 200, height: 100 }, picture)).toEqual({ x: 450, y: 200, width: 100, height: 200 });
+  });
+
+  it('shrinks a turned frame that no longer fits, keeping its new shape', () => {
+    const turned = rotateRect({ x: 0, y: 50, width: 1000, height: 500 }, picture);
+    expect(turned.height).toBe(600);
+    expect(turned.width).toBe(300);
+    expect(turned.x + turned.width).toBeLessThanOrEqual(1000);
+  });
+
+  it('is a square staying a square', () => {
+    const square = { x: 10, y: 20, width: 80, height: 80 };
+    expect(rotateRect(square, picture)).toEqual(square);
   });
 });
 
