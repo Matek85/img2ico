@@ -190,13 +190,13 @@ jobs:
       contents: write
     steps:
       - name: Download the three platform bundles
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           pattern: img2ico-*
           path: artifacts
 
       - name: Download the release notes
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: release-notes
           path: notes
