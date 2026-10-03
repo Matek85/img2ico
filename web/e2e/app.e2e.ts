@@ -326,6 +326,79 @@ test.describe('shortcuts and the look of the page', () => {
     await expect(page.locator('.download button.primary')).toBeEnabled();
   });
 
+  test('the list of changes goes back several steps at once and shows the picture as it was', async ({ page }) => {
+    await openInEditor(page, LOGO);
+    const list = page.locator('.change-list');
+    // Folded away until asked for.
+    await expect(list).toHaveCount(0);
+    await page.keyboard.press('c');
+    await page.keyboard.press('h');
+    await page.waitForTimeout(700);
+    await page.keyboard.press('z');
+    await page.waitForTimeout(700);
+    await page.keyboard.press('v');
+    await page.waitForTimeout(700);
+    await page.getByRole('button', { name: 'Show the changes' }).click();
+    await expect(page.locator('#changes')).toBeFocused();
+    const rows = list.locator('button.change');
+    await expect(rows).toHaveCount(4);
+    // The newest on top, each with its number, date and time; the first is where the picture was opened.
+    await expect(rows.nth(0)).toContainText(/^4\s.*\d{1,2}[:.]\d{2}[:.]\d{2}.*Mirror/s);
+    await expect(rows.nth(3)).toContainText(/^1\s/);
+    await expect(rows.nth(0)).toContainText('Mirror');
+    await expect(rows.nth(1)).toContainText('Turn');
+    await expect(rows.nth(3)).toContainText('Picture opened');
+    await expect(rows.nth(0)).toHaveAttribute('aria-current', 'step');
+
+    // Pointing at a step shows the picture as it was then.
+    await rows.nth(2).hover();
+    await expect(page.locator('.past img')).toBeVisible();
+
+    // A click goes back two steps at once; the steps after it can be brought back.
+    await rows.nth(2).click();
+    await expect(page.getByRole('button', { name: 'Mirror the picture left to right' })).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('button', { name: 'Mirror the picture top to bottom' })).toHaveAttribute('aria-pressed', 'false');
+    await expect(page.locator('input[type=range]')).toHaveValue('0');
+    await expect(rows.nth(2)).toHaveAttribute('aria-current', 'step');
+    await expect(page.getByRole('button', { name: 'Redo' })).toBeEnabled();
+    await rows.nth(0).click();
+    await expect(page.locator('input[type=range]')).toHaveValue('-90');
+  });
+
+  test('every picture of the queue keeps its own changes', async ({ page }) => {
+    await page.goto('/');
+    await page.setInputFiles('input[type=file]', [LOGO_FILE, { name: 'text.svg', mimeType: 'image/svg+xml', buffer: SVG_WITH_TEXT }]);
+    await expect(page.locator('.queue-list li')).toHaveCount(2);
+    await expect(page.locator('.bar .file')).toHaveText('logo.png');
+    await expect(page.locator('.editing-note')).toBeVisible();
+    await page.keyboard.press('c');
+    await page.keyboard.press('h');
+    await page.waitForTimeout(700);
+    await page.keyboard.press('v');
+    await page.waitForTimeout(700);
+    await page.getByRole('button', { name: 'Show the changes' }).click();
+    await expect(page.locator('.change-list button.change')).toHaveCount(3);
+
+    // The other picture has none of them ...
+    await page.getByRole('button', { name: /Edit text\.ico/ }).first().click();
+    await expect(page.locator('.bar .file')).toHaveText('text.svg');
+    await expect(page.locator('.download button.primary')).toBeEnabled();
+    // (A vector picture has no crop panel; its button is under the editor.)
+    await page.getByRole('button', { name: 'Show the changes' }).click();
+    await expect(page.locator('.change-list button.change')).toHaveCount(1);
+    // ... and the first has them still.
+    await page.getByRole('button', { name: /Edit logo\.ico/ }).first().click();
+    await expect(page.locator('.bar .file')).toHaveText('logo.png');
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    await page.keyboard.press('c');
+    await page.getByRole('button', { name: 'Show the changes' }).click();
+    await expect(page.locator('.change-list button.change')).toHaveCount(3);
+    await page.keyboard.press('Control+z');
+    await expect(page.locator('.change-list button.change').nth(1)).toHaveAttribute('aria-current', 'step');
+    await page.locator('.changes-head').getByRole('button', { name: 'Hide the changes' }).click();
+    await expect(page.locator('.change-list')).toHaveCount(0);
+  });
+
   test('"Reset to defaults" can be undone', async ({ page }) => {
     await openInEditor(page, LOGO);
     await page.getByLabel('macOS .icns').or(page.locator('label', { hasText: 'macOS .icns' })).first().click();
