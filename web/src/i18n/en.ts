@@ -200,6 +200,7 @@ export const en = {
   'msg.source.too_many_pixels': 'The picture is {width} × {height} pixels ({megapixels} megapixels), more than the limit of {limit} megapixels.',
   'msg.source.unreadable': '{name} could not be read: {e}',
   'msg.svg.no_size': 'The SVG {name} has no size.',
+  'msg.svg.text_left_out': 'This SVG has text, which is left out: the page has no fonts to draw it with. To keep it, turn the text into outlines (paths) in your drawing program.',
   'msg.svg.unreadable': '{name} could not be read as an SVG file: {e}',
   'msg.trim.empty': 'Nothing was kept: the picture is completely transparent.',
   'msg.trim.nothing_to_cut': 'Nothing was cut away: the picture has content up to its edges. For a solid-color background, use “Remove the background” first.',

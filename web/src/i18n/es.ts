@@ -200,6 +200,7 @@ export const es: Record<MessageKey, string> = {
   'msg.source.too_many_pixels': 'La imagen mide {width} × {height} píxeles ({megapixels} megapíxeles), más que el límite de {limit} megapíxeles.',
   'msg.source.unreadable': 'No se pudo leer {name}: {e}',
   'msg.svg.no_size': 'El SVG {name} no tiene tamaño.',
+  'msg.svg.text_left_out': 'Este SVG contiene texto, que se omite: la página no tiene tipos de letra para dibujarlo. Para conservarlo, convierte el texto en contornos (trazados) en tu programa de dibujo.',
   'msg.svg.unreadable': 'No se pudo leer {name} como archivo SVG: {e}',
   'msg.trim.empty': 'No se conservó nada: la imagen es totalmente transparente.',
   'msg.trim.nothing_to_cut': 'No se recortó nada: la imagen tiene contenido hasta sus bordes. Para un fondo de un solo color, usa antes «Quitar el fondo».',

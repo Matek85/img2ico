@@ -63,11 +63,18 @@ test.describe('converting', () => {
     for (const name of ['favicon.ico', 'apple-touch-icon.png', 'site.webmanifest']) expect(text, name).toContain(name);
   });
 
-  test('an SVG with text opens (the text itself is left out) and converts', async ({ page }) => {
+  test('an SVG with text opens, converts and warns that the text is left out', async ({ page }) => {
     await openInEditor(page, { name: 'text.svg', mimeType: 'image/svg+xml', buffer: SVG_WITH_TEXT });
     await expect(page.locator('.failure')).toHaveCount(0);
+    await expect(page.getByText('This SVG has text, which is left out')).toBeVisible();
     const [download] = await startDownload(page);
     expect((await downloaded(download)).readUInt16LE(2)).toBe(1);
+  });
+
+  test('an SVG without text gets no such warning', async ({ page }) => {
+    const plain = SVG_WITH_TEXT.toString().replace(/<text.*<\/text>/, '');
+    await openInEditor(page, { name: 'plain.svg', mimeType: 'image/svg+xml', buffer: Buffer.from(plain) });
+    await expect(page.getByText('left out')).toHaveCount(0);
   });
 
   test('a file that is no picture says so instead of failing silently', async ({ page }) => {

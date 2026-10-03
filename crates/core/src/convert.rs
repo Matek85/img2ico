@@ -536,6 +536,18 @@ pub fn convert_vector(
     notes: &dyn Notes,
 ) -> Result<Converted, String> {
     check_vector_options(options)?;
+    // Text is drawn only where there are fonts to draw it with (the command line, with the system's); a build
+    // without that (the web page) leaves it out, and says so rather than hand back an icon that quietly lacks it.
+    if cfg!(not(feature = "svg-text")) && drawing.has_text() {
+        warn(
+            options.silent,
+            crate::msg!(
+                "svg.text_left_out",
+                "Warning: {prefix}this SVG has text, which is left out: there are no fonts here to draw it with. To keep it, turn the text into outlines (paths) in your drawing program.",
+                prefix = file_prefix()
+            ),
+        );
+    }
     // A drawing has no resolution to stay below, so `Sizes::Auto` gets all the
     // sizes it started with.
     let sizes = starting_sizes(options).to_vec();
@@ -1043,6 +1055,30 @@ mod tests {
         let result = convert_vector(&drawing, &options, &NoNotes).unwrap();
         assert_eq!(sizes_in(&result.bytes), vec![16, 64]);
         assert_eq!(pixel(&result.bytes, 1, 32, 32), [255, 0, 0, 255]);
+    }
+
+    // Without the `svg-text` feature (the web page) the text of a drawing is left out, and the conversion says so.
+    // (With it, as in the command line, the text is drawn and there is nothing to say.)
+    #[test]
+    fn an_svg_with_text_gets_a_warning_where_text_cannot_be_drawn() {
+        let with_text = String::from_utf8_lossy(SVG)
+            .replace("</svg>", "<text x=\"2\" y=\"18\">Hi</text></svg>");
+        let (plain, plain_warnings) = crate::diag::collect(|| {
+            convert_vector(
+                &VectorImage::parse(SVG, "a.svg").unwrap(),
+                &options(),
+                &NoNotes,
+            )
+        });
+        plain.unwrap();
+        assert!(plain_warnings.is_empty(), "{plain_warnings:?}");
+
+        let drawing = VectorImage::parse(with_text.as_bytes(), "a.svg").unwrap();
+        let (result, warnings) =
+            crate::diag::collect(|| convert_vector(&drawing, &options(), &NoNotes));
+        result.unwrap();
+        let said = warnings.iter().any(|w| w.contains("has text"));
+        assert_eq!(said, cfg!(not(feature = "svg-text")), "{warnings:?}");
     }
 
     #[test]
