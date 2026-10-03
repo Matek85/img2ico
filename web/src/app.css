@@ -2946,6 +2946,11 @@ button.small {
   pointer-events: none;
 }
 
+.crop-view .crop-canvas {
+  position: absolute;
+  pointer-events: none;
+}
+
 .crop-pane {
   position: absolute;
   inset: 0;

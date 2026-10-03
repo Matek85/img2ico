@@ -206,11 +206,12 @@ export function turnedSize(size: Size, degrees: number): Size {
 /**
  * The frame after the picture was turned clockwise by `delta` degrees, from a canvas of `from` to
  * one of `to`: the frame keeps its size and what is under its middle (the picture turns beneath
- * it). A frame around the whole picture is the whole turned picture; one that no longer fits is
- * made smaller, in the same shape.
+ * it); one that no longer fits is made smaller, in the same shape. Only a quarter turn of a frame
+ * around the whole picture gives the whole turned picture: any other turn would make the frame grow
+ * and shrink with the canvas while the slider is dragged.
  */
 export function followTurn(rect: Rect, from: Size, to: Size, delta: number): Rect {
-  if (isFull(rect, from)) return fullRect(to);
+  if (isFull(rect, from) && normalizeTurn(delta) % 90 === 0) return fullRect(to);
   const radians = (delta * Math.PI) / 180;
   const sin = Math.sin(radians);
   const cos = Math.cos(radians);

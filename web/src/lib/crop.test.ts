@@ -224,6 +224,12 @@ describe('followTurn', () => {
     expect(followTurn({ x: 0, y: 0, ...picture }, picture, { width: 600, height: 1000 }, 90)).toEqual({ x: 0, y: 0, width: 600, height: 1000 });
   });
 
+  it('keeps the size of a frame around the whole picture for a turn that is not a quarter', () => {
+    const turned = { width: 1150, height: 1000 };
+    const moved = followTurn({ x: 0, y: 0, ...picture }, picture, turned, 30);
+    expect(moved).toEqual({ x: 75, y: 200, width: 1000, height: 600 });
+  });
+
   it('keeps a frame in the middle in the middle, with its size', () => {
     const frame = { x: 400, y: 250, width: 200, height: 100 };
     expect(followTurn(frame, picture, { width: 600, height: 1000 }, 90)).toEqual({ x: 200, y: 450, width: 200, height: 100 });

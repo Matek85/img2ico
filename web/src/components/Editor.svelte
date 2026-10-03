@@ -28,6 +28,7 @@
     ASPECTS,
     type AspectChoice,
     type Rect,
+    type Size,
     type Place,
     alignRect,
     aspectValue,
@@ -279,15 +280,24 @@
   function setTurn(degrees: number) {
     if (!opened || opened.vector || !Number.isFinite(degrees)) return;
     const next = normalizeTurn(degrees);
-    const delta = next - settings.rotate;
-    if (delta === 0 || !picture) return;
+    if (next === settings.rotate || !picture) return;
     const to = turnedSize({ width: opened.width, height: opened.height }, next);
-    let moved = followTurn(frame, picture, to, delta);
+    // The frame is worked out from the one the turning began with, not from the step before: a frame
+    // that had to be made smaller (around 90°) is as big as it was when the turn comes back, and the
+    // rounding does not add up over the many steps of a dragged slider. The turning begins anew
+    // whenever the frame was changed some other way.
+    const same = (a: Rect, b: Rect) => a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
+    if (!turnStart || !same(turnStart.made, frame)) {
+      turnStart = { frame: { ...frame }, size: { ...picture }, rotate: settings.rotate, made: frame };
+    }
+    let moved = followTurn(turnStart.frame, turnStart.size, to, next - turnStart.rotate);
     const ratio = aspectValue(cropAspect);
     if (ratio !== null) moved = fitAspect(moved, ratio, to);
+    turnStart.made = moved;
     frame = moved;
     settings.rotate = next;
   }
+  let turnStart: { frame: Rect; size: Size; rotate: number; made: Rect } | null = null;
   const turnBy = (delta: number) => setTurn(settings.rotate + delta);
   // The slider and the number go from -180 to 180: a small turn to the left is -5, not 355.
   let turnShown = $derived(settings.rotate > 180 ? settings.rotate - 360 : settings.rotate);
@@ -895,7 +905,7 @@
         {#if settings.sizes.length === 0}
           <p class="note">{t('editor.no_sizes')}</p>
         {:else if masking && view === 'icon' && picture}
-          <CropTool src={shownOriginal} size={picture} bind:rect={frame} aspect={aspectValue(cropAspect)} locked={cropLocked} ontogglelock={() => (cropLocked = !cropLocked)} />
+          <CropTool src={originalUrl} size={picture} turn={settings.rotate} original={{ width: opened.width, height: opened.height }} bind:rect={frame} aspect={aspectValue(cropAspect)} locked={cropLocked} ontogglelock={() => (cropLocked = !cropLocked)} />
         {:else if converted && tiles.length > 0 && view === 'pixels'}
           <PixelInspector
             bytes={converted.bytes}
