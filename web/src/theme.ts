@@ -6,7 +6,7 @@ import { t } from './i18n';
 
 const KEY = 'img2ico.theme.v1';
 
-export type Theme = 'light' | 'dark';
+type Theme = 'light' | 'dark';
 
 function stored(): Theme | null {
   try {
@@ -29,7 +29,7 @@ function remember(theme: Theme | null): void {
 const system = window.matchMedia('(prefers-color-scheme: dark)');
 
 /** The theme the page is shown in now. */
-export function currentTheme(): Theme {
+function currentTheme(): Theme {
   const chosen = document.documentElement.dataset.theme;
   if (chosen === 'light' || chosen === 'dark') return chosen;
   return system.matches ? 'dark' : 'light';

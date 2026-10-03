@@ -5,7 +5,7 @@ interface KeyboardLayoutMap {
   get(code: string): string | undefined;
 }
 
-export const layout = $state<{ map: KeyboardLayoutMap | null }>({ map: null });
+const layout = $state<{ map: KeyboardLayoutMap | null }>({ map: null });
 
 /** Asks the browser for the layout, once; without the API (or if it refuses) nothing changes. */
 export function readLayout(): void {

@@ -1,7 +1,7 @@
 import type { EngineMessage } from '../engine/protocol';
 
 /** One image inside an .ico file, as the engine describes it. */
-export interface IconImage {
+interface IconImage {
   index: number;
   width: number;
   height: number;
@@ -12,7 +12,7 @@ export interface IconImage {
 }
 
 /** A problem the check found; `image` is the zero-based entry it is about. */
-export interface Finding {
+interface Finding {
   image: number | null;
   /** The engine's English sentence. */
   message: string;
