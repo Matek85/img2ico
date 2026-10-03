@@ -137,7 +137,7 @@ export const helpDe: Record<keyof typeof helpEn, string> = {
   'help.types.02.dl.4.d': 'Werden wie jedes andere Bild gelesen.',
   'help.types.02.dl.5.t': 'SVG',
   'help.types.02.dl.5.d':
-    'Eine Zeichnung: Sie wird bei jeder Größe neu gezeichnet und ist deshalb bei allen scharf. Ein Zuschnitt und eine Drehung gelten für sie nicht. Text in einem SVG wird noch nicht gezeichnet, weil der Seite die Schriften dafür fehlen: Wandle Text zuerst in Pfade um.',
+    'Eine Zeichnung: Sie wird bei jeder Größe neu gezeichnet und ist deshalb bei allen scharf. Ein Zuschnitt und eine Drehung gelten für sie nicht. Text in einem SVG wird nicht gezeichnet, weil der Seite die Schriften dafür fehlen (sie warnt dich, wenn ein SVG Text enthält): Wandle Text zuerst in Pfade um.',
   'help.types.02.dl.6.t': 'ICNS',
   'help.types.02.dl.6.d': 'Ein vorhandenes macOS-Icon lässt sich als Bild öffnen.',
   'help.types.03.p':

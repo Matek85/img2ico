@@ -142,7 +142,7 @@ export const helpEn = {
   'help.types.02.dl.4.d': 'Read like any other picture.',
   'help.types.02.dl.5.t': 'SVG',
   'help.types.02.dl.5.d':
-    'A drawing: it is drawn anew at every size, so it is sharp at all of them. A crop and a turn do not apply to it. Text inside an SVG is not drawn yet, because the page has no fonts for it: turn text into outlines first.',
+    'A drawing: it is drawn anew at every size, so it is sharp at all of them. A crop and a turn do not apply to it. Text inside an SVG is not drawn, because the page has no fonts for it (it warns you when an SVG has text): turn text into outlines first.',
   'help.types.02.dl.6.t': 'ICNS',
   'help.types.02.dl.6.d': 'An existing macOS icon can be opened as a picture.',
   'help.types.03.p':

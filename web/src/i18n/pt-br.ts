@@ -200,6 +200,7 @@ export const ptBr: Record<MessageKey, string> = {
   'msg.source.too_many_pixels': 'A imagem tem {width} × {height} pixels ({megapixels} megapixels), mais que o limite de {limit} megapixels.',
   'msg.source.unreadable': 'Não foi possível ler {name}: {e}',
   'msg.svg.no_size': 'O SVG {name} não tem tamanho.',
+  'msg.svg.text_left_out': 'Este SVG contém texto, que é omitido: a página não tem fontes para desenhá-lo. Para mantê-lo, converta o texto em contornos (caminhos) no seu programa de desenho.',
   'msg.svg.unreadable': 'Não foi possível ler {name} como arquivo SVG: {e}',
   'msg.trim.empty': 'Nada foi mantido: a imagem é totalmente transparente.',
   'msg.trim.nothing_to_cut': 'Nada foi cortado: a imagem tem conteúdo até as bordas. Para um fundo de uma cor só, use antes “Remover o fundo”.',

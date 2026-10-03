@@ -138,7 +138,7 @@ export const helpPtBr: Record<keyof typeof helpEn, string> = {
   'help.types.02.dl.4.d': 'Lidos como qualquer outra imagem.',
   'help.types.02.dl.5.t': 'SVG',
   'help.types.02.dl.5.d':
-    'Um desenho: ele é desenhado de novo em cada tamanho, então é nítido em todos. Corte e rotação não se aplicam a ele. O texto dentro de um SVG ainda não é desenhado, porque a página não tem fontes para isso: transforme o texto em contornos primeiro.',
+    'Um desenho: ele é desenhado de novo em cada tamanho, então é nítido em todos. Corte e rotação não se aplicam a ele. O texto dentro de um SVG não é desenhado, porque a página não tem fontes para isso (ela avisa quando um SVG tem texto): transforme o texto em contornos primeiro.',
   'help.types.02.dl.6.t': 'ICNS',
   'help.types.02.dl.6.d': 'Um ícone do macOS existente pode ser aberto como imagem.',
   'help.types.03.p':

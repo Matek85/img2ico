@@ -112,4 +112,4 @@ After the first big pull request, in this order, all done: codes instead of sent
 
 **API (a fun feature, last).** A static page cannot receive HTTP requests, so a way to hand it a settings JSON and one encoded picture and get an encoded `.ico` back would be a `window.postMessage` protocol (with an allow-list of origins), a global function for scripts, and, for real programs, the engine as an npm package. Nothing is uploaded in any of them.
 
-SVG text is an open question: the browser has no system fonts for the engine's SVG renderer. Either a font is bundled (bigger download) or SVGs are drawn by the browser's own renderer; this is decided after measuring.
+SVG text: the browser has no system fonts for the engine's SVG renderer, so for 1.0.0 the text of an SVG is left out and the page warns about it (the help says to turn text into outlines). The code that lays text out is the core feature `svg-text` (about a third of the engine), which only the command line turns on; the web build leaves it off. Bundling a font and turning the feature on is the way to draw text later; it costs about 1.4 MB of engine plus the font.

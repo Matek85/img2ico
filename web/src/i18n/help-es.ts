@@ -138,7 +138,7 @@ export const helpEs: Record<keyof typeof helpEn, string> = {
   'help.types.02.dl.4.d': 'Se leen como cualquier otra imagen.',
   'help.types.02.dl.5.t': 'SVG',
   'help.types.02.dl.5.d':
-    'Un dibujo: se dibuja de nuevo en cada tamaño, así que es nítido en todos. Un recorte y un giro no se aplican a él. El texto dentro de un SVG todavía no se dibuja, porque la página no tiene tipos de letra para ello: convierte primero el texto en contornos.',
+    'Un dibujo: se dibuja de nuevo en cada tamaño, así que es nítido en todos. Un recorte y un giro no se aplican a él. El texto dentro de un SVG no se dibuja, porque la página no tiene tipos de letra para ello (te avisa cuando un SVG tiene texto): convierte primero el texto en contornos.',
   'help.types.02.dl.6.t': 'ICNS',
   'help.types.02.dl.6.d': 'Un icono de macOS existente se puede abrir como imagen.',
   'help.types.03.p':

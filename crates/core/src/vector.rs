@@ -43,9 +43,21 @@ fn looks_like_svg_text(bytes: &[u8]) -> bool {
     head.windows(4).any(|window| window == b"<svg")
 }
 
+/// Whether an SVG file (or a compressed one) has a `<text>` element.
+fn contains_text(bytes: &[u8]) -> bool {
+    let has = |text: &[u8]| text.windows(5).any(|window| window == b"<text");
+    if bytes.starts_with(&GZIP_MAGIC) {
+        return usvg::decompress_svgz(bytes).is_ok_and(|text| has(&text));
+    }
+    has(bytes)
+}
+
 /// A parsed SVG, ready to be drawn at any size.
 pub struct VectorImage {
     tree: Box<usvg::Tree>,
+    /// Whether the file has `<text>` (looked for in the file itself: a build without the text code drops the text
+    /// from the tree, so the tree cannot tell).
+    has_text: bool,
 }
 
 impl VectorImage {
@@ -84,7 +96,14 @@ impl VectorImage {
         }
         Ok(Self {
             tree: Box::new(tree),
+            has_text: contains_text(bytes),
         })
+    }
+
+    /// Whether the drawing has text. In a build without the `svg-text` feature (the web page) it is not drawn,
+    /// and the conversion says so.
+    pub fn has_text(&self) -> bool {
+        self.has_text
     }
 
     /// The drawing's own size in SVG units (usually pixels).
@@ -184,6 +203,21 @@ mod tests {
         assert!(!is_svg(b"<html><body>no vector here</body></html>"));
         assert!(!is_svg(b"plain text with <svg inside"));
         assert!(!is_svg(b""));
+    }
+
+    #[test]
+    fn text_in_a_drawing_is_found() {
+        assert!(
+            !VectorImage::parse(TWO_SQUARES.as_bytes(), "t.svg")
+                .unwrap()
+                .has_text()
+        );
+        let with_text = TWO_SQUARES.replace("</svg>", "<text x=\"5\" y=\"20\">Hi</text></svg>");
+        assert!(
+            VectorImage::parse(with_text.as_bytes(), "t.svg")
+                .unwrap()
+                .has_text()
+        );
     }
 
     #[test]

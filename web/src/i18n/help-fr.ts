@@ -138,7 +138,7 @@ export const helpFr: Record<keyof typeof helpEn, string> = {
   'help.types.02.dl.4.d': 'Lus comme n’importe quelle autre image.',
   'help.types.02.dl.5.t': 'SVG',
   'help.types.02.dl.5.d':
-    'Un dessin : il est redessiné à chaque taille, donc net à toutes. Un recadrage et une rotation ne s’y appliquent pas. Le texte à l’intérieur d’un SVG n’est pas encore dessiné, car la page n’a pas de polices pour cela : convertissez d’abord le texte en tracés.',
+    'Un dessin : il est redessiné à chaque taille, donc net à toutes. Un recadrage et une rotation ne s’y appliquent pas. Le texte à l’intérieur d’un SVG n’est pas dessiné, car la page n’a pas de polices pour cela (elle vous avertit quand un SVG contient du texte) : convertissez d’abord le texte en tracés.',
   'help.types.02.dl.6.t': 'ICNS',
   'help.types.02.dl.6.d': 'Une icône macOS existante peut être ouverte comme image.',
   'help.types.03.p':

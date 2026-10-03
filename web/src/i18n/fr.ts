@@ -201,6 +201,7 @@ export const fr: Record<MessageKey, string> = {
   'msg.source.too_many_pixels': 'L’image fait {width} × {height} pixels ({megapixels} mégapixels), plus que la limite de {limit} mégapixels.',
   'msg.source.unreadable': '{name} n’a pas pu être lu : {e}',
   'msg.svg.no_size': 'Le SVG {name} n’a pas de taille.',
+  'msg.svg.text_left_out': 'Ce SVG contient du texte, qui est omis : la page n’a pas de polices pour le dessiner. Pour le conserver, convertissez le texte en tracés (contours) dans votre logiciel de dessin.',
   'msg.svg.unreadable': '{name} n’a pas pu être lu comme un fichier SVG : {e}',
   'msg.trim.empty': 'Rien n’a été conservé : l’image est entièrement transparente.',
   'msg.trim.nothing_to_cut': 'Rien n’a été coupé : l’image a du contenu jusqu’à ses bords. Pour un arrière-plan d’une seule couleur, utilisez d’abord « Supprimer l’arrière-plan ».',
