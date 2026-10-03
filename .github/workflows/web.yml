@@ -61,7 +61,7 @@ jobs:
 
       - name: Cache the wasm-bindgen tool
         id: bindgen-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cargo/bin/wasm-bindgen
           key: wasm-bindgen-${{ runner.os }}-${{ steps.bindgen.outputs.version }}
