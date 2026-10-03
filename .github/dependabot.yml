@@ -34,6 +34,12 @@ updates:
       prefix: "deps"
     labels:
       - dependencies
+    ignore:
+      # svelte-check (the page's type check) accepts TypeScript 5 and 6 only; with TypeScript 7 `npm ci` stops on the
+      # peer dependency. Take this out when a svelte-check release lists TypeScript 7.
+      - dependency-name: typescript
+        update-types:
+          - version-update:semver-major
     groups:
       npm-minor-and-patch:
         update-types:
@@ -51,6 +57,11 @@ updates:
       prefix: "ci"
     labels:
       - dependencies
+    ignore:
+      # The tag of this action is the Rust version it installs (ci.yml checks the minimum supported version with
+      # @1.88, which must stay what `rust-version` in Cargo.toml says), not a version of the action. The other uses
+      # follow `@stable`, which Dependabot does not touch.
+      - dependency-name: dtolnay/rust-toolchain
     groups:
       actions:
         update-types:
