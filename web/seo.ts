@@ -67,6 +67,8 @@ export function headTags(m: Messages, siteUrl: string, page?: PageInfo): string 
     `<meta name="description" content="${description}" />`,
     `<meta name="robots" content="index, follow, max-image-preview:large" />`,
     `<meta name="color-scheme" content="light dark" />`,
+    // The theme the visitor chose, before the page is drawn (see src/theme.ts).
+    `<script>try{var t=localStorage.getItem('img2ico.theme.v1');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}</script>`,
     `<meta name="theme-color" content="#f7f7f9" media="(prefers-color-scheme: light)" />`,
     `<meta name="theme-color" content="#14141a" media="(prefers-color-scheme: dark)" />`,
     `<meta property="og:type" content="website" />`,
@@ -205,7 +207,7 @@ export function navHtml(m: Messages, prefix = './'): string {
               ${languages}
             </div>
           </details>
-          <button type="button" class="theme-switch" disabled title="${escapeHtml(m['nav.theme'])} – ${escapeHtml(m['nav.soon'])}" aria-label="${escapeHtml(m['nav.theme'])}">${THEME_ICON}</button>
+          <button type="button" class="theme-switch" disabled title="${escapeHtml(m['nav.theme'])}" aria-label="${escapeHtml(m['nav.theme'])}">${THEME_ICON}</button>
           <a href="${REPOSITORY}">${osIcon(siGithub.path)}${escapeHtml(m['nav.github'])}</a>`;
 }
 

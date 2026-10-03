@@ -2,3 +2,8 @@
 import '@fontsource-variable/source-sans-3/wght.css';
 import './app.css';
 import './menus';
+import { setLocale } from './i18n';
+import { startThemeSwitch } from './theme';
+
+setLocale(navigator.language);
+startThemeSwitch();

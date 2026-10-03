@@ -1,5 +1,6 @@
 /* Colours are variables so the dark theme is one block. The theme follows the
-   system setting; there is nothing to switch yet. --accent is a fill (buttons)
+   system setting until the visitor switches it (data-theme on the root element, see
+   src/theme.ts). --accent is a fill (buttons)
    with --accent-text on it; --link is blue as text on the page background. */
 :root {
   color-scheme: light dark;
@@ -24,7 +25,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
     --bg: #0e1118;
     --surface: #161b26;
     --text: #eef2fa;
@@ -44,6 +45,35 @@
     --warn-text: #ffd27a;
     --shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
   }
+}
+
+:root[data-theme='dark'] {
+  --bg: #0e1118;
+  --surface: #161b26;
+  --text: #eef2fa;
+  --muted: #9ba6bb;
+  --border: #283042;
+  --accent: #2f6df0;
+  --accent-hover: #4a82f5;
+  --accent-text: #ffffff;
+  --link: #7fa5ff;
+  --tint: #1b2740;
+  --hero-from: #16264a;
+  --ok: #5fd68a;
+  --warn: #f0c060;
+  --bad: #ff8a80;
+  --on-bad: #3b0a06;
+  --warn-bg: #3a2a08;
+  --warn-text: #ffd27a;
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
 }
 
 * {
