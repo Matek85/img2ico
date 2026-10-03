@@ -15,6 +15,17 @@ export default defineConfig({
   base: './',
   plugins: [svelte(), seo(process.env.SITE_URL)],
   worker: { format: 'es' },
-  build: { target: 'es2022' },
+  // The converter and the help pages are pages of their own (each a folder with an index.html).
+  build: {
+    target: 'es2022',
+    rollupOptions: {
+      input: [
+        'index.html',
+        ...['getting-started', 'settings', 'file-types', 'privacy', 'keyboard-shortcuts', 'command-line'].map(
+          (slug) => `help/${slug}/index.html`,
+        ),
+      ],
+    },
+  },
   test: { environment: 'node' },
 });
