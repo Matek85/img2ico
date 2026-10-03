@@ -1056,8 +1056,8 @@ mod tests {
         let shown = structured(&error);
         assert_eq!(shown["code"], "source.unreadable");
         assert_eq!(shown["params"]["name"], "x.png");
-        // the reason comes from the image library: no code of ours
-        assert!(shown["params"]["e"].is_string());
+        // the reason is a message of its own: a file that is no picture at all
+        assert_eq!(shown["params"]["e"]["code"], "source.format_unknown");
         assert_eq!(structured("something else")["code"], "other");
 
         // a limit error nested in a "could not read" is a message of its own
