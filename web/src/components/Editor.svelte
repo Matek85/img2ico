@@ -27,6 +27,8 @@
     ASPECTS,
     type AspectChoice,
     type Rect,
+    type Place,
+    alignRect,
     aspectValue,
     clampRect,
     fitAspect,
@@ -432,6 +434,19 @@
     if (ratio !== null && picture) frame = fitAspect(frame, ratio, picture);
   }
 
+  // The frame goes to an edge, a corner or the middle of the picture (the pad under the picture, and
+  // the number pad of the keyboard laid out the same way).
+  const PLACE_NAMES = [
+    ['tl', 't', 'tr'],
+    ['l', 'c', 'r'],
+    ['bl', 'b', 'br'],
+  ];
+  const PLACES: Place[] = [0, 1, 2];
+  function place(h: Place, v: Place) {
+    if (picture) frame = alignRect(frame, picture, h, v);
+  }
+  const numberOfPlace = (h: Place, v: Place) => 7 - 3 * v + h;
+
   function setFrame(field: keyof Rect, value: number) {
     if (!picture || !Number.isFinite(value)) return;
     frame = clampRect({ ...frame, [field]: value }, picture);
@@ -614,6 +629,13 @@
     if (event.key === 'Escape' && masking && !event.ctrlKey && !event.metaKey && !event.altKey) {
       event.preventDefault();
       endMask();
+      return;
+    }
+    const pad = masking && picture && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey ? /^Numpad([1-9])$/.exec(event.code) : null;
+    if (pad) {
+      const index = Number(pad[1]) - 1;
+      event.preventDefault();
+      place((index % 3) as Place, (2 - Math.floor(index / 3)) as Place);
       return;
     }
     const id = shortcutOf(event);
@@ -837,6 +859,27 @@
           <input type="radio" name="crop-aspect" value={choice} checked={cropAspect === choice} onchange={() => chooseAspect(choice)} />
           {choice === 'free' ? t('crop.aspect_free') : choice}
         </label>
+      {/each}
+    </div>
+    <div class="place" role="group" aria-label={t('crop.place')}>
+      {#each PLACES as v (v)}
+        {#each PLACES as h (h)}
+          {@const spot = alignRect(frame, picture, h, v)}
+          {@const name = t(`crop.at_${PLACE_NAMES[v][h]}`)}
+          <button
+            type="button"
+            class="place-button"
+            class:chosen={spot.x === frame.x && spot.y === frame.y}
+            title={keys.on ? `${name} (${t('keys.numpad')} ${numberOfPlace(h, v)})` : name}
+            aria-label={name}
+            onclick={() => place(h, v)}
+          >
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+              <rect x="3" y="3" width="18" height="18" rx="3" fill="none" stroke="currentColor" stroke-width="2" />
+              <rect x={h === 0 ? 6 : h === 1 ? 9.5 : 13} y={v === 0 ? 6 : v === 1 ? 9.5 : 13} width="5" height="5" rx="1" fill="currentColor" />
+            </svg>
+          </button>
+        {/each}
       {/each}
     </div>
     <div class="numbers sides">

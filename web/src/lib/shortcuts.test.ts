@@ -35,7 +35,8 @@ describe('shortcutOf', () => {
   it('takes digits by the physical key, so a French keyboard works', () => {
     // AZERTY: the key of the digit 1 types "&" without Shift.
     expect(shortcutOf({ ...press('&'), code: 'Digit1' })).toBe('viewIcon');
-    expect(shortcutOf({ ...press('1'), code: 'Numpad1' })).toBe('viewIcon');
+    // The number pad is for placing the crop frame, not for the views.
+    expect(shortcutOf({ ...press('1'), code: 'Numpad1' })).toBeNull();
     expect(shortcutOf({ ...press('!'), code: 'Digit1', shiftKey: true })).toBeNull();
   });
 

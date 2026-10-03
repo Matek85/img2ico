@@ -8,7 +8,8 @@
 //
 // Letters are matched by the character typed (`key`), so they follow the keyboard layout.
 // Digits are matched by the physical key (`code`): on a French keyboard the digit needs Shift,
-// and the key on the left of the row would otherwise never be a 1.
+// and the key on the left of the row would otherwise never be a 1. Only the row above the letters
+// counts: the number pad belongs to the crop, where it places the frame like a map (7 8 9 / 4 5 6 / 1 2 3).
 // Escape (ends the crop) is handled in the editor; the keys of the crop (Space, arrows, plus and
 // minus) are handled by the crop itself, and CROP_KEYS only lists them.
 
@@ -58,6 +59,7 @@ export const CROP_KEYS: readonly { label: string; action: string }[] = [
   { label: 'Space', action: 'lock' },
   { label: '← ↑ → ↓', action: 'move' },
   { label: '+ −', action: 'zoom' },
+  { label: 'Num 1–9', action: 'place' },
   { label: 'Esc', action: 'done' },
 ];
 
@@ -97,7 +99,7 @@ export interface KeyInfo {
 /** Which shortcut a key press is, or null (a modifier is held, the key is held down, or it is none of ours). */
 export function shortcutOf(event: KeyInfo): ShortcutId | null {
   if (event.ctrlKey || event.metaKey || event.altKey || event.isComposing || event.repeat) return null;
-  const digit = /^(?:Digit|Numpad)([123])$/.exec(event.code);
+  const digit = /^Digit([123])$/.exec(event.code);
   if (digit) return event.shiftKey ? null : BY_DIGIT[digit[1]];
   // "?" needs Shift on most keyboards; for any other key Shift means it is not ours.
   if (event.key === '?') return 'help';
