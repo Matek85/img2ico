@@ -1,3 +1,4 @@
+@import '@fontsource-variable/source-sans-3/wght.css';
 /* Colours are variables so the dark theme is one block. The theme follows the
    system setting until the visitor switches it (data-theme on the root element, see
    src/theme.ts). --accent is a fill (buttons)
