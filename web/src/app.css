@@ -76,6 +76,138 @@
   color-scheme: dark;
 }
 
+/* The colours are registered as colours, so a change of theme can fade from one set to the other
+   (everything that uses them follows, gradients included) instead of jumping. Switching on the first
+   draw never animates; a browser without @property just changes at once. */
+@property --bg {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #f4f7fc;
+}
+
+@property --surface {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #ffffff;
+}
+
+@property --text {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #0f172a;
+}
+
+@property --muted {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #526078;
+}
+
+@property --border {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #d5dcea;
+}
+
+@property --accent {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #2563eb;
+}
+
+@property --accent-hover {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #1d4fd8;
+}
+
+@property --accent-text {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #ffffff;
+}
+
+@property --link {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #1d4fd8;
+}
+
+@property --tint {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #e4ecfd;
+}
+
+@property --hero-from {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #16264a;
+}
+
+@property --ok {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #1b7f3b;
+}
+
+@property --warn {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #946200;
+}
+
+@property --bad {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #b3261e;
+}
+
+@property --on-bad {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #ffffff;
+}
+
+@property --warn-bg {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #fff3d6;
+}
+
+@property --warn-text {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #7a4b00;
+}
+
+:root {
+  transition:
+    --bg 0.4s ease,
+    --surface 0.4s ease,
+    --text 0.4s ease,
+    --muted 0.4s ease,
+    --border 0.4s ease,
+    --accent 0.4s ease,
+    --accent-hover 0.4s ease,
+    --accent-text 0.4s ease,
+    --link 0.4s ease,
+    --tint 0.4s ease,
+    --hero-from 0.4s ease,
+    --ok 0.4s ease,
+    --warn 0.4s ease,
+    --bad 0.4s ease,
+    --on-bad 0.4s ease,
+    --warn-bg 0.4s ease,
+    --warn-text 0.4s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    transition: none;
+  }
+}
+
 * {
   box-sizing: border-box;
 }
