@@ -105,6 +105,38 @@ jobs:
         working-directory: web
         run: npx vite build
 
+      # The browser tests (web/e2e) open the built page in Chromium: converting, the formats, icon files and the
+      # queue, the languages, the shortcuts. The browser is cached under the version of Playwright.
+      - name: Find the Playwright version
+        id: playwright
+        working-directory: web
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache the browser for the tests
+        id: browser-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+
+      - name: Install the browser for the tests
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+
+      - name: Run the browser tests
+        working-directory: web
+        run: npm run e2e
+
+      # On a failure the report (with screenshots and traces) is the way to see what the browser saw.
+      - name: Keep the report of the browser tests
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-report
+          path: |
+            web/playwright-report
+            web/test-results
+
       - name: Keep the built page
         uses: actions/upload-artifact@v7
         with:
