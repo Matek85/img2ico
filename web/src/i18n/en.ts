@@ -2,7 +2,10 @@
 // directly: components ask for a key, so another language is one more file of
 // this shape (see index.ts). Plural forms are keys with the suffix _one /
 // _other (the suffixes of Intl.PluralRules); {name} is replaced by a value.
+import { helpEn } from './help-en';
+
 export const en = {
+  ...helpEn,
   'app.name': 'img2ico',
   'app.tagline': 'Turn PNG, JPG, SVG and more into .ico and .icns icons, or a complete favicon package. Right in your browser, nothing is uploaded.',
   'hero.title': 'Image to Icon Converter',
@@ -24,7 +27,7 @@ export const en = {
   'help.start.title': 'Getting started',
   'help.start.description': 'How to turn a picture into an icon file with img2ico: drop it, choose what it is for, download.',
   'help.settings.title': 'The settings explained',
-  'help.settings.description': 'What every setting of the editor does: sizes, margin, corners, crop, background removal and more.',
+  'help.settings.description': 'What every setting of the editor does: sizes, margin, corners, crop and turn, background removal and more.',
   'help.types.title': 'File types',
   'help.types.description': 'Which pictures img2ico reads, and what the .ico, .icns and website package files are.',
   'help.privacy.title': 'Privacy',
@@ -70,7 +73,6 @@ export const en = {
   'keys.act_help': 'Show this list',
   'keys.crop_note': 'These keys work once the picture is selected; it is selected when editing starts.',
   'keys.close': 'Close',
-  'help.placeholder': 'This help page is still being written.',
   'help.topics': 'Help topics',
   'seo.title': 'img2ico – Convert PNG, JPG and SVG to ICO and ICNS online',
   'seo.description':

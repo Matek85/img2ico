@@ -3272,11 +3272,86 @@ button.small {
   font-size: 1.1rem;
 }
 
-.help-page .placeholder {
-  padding: 1rem 1.25rem;
-  color: var(--muted);
-  border: 1px dashed var(--border);
-  border-radius: 0.75rem;
+.help-page h2 {
+  margin: 2rem 0 0.5rem;
+  font-size: 1.4rem;
+}
+
+.help-page h3 {
+  margin: 1.5rem 0 0.4rem;
+  font-size: 1.1rem;
+}
+
+.help-page p,
+.help-page li,
+.help-page dd {
+  max-width: 46rem;
+  line-height: 1.6;
+}
+
+.help-page ul,
+.help-page ol {
+  margin: 0.5rem 0 1rem;
+  padding-left: 1.4rem;
+}
+
+.help-page li + li {
+  margin-top: 0.3rem;
+}
+
+.help-page code {
+  padding: 0.05rem 0.35rem;
+  font-size: 0.92em;
+  background: var(--tint);
+  border-radius: 0.3rem;
+}
+
+.help-page .terms,
+.help-page .key-list {
+  margin: 0.5rem 0 1rem;
+}
+
+.help-page .terms > div {
+  padding: 0.6rem 0;
+  border-top: 1px solid var(--border);
+}
+
+.help-page .terms > div:last-child {
+  border-bottom: 1px solid var(--border);
+}
+
+.help-page .terms dt {
+  font-weight: 600;
+}
+
+.help-page .terms dd,
+.help-page .key-list dd {
+  margin: 0.15rem 0 0;
+}
+
+.help-page .key-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  gap: 0 2rem;
+}
+
+.help-page .key-groups h2 {
+  margin-top: 1rem;
+}
+
+.help-page .key-list > div {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 0.3rem 0;
+}
+
+.help-page .key-list dt {
+  flex: 0 0 6rem;
+}
+
+.help-page .key-list dd {
+  margin: 0;
 }
 
 @media (max-width: 52rem) {

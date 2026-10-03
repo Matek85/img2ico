@@ -8,18 +8,13 @@
 import type { Plugin } from 'vite';
 import { siApple, siGithub, siLinux } from 'simple-icons';
 import { en } from './src/i18n/en.ts';
+import { escapeHtml, helpBodyHtml } from './helpContent.ts';
 
 type Messages = Record<string, string>;
 
 const REPOSITORY = 'https://github.com/Matek85/img2ico';
 
-export function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
+export { escapeHtml };
 
 /** The address with one trailing slash, or '' when there is none (or it is not http/https). */
 export function normalizeSiteUrl(value: string | undefined): string {
@@ -202,7 +197,7 @@ export function navHtml(m: Messages, prefix = './'): string {
             </div>
           </details>
           <details class="menu lang">
-            <summary aria-label="${escapeHtml(m['nav.language'])}">${flag(LANGUAGES[0].flag)}${escapeHtml(LANGUAGES[0].name)}</summary>
+            <summary aria-label="${escapeHtml(m['nav.language'])}: ${escapeHtml(LANGUAGES[0].name)}">${flag(LANGUAGES[0].flag)}${escapeHtml(LANGUAGES[0].name)}</summary>
             <div class="menu-list">
               ${languages}
             </div>
@@ -229,7 +224,7 @@ export function helpHtml(m: Messages, slug: string, prefix: string): string {
         <article class="help-page">
           <h1>${e(`help.${key}.title`)}</h1>
           <p class="lead">${e(`help.${key}.description`)}</p>
-          <p class="placeholder">${e('help.placeholder')}</p>
+          ${helpBodyHtml(m, key, prefix)}
         </article>
       </div>`;
 }
