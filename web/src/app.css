@@ -2951,6 +2951,21 @@ button.small {
   pointer-events: none;
 }
 
+.crop-frame .crop-shape {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.crop-frame .crop-shape path {
+  fill: rgba(0, 0, 0, 0.5);
+  stroke: rgba(255, 255, 255, 0.55);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
 .crop-pane {
   position: absolute;
   inset: 0;

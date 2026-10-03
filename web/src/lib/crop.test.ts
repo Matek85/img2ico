@@ -8,6 +8,7 @@ import {
   aspectValue,
   followTurn,
   growRect,
+  shapePath,
   normalizeTurn,
   rotateRect,
   turnedSize,
@@ -193,6 +194,31 @@ describe('zooming the frame', () => {
     const tiny = zoomRect(square, 0.001, 0.5, 0.5, bounds);
     expect(tiny.width).toBeGreaterThanOrEqual(4);
     expect(tiny.height).toBeGreaterThanOrEqual(4);
+  });
+});
+
+describe('shapePath', () => {
+  it('is empty where the style cuts nothing', () => {
+    expect(shapePath(100, 100, 'contain', 0)).toBe('');
+    expect(shapePath(0, 100, 'contain', 22)).toBe('');
+  });
+
+  it('takes a rounded rectangle of the whole frame out of it for "contain"', () => {
+    // 22 % of the shorter edge (80) is 17.6.
+    expect(shapePath(100, 80, 'contain', 22)).toBe(
+      'M0 0H100V80H0Z' + 'M17.6 0H82.4A17.6 17.6 0 0 1 100 17.6V62.4A17.6 17.6 0 0 1 82.4 80H17.6A17.6 17.6 0 0 1 0 62.4V17.6A17.6 17.6 0 0 1 17.6 0Z',
+    );
+  });
+
+  it('takes the middle square for "cover", a circle at 50 %', () => {
+    // The square is 80 wide, at 10 from the left; 50 % is a radius of 40.
+    expect(shapePath(100, 80, 'cover', 50)).toBe(
+      'M0 0H100V80H0Z' + 'M50 0H50A40 40 0 0 1 90 40V40A40 40 0 0 1 50 80H50A40 40 0 0 1 10 40V40A40 40 0 0 1 50 0Z',
+    );
+  });
+
+  it('never rounds by more than half the shape', () => {
+    expect(shapePath(100, 100, 'contain', 90)).toBe(shapePath(100, 100, 'contain', 50));
   });
 });
 

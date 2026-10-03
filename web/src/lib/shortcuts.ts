@@ -62,6 +62,7 @@ export const CROP_KEYS: readonly { label: string; action: string; letter?: strin
   { label: 'Num 1–9', action: 'place' },
   { label: 'Z', action: 'turnLeft', letter: 'z' },
   { label: 'X', action: 'turnRight', letter: 'x' },
+  { label: 'M', action: 'shape', letter: 'm' },
   { label: 'F', action: 'grow', letter: 'f' },
   { label: 'O', action: 'rotate', letter: 'o' },
   { label: 'Esc', action: 'done' },

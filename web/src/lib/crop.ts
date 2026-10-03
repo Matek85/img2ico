@@ -181,6 +181,31 @@ export function rotateRect(rect: Rect, bounds: Size): Rect {
   return clampRect({ x, y, width, height }, bounds);
 }
 
+/**
+ * The outline of what an icon style cuts away, drawn inside a frame of `width` x `height`: the
+ * frame with the rounded shape taken out (fill it with the even-odd rule). It is what the engine
+ * does (`make_icon` in crates/core/src/layout.rs): the part of the picture in the frame is fitted
+ * into the icon and its rounded rectangle is cut, with a radius that is `percent` of its shorter
+ * edge. "contain" keeps all of the frame in the shape; "cover" keeps the middle square (as wide as
+ * the frame's shorter edge) and cuts the rest. Empty where nothing is cut (`percent` 0).
+ */
+export function shapePath(width: number, height: number, fit: 'contain' | 'cover', percent: number): string {
+  if (percent <= 0 || width <= 0 || height <= 0) return '';
+  const side = Math.min(width, height);
+  const w = fit === 'cover' ? side : width;
+  const h = fit === 'cover' ? side : height;
+  const x = (width - w) / 2;
+  const y = (height - h) / 2;
+  const r = Math.min((Math.min(w, h) * Math.min(percent, 50)) / 100, Math.min(w, h) / 2);
+  const n = (value: number) => Number(value.toFixed(2));
+  const arc = (px: number, py: number) => `A${n(r)} ${n(r)} 0 0 1 ${n(px)} ${n(py)}`;
+  return [
+    `M0 0H${n(width)}V${n(height)}H0Z`,
+    `M${n(x + r)} ${n(y)}H${n(x + w - r)}${arc(x + w, y + r)}V${n(y + h - r)}${arc(x + w - r, y + h)}`,
+    `H${n(x + r)}${arc(x, y + h - r)}V${n(y + r)}${arc(x + r, y)}Z`,
+  ].join('');
+}
+
 /** A turn as 0 to 359 degrees (-90 is 270). */
 export function normalizeTurn(degrees: number): number {
   return ((Math.round(degrees) % 360) + 360) % 360;
