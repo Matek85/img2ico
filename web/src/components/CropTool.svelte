@@ -16,6 +16,8 @@
     locked = true,
     ontogglelock,
     turn = 0,
+    flipH = false,
+    flipV = false,
     original,
     radius = 0,
     fitMode = 'contain',
@@ -35,6 +37,9 @@
      */
     turn?: number;
     original?: Size;
+    /** The picture is also shown mirrored (left to right, top to bottom), before it is turned. */
+    flipH?: boolean;
+    flipV?: boolean;
     /** The icon style's corner radius in percent (0: square) and how the picture is fitted; the corners it cuts are shaded in the frame. */
     radius?: number;
     fitMode?: 'contain' | 'cover';
@@ -68,7 +73,7 @@
   // Turned: the picture lies in the middle of its canvas, turned around the middle of it.
   let turnedStyle = $derived(
     original
-      ? `left:50%;top:50%;width:${original.width * scale}px;height:${original.height * scale}px;transform:translate(-50%,-50%) rotate(${turn}deg)`
+      ? `left:50%;top:50%;width:${original.width * scale}px;height:${original.height * scale}px;transform:translate(-50%,-50%) rotate(${turn}deg) scale(${flipH ? -1 : 1},${flipV ? -1 : 1})`
       : '',
   );
   let cutAway = $derived(shape ? shapePath(rect.width * scale, rect.height * scale, fitMode, radius) : '');
@@ -183,7 +188,7 @@
 </script>
 
 <div class="crop-view" class:unlocked={!locked} bind:this={box} bind:clientWidth={width} bind:clientHeight={height}>
-  {#if turn !== 0 && original}
+  {#if (turn !== 0 || flipH || flipV) && original}
     <div class="crop-canvas" style={imageStyle}>
       <img {src} alt="" draggable="false" style={turnedStyle} />
     </div>

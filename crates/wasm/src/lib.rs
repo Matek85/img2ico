@@ -539,11 +539,18 @@ impl Source {
         matches!(self.picture, Picture::Vector(_))
     }
 
-    /// The picture turned clockwise by `degrees` as a PNG, for the crop view: at most `max_edge`
+    /// The picture mirrored (if asked) and turned clockwise by `degrees` as a PNG, for the crop view: at most `max_edge`
     /// pixels on its longer side (0: whole size). Its pixels are placed exactly as in the icon, so
     /// the page shows the crop frame on what the icon is made from.
-    pub fn rotated_preview(&self, degrees: i32, max_edge: u32) -> Result<Vec<u8>, JsError> {
-        self.preview_with(degrees, max_edge).map_err(failure)
+    pub fn rotated_preview(
+        &self,
+        degrees: i32,
+        flip_horizontal: bool,
+        flip_vertical: bool,
+        max_edge: u32,
+    ) -> Result<Vec<u8>, JsError> {
+        self.preview_with(degrees, flip_horizontal, flip_vertical, max_edge)
+            .map_err(failure)
     }
 
     /// Makes the website icon package from the options (JSON text, see
@@ -589,7 +596,13 @@ impl Source {
     }
 
     /// `rotated_preview` without the JavaScript error type.
-    pub fn preview_with(&self, degrees: i32, max_edge: u32) -> Result<Vec<u8>, String> {
+    pub fn preview_with(
+        &self,
+        degrees: i32,
+        flip_horizontal: bool,
+        flip_vertical: bool,
+        max_edge: u32,
+    ) -> Result<Vec<u8>, String> {
         use image::{DynamicImage, ImageFormat, imageops};
         let Picture::Raster(image) = &self.picture else {
             return Err(img2ico_core::msg!(
@@ -600,18 +613,19 @@ impl Source {
         let (width, height) = image.dimensions();
         let (canvas_w, canvas_h) = img2ico_core::rotate::rotated_size(width, height, degrees);
         let longest = canvas_w.max(canvas_h);
-        let turned = if max_edge > 0 && longest > max_edge {
+        let mut base = if max_edge > 0 && longest > max_edge {
             let scale = f64::from(max_edge) / f64::from(longest);
-            let small = imageops::resize(
+            imageops::resize(
                 image,
                 ((f64::from(width) * scale).round() as u32).max(1),
                 ((f64::from(height) * scale).round() as u32).max(1),
                 imageops::FilterType::Triangle,
-            );
-            img2ico_core::rotate::rotate(&small, degrees)?
+            )
         } else {
-            img2ico_core::rotate::rotate(image, degrees)?
+            image.clone()
         };
+        img2ico_core::rotate::flip(&mut base, flip_horizontal, flip_vertical);
+        let turned = img2ico_core::rotate::rotate(&base, degrees)?;
         let mut bytes = std::io::Cursor::new(Vec::new());
         DynamicImage::ImageRgba8(turned)
             .write_to(&mut bytes, ImageFormat::Png)
@@ -737,6 +751,7 @@ pub fn open_source(bytes: &[u8], name: &str, gif_frame: usize) -> Result<Picture
 ///   "padding": 0-100, "cornerRadius": 0-50,    default 0
 ///   "fit": "contain" | "cover",                default "contain"
 ///   "grayscale": bool, "trim": bool,           default false
+///   "flipHorizontal": bool, "flipVertical": bool   mirror the picture first (not for an SVG); default false
 ///   "rotate": 0-359,                           degrees clockwise, before the crop; default 0
 ///   "flatten": "#rrggbb",                     lay the icon on this color (no transparency)
 ///   "crop": { "x", "y", "width", "height" },   default none
@@ -768,6 +783,8 @@ pub fn parse_options(json: &str) -> Result<Options, String> {
             "fit",
             "grayscale",
             "trim",
+            "flipHorizontal",
+            "flipVertical",
             "rotate",
             "crop",
             "background",
@@ -840,6 +857,8 @@ pub fn parse_options(json: &str) -> Result<Options, String> {
         layout,
         background,
         grayscale: flag(&map, "grayscale")?,
+        flip_horizontal: flag(&map, "flipHorizontal")?,
+        flip_vertical: flag(&map, "flipVertical")?,
         rotate: number(&map, "rotate", 0, 359, 0)? as i32,
         crop,
         trim: flag(&map, "trim")?,
@@ -1385,11 +1404,51 @@ mod tests {
     #[test]
     fn the_turned_preview_has_the_canvas_of_the_turn_and_can_be_made_smaller() {
         let source = source(&png(400, 200));
-        let full = image::load_from_memory(&source.preview_with(90, 0).unwrap()).unwrap();
+        let full =
+            image::load_from_memory(&source.preview_with(90, false, false, 0).unwrap()).unwrap();
         assert_eq!((full.width(), full.height()), (200, 400));
-        let small = image::load_from_memory(&source.preview_with(30, 100).unwrap()).unwrap();
+        let small =
+            image::load_from_memory(&source.preview_with(30, false, false, 100).unwrap()).unwrap();
         // 400 x 200 turned by 30 degrees is 447 x 372 (rounded up); made to fit 100 on the long side.
         assert_eq!(small.width().max(small.height()), 100);
+    }
+
+    #[test]
+    fn the_preview_is_mirrored_before_it_is_turned_and_the_option_reaches_the_icon() {
+        // A 4 x 2 picture: red on the left, blue on the right.
+        let mut picture = image::RgbaImage::new(4, 2);
+        for (x, _y, pixel) in picture.enumerate_pixels_mut() {
+            *pixel = if x < 2 {
+                image::Rgba([255, 0, 0, 255])
+            } else {
+                image::Rgba([0, 0, 255, 255])
+            };
+        }
+        let mut bytes = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgba8(picture)
+            .write_to(&mut bytes, image::ImageFormat::Png)
+            .unwrap();
+        let source = source(&bytes.into_inner());
+        let shown = |h: bool, v: bool, degrees: i32| {
+            image::load_from_memory(&source.preview_with(degrees, h, v, 0).unwrap())
+                .unwrap()
+                .to_rgba8()
+        };
+        assert_eq!(shown(false, false, 0).get_pixel(0, 0).0, [255, 0, 0, 255]);
+        assert_eq!(shown(true, false, 0).get_pixel(0, 0).0, [0, 0, 255, 255]);
+        // Top to bottom changes nothing for a picture that is the same in every row.
+        assert_eq!(shown(false, true, 0).get_pixel(0, 0).0, [255, 0, 0, 255]);
+        // Mirrored left to right, then turned a quarter: the blue half is now the top.
+        let turned = shown(true, false, 90);
+        assert_eq!(turned.dimensions(), (2, 4));
+        assert_eq!(turned.get_pixel(0, 0).0, [0, 0, 255, 255]);
+        // The icon is made from the mirrored picture too (a 4 x 2 picture fills the icon's width).
+        let plain = source.convert_with(r#"{"sizes": [16]}"#).unwrap();
+        let mirrored = source
+            .convert_with(r#"{"sizes": [16], "flipHorizontal": true}"#)
+            .unwrap();
+        assert_ne!(plain.bytes, mirrored.bytes);
+        assert!(source.convert_with(r#"{"flipHorizontal": "yes"}"#).is_err());
     }
 
     #[test]

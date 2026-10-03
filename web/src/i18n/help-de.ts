@@ -102,9 +102,9 @@ export const helpDe: Record<keyof typeof helpEn, string> = {
   'help.settings.16.dl.4.t': 'Größter Rahmen, Rahmen drehen',
   'help.settings.16.dl.4.d':
     '**Größter Rahmen** macht den Rahmen so groß, wie das Bild es erlaubt, in derselben Form. **Rahmen drehen** tauscht breit und hoch.',
-  'help.settings.16.dl.5.t': 'Das Bild drehen',
+  'help.settings.16.dl.5.t': 'Das Bild drehen und spiegeln',
   'help.settings.16.dl.5.d':
-    'Solange das Schloss geschlossen ist, dreht ein Regler das Bild von −180° bis 180° in Schritten von 1° (ein positiver Winkel dreht im Uhrzeigersinn), und Knöpfe drehen es um 90° oder 180°. Das Bild dreht sich unter dem Rahmen, und die Ecken, die die Drehung freilässt, sind transparent.',
+    'Solange das Schloss geschlossen ist, dreht ein Regler das Bild von −180° bis 180° in Schritten von 1° (ein positiver Winkel dreht im Uhrzeigersinn), und Knöpfe drehen es um 90° oder 180°. Das Bild dreht sich unter dem Rahmen, und die Ecken, die die Drehung freilässt, sind transparent. Zwei Knöpfe spiegeln das Bild, von links nach rechts und von oben nach unten; es wird zuerst gespiegelt und dann gedreht.',
   'help.settings.16.dl.6.t': 'Links, Oben, Breite, Höhe',
   'help.settings.16.dl.6.d': 'Der Rahmen in Pixeln des Bildes (nach der Drehung). Gib genaue Zahlen ein, wenn du sie brauchst.',
   'help.settings.16.dl.7.t': 'Form zeigen',

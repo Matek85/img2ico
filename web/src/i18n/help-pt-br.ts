@@ -103,9 +103,9 @@ export const helpPtBr: Record<keyof typeof helpEn, string> = {
   'help.settings.16.dl.4.t': 'Maior moldura, girar a moldura',
   'help.settings.16.dl.4.d':
     '**Maior moldura** deixa a moldura tão grande quanto a imagem permite, com a mesma forma. **Girar a moldura** troca largo por alto.',
-  'help.settings.16.dl.5.t': 'Girar a imagem',
+  'help.settings.16.dl.5.t': 'Girar e espelhar a imagem',
   'help.settings.16.dl.5.d':
-    'Enquanto o cadeado está fechado, um controle deslizante gira a imagem de −180° a 180° em passos de 1° (um ângulo positivo gira no sentido horário), e botões a giram 90° ou 180°. A imagem gira sob a moldura, e os cantos que a rotação deixa livres ficam transparentes.',
+    'Enquanto o cadeado está fechado, um controle deslizante gira a imagem de −180° a 180° em passos de 1° (um ângulo positivo gira no sentido horário), e botões a giram 90° ou 180°. A imagem gira sob a moldura, e os cantos que a rotação deixa livres ficam transparentes. Dois botões espelham a imagem, da esquerda para a direita e de cima para baixo; ela é espelhada primeiro e depois girada.',
   'help.settings.16.dl.6.t': 'Esquerda, Topo, Largura, Altura',
   'help.settings.16.dl.6.d': 'A moldura em pixels da imagem (depois da rotação). Digite números exatos se precisar.',
   'help.settings.16.dl.7.t': 'Mostrar a forma',

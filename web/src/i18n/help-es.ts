@@ -103,9 +103,9 @@ export const helpEs: Record<keyof typeof helpEn, string> = {
   'help.settings.16.dl.4.t': 'Marco más grande, girar el marco',
   'help.settings.16.dl.4.d':
     '**Marco más grande** hace el marco tan grande como permite la imagen, con la misma forma. **Girar el marco** intercambia ancho y alto.',
-  'help.settings.16.dl.5.t': 'Girar la imagen',
+  'help.settings.16.dl.5.t': 'Girar y reflejar la imagen',
   'help.settings.16.dl.5.d':
-    'Mientras el candado está cerrado, un control deslizante gira la imagen de −180° a 180° en pasos de 1° (un ángulo positivo gira en sentido horario), y unos botones la giran 90° o 180°. La imagen gira bajo el marco y las esquinas que deja el giro son transparentes.',
+    'Mientras el candado está cerrado, un control deslizante gira la imagen de −180° a 180° en pasos de 1° (un ángulo positivo gira en sentido horario), y unos botones la giran 90° o 180°. La imagen gira bajo el marco y las esquinas que deja el giro son transparentes. Dos botones reflejan la imagen, de izquierda a derecha y de arriba abajo; primero se refleja y después se gira.',
   'help.settings.16.dl.6.t': 'Izquierda, Arriba, Ancho, Alto',
   'help.settings.16.dl.6.d': 'El marco en píxeles de la imagen (después del giro). Escribe números exactos si los necesitas.',
   'help.settings.16.dl.7.t': 'Mostrar la forma',

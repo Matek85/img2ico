@@ -7,6 +7,17 @@
 use crate::source::DEFAULT_MAX_PIXELS;
 use image::{Rgba, RgbaImage, imageops};
 
+/// The picture mirrored: left to right (`horizontal`) and/or top to bottom (`vertical`). Done before the turn, so
+/// the picture is mirrored as it lies and then turned.
+pub fn flip(img: &mut RgbaImage, horizontal: bool, vertical: bool) {
+    if horizontal {
+        imageops::flip_horizontal_in_place(img);
+    }
+    if vertical {
+        imageops::flip_vertical_in_place(img);
+    }
+}
+
 /// The turn as 0 to 359 degrees (-90 is 270).
 pub fn normalize(degrees: i32) -> i32 {
     degrees.rem_euclid(360)
@@ -117,6 +128,30 @@ mod tests {
 
     fn solid(width: u32, height: u32, color: [u8; 4]) -> RgbaImage {
         RgbaImage::from_pixel(width, height, Rgba(color))
+    }
+
+    #[test]
+    fn mirroring_swaps_left_and_right_or_top_and_bottom() {
+        let mut img = RgbaImage::new(3, 2);
+        for (x, y, pixel) in img.enumerate_pixels_mut() {
+            *pixel = Rgba([x as u8, y as u8, 0, 255]);
+        }
+        let mut horizontal = img.clone();
+        flip(&mut horizontal, true, false);
+        assert_eq!(horizontal.get_pixel(0, 0).0, [2, 0, 0, 255]);
+        assert_eq!(horizontal.get_pixel(2, 1).0, [0, 1, 0, 255]);
+        let mut vertical = img.clone();
+        flip(&mut vertical, false, true);
+        assert_eq!(vertical.get_pixel(0, 0).0, [0, 1, 0, 255]);
+        let mut both = img.clone();
+        flip(&mut both, true, true);
+        assert_eq!(both.get_pixel(0, 0).0, [2, 1, 0, 255]);
+        // Twice is nothing; nothing asked is nothing.
+        flip(&mut both, true, true);
+        assert_eq!(both, img);
+        let mut same = img.clone();
+        flip(&mut same, false, false);
+        assert_eq!(same, img);
     }
 
     #[test]

@@ -100,6 +100,10 @@ pub struct Options {
     pub layout: Layout,
     pub background: Option<Background>,
     pub grayscale: bool,
+    /// The picture mirrored left to right, before it is turned.
+    pub flip_horizontal: bool,
+    /// The picture mirrored top to bottom, before it is turned.
+    pub flip_vertical: bool,
     /// The picture turned clockwise by this many degrees before it is cropped (0: not turned).
     pub rotate: i32,
     pub crop: Option<CropRect>,
@@ -292,6 +296,8 @@ pub fn check_vector_options(options: &Options) -> Result<(), String> {
         Some("--crop")
     } else if crate::rotate::normalize(options.rotate) != 0 {
         Some("rotate")
+    } else if options.flip_horizontal || options.flip_vertical {
+        Some("flip")
     } else {
         None
     };
@@ -423,9 +429,10 @@ pub fn convert_raster(
 ) -> Result<Converted, String> {
     remove_background(&mut source, options, analysis, notes)?;
 
-    // The picture is turned after the background is gone (so the color is found on the picture as it
-    // is, not on a canvas with transparent corners) and before the crop, whose frame is placed on
-    // the turned picture.
+    // The picture is mirrored, then turned, after the background is gone (so the color is found on the
+    // picture as it is, not on a canvas with transparent corners) and before the crop, whose frame is
+    // placed on the mirrored and turned picture.
+    crate::rotate::flip(&mut source, options.flip_horizontal, options.flip_vertical);
     if crate::rotate::normalize(options.rotate) != 0 {
         source = rotate(&source, options.rotate)?;
         note(notes, || {
@@ -796,6 +803,8 @@ mod tests {
             layout: Layout::default(),
             background: None,
             grayscale: false,
+            flip_horizontal: false,
+            flip_vertical: false,
             rotate: 0,
             crop: None,
             trim: false,
@@ -1079,6 +1088,15 @@ mod tests {
         result.unwrap();
         let said = warnings.iter().any(|w| w.contains("has text"));
         assert_eq!(said, cfg!(not(feature = "svg-text")), "{warnings:?}");
+    }
+
+    #[test]
+    fn an_svg_is_not_mirrored() {
+        let drawing = VectorImage::parse(SVG, "a.svg").unwrap();
+        let mut options = options();
+        options.flip_horizontal = true;
+        let error = convert_vector(&drawing, &options, &NoNotes).unwrap_err();
+        assert!(error.contains("flip"), "{error}");
     }
 
     #[test]

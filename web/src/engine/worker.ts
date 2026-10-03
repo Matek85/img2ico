@@ -91,7 +91,7 @@ self.onmessage = async (event: MessageEvent<Request>) => {
       }
       case 'rotatedPreview': {
         if (!source) throw new Error('No picture is open.');
-        const data = source.rotated_preview(request.degrees, request.maxEdge);
+        const data = source.rotated_preview(request.degrees, request.flipH, request.flipV, request.maxEdge);
         transfer.push(data.buffer);
         response = { id: request.id, ok: true, data };
         break;

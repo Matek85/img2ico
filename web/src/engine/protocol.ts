@@ -25,7 +25,7 @@ export type Request =
   | { id: number; op: 'gifOpen'; bytes: Uint8Array; name: string }
   | { id: number; op: 'gifFrame'; index: number }
   | { id: number; op: 'gifSelect'; index: number }
-  | { id: number; op: 'rotatedPreview'; degrees: number; maxEdge: number }
+  | { id: number; op: 'rotatedPreview'; degrees: number; flipH: boolean; flipV: boolean; maxEdge: number }
   | { id: number; op: 'pixels'; bytes: Uint8Array; index: number }
   | { id: number; op: 'describe'; bytes: Uint8Array }
   | { id: number; op: 'extract'; bytes: Uint8Array; index: number }

@@ -88,6 +88,8 @@ export function sanitize(raw: unknown): Settings {
     fit: data.fit === 'cover' ? 'cover' : 'contain',
     grayscale: data.grayscale === true,
     trim: data.trim === true,
+    flipH: false,
+    flipV: false,
     rotate: 0,
     crop: null,
     gifFrame: 0,
@@ -116,7 +118,7 @@ export function loadSettings(): Settings {
 /** Remembers the settings; does nothing where storage is not available. */
 export function saveSettings(settings: Settings): void {
   try {
-    localStorage.setItem(KEY, JSON.stringify({ ...settings, rotate: 0, crop: null, gifFrame: 0 }));
+    localStorage.setItem(KEY, JSON.stringify({ ...settings, flipH: false, flipV: false, rotate: 0, crop: null, gifFrame: 0 }));
   } catch {
     // Private window, storage full or blocked: the page works without it.
   }

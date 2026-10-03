@@ -3770,6 +3770,13 @@ kbd {
   gap: 0.4rem;
 }
 
+/* A mirror that is on looks pressed, like a chosen preset. */
+.turn-buttons button[aria-pressed='true'] {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--accent);
+}
+
 /* On a wide box: the shapes and the turn stacked on the left, the pad and the measures beside them. */
 @media (min-width: 52rem) {
   .mask-grid {
