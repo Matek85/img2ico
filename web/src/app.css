@@ -8,7 +8,7 @@
   --surface: #ffffff;
   --text: #0f172a;
   --muted: #526078;
-  --border: #d5dcea;
+  --border: #b9c7e2;
   --accent: #2563eb;
   --accent-hover: #1d4fd8;
   --accent-text: #ffffff;
@@ -680,9 +680,9 @@ a {
 }
 
 /* The start page has the big heading; while working, it shrinks to a title. */
+/* The heading stays on the dark blue of the top bar (fading into the page), so its white text reads in both modes. */
 body.working .hero {
-  padding: 0.75rem 0 1rem;
-  background: none;
+  padding: 0.75rem 0 1.6rem;
 }
 
 body.working .hero .lead,
