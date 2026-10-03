@@ -1,18 +1,30 @@
 import { en, type MessageKey } from './en';
 
-// The language in use. English is the only one for now; a new language is a
-// new file with the same keys as en.ts, registered here and chosen from
-// navigator.language.
+// The language in use. Each language page of the site (/, /de/, ...) is built in its own language and says so in
+// `<html lang>`; the page loads the texts of that language (English is always there, for the tests and as the start).
+// A new language is a new file with the same keys as en.ts, listed here and in seo.ts.
 type Messages = Record<MessageKey, string>;
-const catalogues: Record<string, Messages> = { en };
+const loaders: Record<string, () => Promise<Messages>> = {
+  de: () => import('./de').then((module) => module.de),
+  es: () => import('./es').then((module) => module.es),
+  'pt-br': () => import('./pt-br').then((module) => module.ptBr),
+  fr: () => import('./fr').then((module) => module.fr),
+};
 
 let tag = 'en';
 let messages: Messages = en;
 
-export function setLocale(requested: string): void {
-  const language = requested.toLowerCase().split('-')[0];
-  tag = language in catalogues ? language : 'en';
-  messages = catalogues[tag] ?? en;
+/** Loads the texts of a language ("de", "pt-br"); a language the page does not have is English. */
+export async function loadLocale(code: string): Promise<void> {
+  const wanted = code.toLowerCase();
+  const load = loaders[wanted];
+  if (!load) {
+    tag = 'en';
+    messages = en;
+    return;
+  }
+  messages = await load();
+  tag = wanted;
 }
 
 /** The language in use, as a language tag ("en"). */

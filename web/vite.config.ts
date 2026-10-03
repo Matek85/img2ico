@@ -1,9 +1,13 @@
 import { defineConfig } from 'vitest/config';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
+import { languagePages, TEMPLATES, writeLanguagePages } from './pages.ts';
 import { seo } from './seo.ts';
 
 // Only the environment is read from Node here.
 declare const process: { env: Record<string, string | undefined> };
+
+// The pages of the other languages are copies of the templates (see pages.ts).
+writeLanguagePages(new URL('.', import.meta.url));
 
 // base './' makes every URL in the build relative, so the finished dist/
 // folder works from any address: github.io/img2ico/, a domain of its own, or
@@ -19,12 +23,7 @@ export default defineConfig({
   build: {
     target: 'es2022',
     rollupOptions: {
-      input: [
-        'index.html',
-        ...['getting-started', 'settings', 'file-types', 'privacy', 'keyboard-shortcuts', 'command-line'].map(
-          (slug) => `help/${slug}/index.html`,
-        ),
-      ],
+      input: [...TEMPLATES, ...languagePages()],
     },
   },
   test: { environment: 'node' },

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { CATALOGUES } from './catalogues';
 import { en } from './src/i18n/en';
 import {
   HELP_TOPICS,
@@ -7,7 +8,12 @@ import {
   headTags as headTagsFor,
   helpHtml,
   helpPageInfo,
+  langDir,
+  langTag,
+  languageRedirect,
+  locate,
   navHtml,
+  noticeHtml,
   escapeHtml,
   headTags,
   headerHtml,
@@ -91,18 +97,31 @@ describe('the help pages and the top bar menus', () => {
         expect(nav).toContain(en[`help.${topic.key}.title`]);
       }
     }
-    const page = helpHtml(en, 'privacy', '../../');
+    const page = helpHtml(CATALOGUES.en, 'privacy', '../../');
     for (const topic of HELP_TOPICS) expect(page).toContain(`href="../../help/${topic.slug}/"`);
     expect(page).toContain('aria-current="page"');
     expect(page).toContain(`<h1>${en['help.privacy.title']}</h1>`);
   });
 
-  it('shows the five languages, with only English a link for now, and a switch for the theme that does nothing yet', () => {
-    const nav = navHtml(en);
+  it('shows the five languages as links to the same page, and a switch for the theme that the script wakes up', () => {
+    const nav = navHtml(en, '../../', 'en', 'help/privacy/');
     expect(LANGUAGES.map((language) => language.code)).toEqual(['en', 'de', 'es', 'pt-br', 'fr']);
     for (const language of LANGUAGES) expect(nav).toContain(language.name);
-    expect(nav.match(/aria-disabled="true"/g)).toHaveLength(4);
+    expect(nav).toContain('href="../../help/privacy/" lang="en"');
+    expect(nav).toContain('href="../../de/help/privacy/" lang="de" hreflang="de" data-lang="de"');
+    expect(nav).toContain('href="../../pt-br/help/privacy/"');
+    expect(nav.match(/aria-current="true"/g)).toHaveLength(1);
+    expect(nav).not.toContain('aria-disabled');
     expect(nav).toContain('class="theme-switch" disabled');
+  });
+
+  it('keeps the other languages in their own folder: the help menu, the current language and the way back to the root', () => {
+    const nav = navHtml(en, '../../../', 'de', 'help/privacy/');
+    expect(nav).toContain('href="../../../de/help/privacy/"');
+    expect(nav).toContain('href="../../../help/privacy/" lang="en"');
+    expect(nav).toMatch(/<a href="..\/..\/..\/de\/help\/privacy\/" lang="de"[^>]*aria-current="true"/);
+    expect(nav).toContain('aria-label="Language: Deutsch"');
+    expect(helpHtml(CATALOGUES.en, 'privacy', '../../../', 'de')).toContain('href="../../../de/help/settings/"');
   });
 
   it('gives each help page its own title, description and address', () => {
@@ -118,6 +137,66 @@ describe('the help pages and the top bar menus', () => {
   it('puts every help page in the sitemap', () => {
     const map = sitemapXml('https://example.org/img2ico/');
     for (const topic of HELP_TOPICS) expect(map).toContain(`https://example.org/img2ico/help/${topic.slug}/`);
+  });
+});
+
+describe('the languages', () => {
+  it('have a folder each, English at the root', () => {
+    expect(langDir('en')).toBe('');
+    expect(langDir('pt-br')).toBe('pt-br/');
+  });
+
+  it('are written as language tags: pt-BR with its region in capitals', () => {
+    expect(langTag('pt-br')).toBe('pt-BR');
+    expect(langTag('de')).toBe('de');
+    expect(navHtml(en, './', 'en', '')).toContain('lang="pt-BR" hreflang="pt-BR" data-lang="pt-br"');
+    expect(sitemapXml('https://example.org/')).toContain('hreflang="pt-BR" href="https://example.org/pt-br/"');
+  });
+
+  it('are told apart by the address of a page', () => {
+    expect(locate('/')).toEqual({ lang: 'en', slug: undefined, depth: 0 });
+    expect(locate('/index.html')).toEqual({ lang: 'en', slug: undefined, depth: 0 });
+    expect(locate('/help/privacy/index.html')).toEqual({ lang: 'en', slug: 'privacy', depth: 2 });
+    expect(locate('/de/')).toEqual({ lang: 'de', slug: undefined, depth: 1 });
+    expect(locate('/pt-br/help/settings/index.html')).toEqual({ lang: 'pt-br', slug: 'settings', depth: 3 });
+  });
+
+  it('tell search engines where the same page is in the other languages, and its language', () => {
+    const tags = headTags(CATALOGUES.de, 'https://example.org/img2ico/', helpPageInfo(CATALOGUES.de, 'privacy'), 'de', '../../../');
+    expect(tags).toContain('<link rel="canonical" href="https://example.org/img2ico/de/help/privacy/" />');
+    for (const language of LANGUAGES) {
+      expect(tags).toContain(`hreflang="${langTag(language.code)}" href="https://example.org/img2ico/${langDir(language.code)}help/privacy/"`);
+    }
+    expect(tags).toContain('hreflang="x-default" href="https://example.org/img2ico/help/privacy/"');
+    expect(tags).toContain('<meta property="og:locale" content="de_DE" />');
+    expect(tags).toContain('href="../../../favicon.ico"');
+    expect(headTags(CATALOGUES['pt-br'], '', undefined, 'pt-br')).toContain('content="pt_BR"');
+  });
+
+  it('send visitors of an English page to theirs, and no other page', () => {
+    expect(headTags(en, '', undefined, 'en', './')).toContain("location.replace('./'+l+'/')");
+    expect(headTags(en, '', helpPageInfo(en, 'privacy'), 'en', '../../')).toContain("location.replace('../../'+l+'/help/privacy/')");
+    expect(headTags(CATALOGUES.de, '', undefined, 'de', '../')).not.toContain('location.replace');
+    const script = languageRedirect('./', '');
+    expect(script).toContain('"pt":"pt-br"');
+    expect(script).toContain("localStorage.getItem('img2ico.lang.v1')");
+  });
+
+  it('say on the pages an AI translated that it did, and on no other', () => {
+    expect(noticeHtml(CATALOGUES.es, 'es')).toContain('class="ai-note"');
+    expect(noticeHtml(CATALOGUES.es, 'es')).toContain('href="https://github.com/Matek85/img2ico/issues"');
+    expect(noticeHtml(en, 'en')).toBe('');
+    expect(noticeHtml(CATALOGUES.de, 'de')).toBe('');
+  });
+
+  it('are all in the sitemap, each page with the same page in the other languages', () => {
+    const map = sitemapXml('https://example.org/img2ico/');
+    for (const language of LANGUAGES) {
+      expect(map).toContain(`<loc>https://example.org/img2ico/${langDir(language.code)}</loc>`);
+      for (const topic of HELP_TOPICS) expect(map).toContain(`<loc>https://example.org/img2ico/${langDir(language.code)}help/${topic.slug}/</loc>`);
+    }
+    expect(map).toContain('xmlns:xhtml');
+    expect(map).toContain('<xhtml:link rel="alternate" hreflang="fr" href="https://example.org/img2ico/fr/"/>');
   });
 });
 

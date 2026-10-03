@@ -79,7 +79,7 @@ function keysHtml(m: Messages, label: string): string {
       SHORTCUTS.filter((shortcut) => shortcut.group === name).map((shortcut) => entry(shortcut.label, m[`keys.act_${shortcut.id}`])),
     ),
   );
-  groups.push(group(m['keys.group_crop'], CROP_KEYS.map((key) => entry(key.label, m[`keys.crop_${key.action}`]))));
+  groups.push(group(m['keys.group_crop'], CROP_KEYS.map((key) => entry(key.labelKey ? m[key.labelKey] : key.label, m[`keys.crop_${key.action}`]))));
   return `<div class="key-groups" role="group" aria-label="${escapeHtml(label)}">\n          ${groups.join('\n          ')}\n        </div>`;
 }
 

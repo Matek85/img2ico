@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { en } from './src/i18n/en';
+import { CATALOGUES } from './catalogues';
 import { CROP_KEYS, GROUPS, SHORTCUTS } from './src/lib/shortcuts';
 import { type Block, helpBlocks, helpBodyHtml, inlineHtml, isHelpBlockKey } from './helpContent';
 import { HELP_TOPICS } from './seo';
 
-const messages = en as Record<string, string>;
+const messages = CATALOGUES.en;
 
 const textsOf = (block: Block): string[] =>
   'text' in block ? [block.text] : block.kind === 'dl' ? block.items.flatMap((row) => [row.term, row.text]) : block.items;

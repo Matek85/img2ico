@@ -3175,22 +3175,6 @@ button.small {
   color: inherit;
 }
 
-.menu-list .soon {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  padding: 0.55rem 0.75rem;
-  color: var(--muted);
-  white-space: nowrap;
-  cursor: default;
-}
-
-.menu-list .soon small {
-  margin-left: auto;
-  padding-left: 1rem;
-  font-size: 0.75rem;
-}
-
 .menu-list a[aria-current='true'] {
   background: var(--tint);
 }
@@ -3625,4 +3609,24 @@ kbd {
     grid-column: 3;
     grid-row: 1 / span 2;
   }
+}
+
+/* The note on a page that an AI translated: quiet, but there before the page's content. */
+.ai-note {
+  max-width: 44rem;
+  margin: 0.75rem auto 0.75rem;
+  padding: 0.5rem 0.9rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+  background: var(--tint);
+  border-radius: 0.6rem;
+}
+
+body.wide .ai-note {
+  max-width: 64rem;
+}
+
+.help-main .ai-note {
+  max-width: none;
+  margin: 0 0 1.25rem;
 }
