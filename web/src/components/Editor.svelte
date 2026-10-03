@@ -595,8 +595,23 @@
     };
   }
 
-  // The list is folded away until asked for; opening it makes it flash once and takes the focus.
   let changesOpen = $state(false);
+  // With room beside the page the list is a column of its own, docked like the queue; otherwise it is below the editor.
+  let roomBeside = $state(false);
+  let changesDocked = $derived(changesOpen && roomBeside);
+  $effect(() => {
+    const wide = matchMedia(queue.items.length > 0 ? '(min-width: 112rem)' : '(min-width: 90rem)');
+    const update = () => (roomBeside = wide.matches);
+    update();
+    wide.addEventListener('change', update);
+    return () => wide.removeEventListener('change', update);
+  });
+  $effect(() => {
+    document.body.classList.toggle('changes-docked', changesDocked);
+    return () => document.body.classList.remove('changes-docked');
+  });
+
+  // The list is folded away until asked for; opening it makes it flash once and takes the focus.
   let changesBox = $state<HTMLElement>();
   let flashChanges = $state(false);
   async function toggleChanges() {
@@ -1643,6 +1658,8 @@
     </div>
   {/if}
 
+  </div>
+
   {#if opened && changesOpen}
     <section id="changes" class="changes" class:flash={flashChanges} bind:this={changesBox} tabindex="-1" aria-labelledby="changes-title">
       <div class="changes-head">
@@ -1692,8 +1709,6 @@
       </div>
     </section>
   {/if}
-
-  </div>
   <dialog class="site-dialog" bind:this={siteDialog} aria-labelledby="site-title" onclick={(e) => e.target === siteDialog && siteDialog?.close()}>
       <div class="site">
         <h3 id="site-title">{t('site.title')}</h3>
