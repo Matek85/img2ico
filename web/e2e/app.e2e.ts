@@ -176,6 +176,7 @@ test.describe('shortcuts and the look of the page', () => {
     expect(await root.getAttribute('data-theme')).not.toBe(first);
     await page.keyboard.press('?');
     await expect(page.locator('dialog.keys-dialog')).toBeVisible();
+    await expect(page.locator('dialog.keys-dialog')).toContainText('Ctrl+Shift+Z / Ctrl+Y');
   });
 
   test('in the editor Z and X turn the picture while the frame stays in place', async ({ page }) => {
@@ -276,6 +277,65 @@ test.describe('shortcuts and the look of the page', () => {
     await page.keyboard.press('c');
     await expect(page.getByRole('button', { name: 'Mirror the picture left to right' })).toHaveAttribute('aria-pressed', 'true');
     await expect(angle).toHaveValue('-90');
+  });
+
+  test('undo and redo: Ctrl+Z, Ctrl+Shift+Z, Ctrl+Y and the arrows; a run of quick changes is one', async ({ page }) => {
+    await openInEditor(page, LOGO);
+    await page.keyboard.press('c');
+    const horizontal = page.getByRole('button', { name: 'Mirror the picture left to right' });
+    const vertical = page.getByRole('button', { name: 'Mirror the picture top to bottom' });
+    const undoButton = page.getByRole('button', { name: 'Undo' });
+    const redoButton = page.getByRole('button', { name: 'Redo' });
+    await expect(undoButton).toBeDisabled();
+    await expect(redoButton).toBeDisabled();
+
+    await page.keyboard.press('h');
+    await expect(undoButton).toBeEnabled();
+    await page.waitForTimeout(700);
+    await page.keyboard.press('v');
+    await page.waitForTimeout(700);
+    await expect(horizontal).toHaveAttribute('aria-pressed', 'true');
+    await expect(vertical).toHaveAttribute('aria-pressed', 'true');
+
+    await page.keyboard.press('Control+z');
+    await expect(vertical).toHaveAttribute('aria-pressed', 'false');
+    await expect(horizontal).toHaveAttribute('aria-pressed', 'true');
+    await expect(redoButton).toBeEnabled();
+    await undoButton.click();
+    await expect(horizontal).toHaveAttribute('aria-pressed', 'false');
+    await expect(undoButton).toBeDisabled();
+    await page.keyboard.press('Control+y');
+    await expect(horizontal).toHaveAttribute('aria-pressed', 'true');
+    await page.keyboard.press('Control+Shift+z');
+    await expect(vertical).toHaveAttribute('aria-pressed', 'true');
+    await expect(redoButton).toBeDisabled();
+
+    // Changes in quick succession are one step back.
+    await page.keyboard.press('Control+z');
+    await page.keyboard.press('Control+z');
+    await expect(undoButton).toBeDisabled();
+    await page.keyboard.press('h');
+    await page.keyboard.press('v');
+    await page.keyboard.press('z');
+    await expect(page.locator('input[type=range]')).toHaveValue('-90');
+    await page.keyboard.press('Control+z');
+    await expect(horizontal).toHaveAttribute('aria-pressed', 'false');
+    await expect(vertical).toHaveAttribute('aria-pressed', 'false');
+    await expect(page.locator('input[type=range]')).toHaveValue('0');
+    // And the icon follows: what is made now is the unchanged picture.
+    await expect(page.locator('.download button.primary')).toBeEnabled();
+  });
+
+  test('"Reset to defaults" can be undone', async ({ page }) => {
+    await openInEditor(page, LOGO);
+    await page.getByLabel('macOS .icns').or(page.locator('label', { hasText: 'macOS .icns' })).first().click();
+    await expect(page.locator('.download button.primary')).toHaveText(/logo\.icns/);
+    await page.waitForTimeout(700);
+    await page.getByRole('button', { name: 'Reset to defaults' }).click();
+    await page.getByRole('button', { name: /Yes, reset/ }).click();
+    await expect(page.locator('.download button.primary')).toHaveText(/logo\.ico/);
+    await page.keyboard.press('Control+z');
+    await expect(page.locator('.download button.primary')).toHaveText(/logo\.icns/);
   });
 
   test('a crop that does not fit the picture is left out, and a note says so', async ({ page }) => {
