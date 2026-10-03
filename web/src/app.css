@@ -921,6 +921,23 @@ footer {
   margin-left: auto;
 }
 
+/* Settings as a file, beside "Reset to defaults" on its left; the three wrap to the next line together. */
+.bar .bar-end {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.bar .bar-end .reset {
+  margin-left: 0;
+}
+
+.bar .settings-file {
+  display: flex;
+  gap: 0.25rem;
+}
+
 button.outline {
   display: inline-flex;
   align-items: center;

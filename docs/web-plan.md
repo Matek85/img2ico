@@ -50,9 +50,9 @@ The heavy work is in WebAssembly; the page itself is mostly state: many controls
 
 **First versions:** drag and drop, paste from the clipboard (also screenshots), a warning when the source is too small, a live preview with all sizes, before/after, light/dark/grey/custom backgrounds, Windows- and file-manager-style views at true size, zoom, pixel grid and pixel inspector (colour and alpha), a preview of the actual saved file, an interactive crop frame with aspect-ratio presets, keyboard operation and accessibility, touch, tooltips and help at the control, remembering the last settings, presets (such as Windows app, macOS, favicon), quick size switching, reset for each setting, version and changelog, an example image.
 
-**Built since:** the light/dark/automatic theme switch, keyboard shortcuts, turning and mirroring the picture, using the settings of one icon for the others, sorting the queue by dragging, a working indicator, five languages.
+**Built since:** the light/dark/automatic theme switch, keyboard shortcuts, turning and mirroring the picture, settings as a file (export and import of the command line's own TOML format, checked against the command line by tests on both sides), using the settings of one icon for the others, sorting the queue by dragging, a working indicator, five languages.
 
-**Later:** undo/redo, mirroring, comparing variants, crop per size, exporting and importing settings as a file, custom presets, copying the result to the clipboard.
+**Later:** undo/redo, comparing variants, crop per size, custom presets, copying the result to the clipboard.
 
 **Web only for now:** turning and mirroring the picture (`rotate`, `flipHorizontal` and `flipVertical` in the engine; the command line has no flags for them yet, they are on the backlog). The picture is mirrored first, then turned, then cropped; an SVG is not mirrored (it is refused, like a crop).
 

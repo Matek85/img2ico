@@ -46,6 +46,8 @@ npx playwright install chromium   # once; the browser the tests use
 npm run e2e                       # or: PW_CHANNEL=msedge npm run e2e, with the Edge or Chrome you already have
 ```
 
+The settings file the page saves ("Export") is the command line's TOML format. `tests/fixtures/web-settings-*.toml` are what the page writes for some settings: a page test keeps them current (after a change of the format: `UPDATE_FIXTURES=1 npm test` in `web/`), and `tests/cli.rs` checks that the command line reads them without a word of complaint. Another page test checks the page's list of keys against `KNOWN_SETTINGS_KEYS` in `src/config.rs`, so a new setting of the command line cannot go unnoticed.
+
 When a test fails, `playwright-report/` and `test-results/` (screenshots, traces) show what the browser saw; CI keeps them as the artifact `e2e-report`.
 
 `SITE_URL=https://example.org/img2ico/ npm run build` also writes the canonical link, the link-preview address and `sitemap.xml` (without it they are left out, so the build works from any address). See the search engine section of `docs/web-plan.md`.

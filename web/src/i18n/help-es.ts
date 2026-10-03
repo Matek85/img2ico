@@ -125,6 +125,9 @@ export const helpEs: Record<keyof typeof helpEn, string> = {
   'help.settings.22.h2': 'La columna de ajustes',
   'help.settings.23.p':
     'La columna se pliega en una barra de iconos para que la vista previa pueda ser ancha; la flecha de su parte superior la abre. Al iniciar las herramientas de imagen se pliega sola y se vuelve a abrir cuando terminas. **Restablecer valores** pregunta antes y luego devuelve tamaños, aspecto, fondo, recorte y giro al principio.',
+  'help.settings.24.h3': 'Los ajustes como archivo',
+  'help.settings.25.p':
+    '**Exportar ajustes**, junto a Restablecer valores, guarda los tamaños, el margen, las esquinas, el ajuste, el blanco y negro, la eliminación del fondo y el tipo de archivo en un pequeño archivo de texto llamado `img2ico.toml`. Es el mismo tipo de archivo que lee la línea de comandos, así que la exportación es compatible con ella: `img2ico --config img2ico.toml logo.png`, o deja el archivo en tu carpeta y la línea de comandos lo encuentra sola. A la inversa, **Importar ajustes** toma un archivo guardado aquí o escrito para la línea de comandos, muestra los ajustes e indica lo que no tomó (las opciones de la línea de comandos que aquí no sirven). Una línea que la página no conoce, o un valor que no está permitido, detiene la importación con una lista, y no se cambia nada. El recorte, el giro, el reflejo y el fotograma de un GIF pertenecen a una sola imagen y no están en el archivo.',
 
   // ---- Tipos de archivo
   'help.types.01.h2': 'Imágenes que puedes abrir',
@@ -217,7 +220,7 @@ export const helpEs: Record<keyof typeof helpEn, string> = {
     '`--report` escribe un registro de una ejecución como CSV o JSON, con una línea por archivo y los totales. `--json` imprime los informes de `--inspect` y `--validate` como JSON.',
   'help.cli.03.dl.4.t': 'Archivos de ajustes',
   'help.cli.03.dl.4.d':
-    'Guarda tus ajustes en un archivo TOML (`--config`, `--out-toml`) y usa los mismos en cada ejecución, en cada ordenador.',
+    'Guarda tus ajustes en un archivo TOML (`--config`, `--out-toml`) y usa los mismos en cada ejecución, en cada ordenador. La página web guarda y lee el mismo archivo ([los ajustes explicados](help:settings)).',
   'help.cli.03.dl.5.t': 'Comprobaciones en la automatización',
   'help.cli.03.dl.5.d':
     '`--validate` comprueba la estructura de archivos .ico, o de carpetas con ellos, y termina con un código de error cuando alguno no es válido: pensado para la integración continua.',

@@ -1,0 +1,12 @@
+# img2ico settings, saved from the web page.
+# For the command line:  img2ico --config img2ico.toml picture.png
+# (or leave the file named img2ico.toml in the folder you work in). On the page, use "Import settings".
+# Not in it: the crop, the turn, the mirror and the frame of a GIF, which belong to one picture.
+
+sizes = "16,32,48"
+padding = 10
+corner-radius = 20
+fit = "cover"
+grayscale = true
+trim = false
+output-format = "ico"

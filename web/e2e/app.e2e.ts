@@ -215,6 +215,37 @@ test.describe('shortcuts and the look of the page', () => {
     expect((await downloaded(again)).equals(before)).toBe(true);
   });
 
+  test('settings as a file: exported for the command line, taken back, and a mistake stops the import', async ({ page }) => {
+    await openInEditor(page, LOGO);
+    const exportSettings = async () => {
+      const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Export settings' }).click()]);
+      expect(download.suggestedFilename()).toBe('img2ico.toml');
+      return (await downloaded(download)).toString('utf8');
+    };
+    const first = await exportSettings();
+    expect(first).toContain('sizes = "16,32,48,64,128,256"');
+    expect(first).toContain('output-format = "ico"');
+
+    // Taking settings from a file: some are the command line's only and are reported, the rest is in use.
+    const file = (...lines: string[]) => ({ name: 'img2ico.toml', mimeType: 'text/plain', buffer: Buffer.from(lines.join('\n') + '\n') });
+    const fromFile = file('sizes = "16,32"', 'fit = "cover"', 'padding = 12', 'jobs = 4');
+    await page.setInputFiles('input[type=file][accept=".toml,text/plain"]', fromFile);
+    await expect(page.locator('dialog[open]')).toContainText('Only for the command line, not used here: jobs');
+    await page.getByRole('button', { name: 'Close' }).click();
+    const second = await exportSettings();
+    expect(second).toContain('sizes = "16,32"');
+    expect(second).toContain('fit = "cover"');
+    expect(second).toContain('padding = 12');
+    expect(second).not.toContain('jobs');
+
+    // A name nobody knows: nothing changes, and the dialog says which line.
+    const typo = file('padding = 30', 'toleranse = 20');
+    await page.setInputFiles('input[type=file][accept=".toml,text/plain"]', typo);
+    await expect(page.locator('dialog[open]')).toContainText('Line 2: “toleranse” is not a setting img2ico knows');
+    await page.getByRole('button', { name: 'Close' }).click();
+    expect(await exportSettings()).toBe(second);
+  });
+
   test('a help page is styled from the first frame', async ({ page }) => {
     await page.goto('/help/settings/');
     await expect(page.locator('h1')).toBeVisible();

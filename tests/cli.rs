@@ -1240,6 +1240,54 @@ fn command_line_beats_the_config_file() {
     assert_eq!(ico_sizes(&dir.path().join("logo.ico")), vec![48]);
 }
 
+// The settings files the web page saves (tests/fixtures/web-settings-*.toml; a test of the page keeps them
+// current) are read by the command line without a word of complaint, and what they say is what happens.
+#[test]
+fn settings_files_saved_by_the_web_page_work_on_the_command_line() {
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let mut checked = 0;
+    for entry in std::fs::read_dir(&fixtures).unwrap() {
+        let path = entry.unwrap().path();
+        let name = path.file_name().unwrap().to_string_lossy().into_owned();
+        if !(name.starts_with("web-settings-") && name.ends_with(".toml")) {
+            continue;
+        }
+        let text = std::fs::read_to_string(&path).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        write_green_background_red_square(dir.path(), "logo.png");
+        // Under the name the page suggests, so the command line picks it up by itself.
+        std::fs::write(dir.path().join("img2ico.toml"), &text).unwrap();
+
+        let out = img2ico(dir.path(), &["logo.png"]);
+        assert_success(&out);
+        let said = format!("{}{}", stdout(&out), stderr(&out));
+        assert!(
+            said.contains("Using settings from 'img2ico.toml'"),
+            "{name}: {said}"
+        );
+        assert!(!said.contains("unknown setting"), "{name}: {said}");
+
+        if text.contains("output-format = \"icns\"") {
+            assert!(dir.path().join("logo.icns").is_file(), "{name}: {said}");
+        } else {
+            let wanted: Vec<u32> = text
+                .lines()
+                .find_map(|line| line.strip_prefix("sizes = \""))
+                .unwrap()
+                .trim_end_matches('"')
+                .split(',')
+                .map(|size| size.parse().unwrap())
+                .collect();
+            assert_eq!(ico_sizes(&dir.path().join("logo.ico")), wanted, "{name}");
+        }
+        checked += 1;
+    }
+    assert!(
+        checked >= 3,
+        "expected the files of the web page, found {checked}"
+    );
+}
+
 #[test]
 fn img2ico_toml_in_the_working_directory_is_picked_up_automatically() {
     let dir = tempfile::tempdir().unwrap();
