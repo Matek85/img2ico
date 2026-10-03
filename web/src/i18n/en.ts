@@ -45,6 +45,7 @@ export const en = {
   'keys.crop_lock': 'Lock or unlock the frame',
   'keys.crop_move': 'Move the picture (ten pixels with Shift)',
   'keys.numpad': 'Num',
+  'keys.num_range': 'Num 1–9',
   'keys.crop_place': 'Place the frame, laid out like the pad: 7 top left, 5 middle, 3 bottom right',
   'keys.crop_turnLeft': 'Turn the picture 90° to the left',
   'keys.crop_turnRight': 'Turn the picture 90° to the right',

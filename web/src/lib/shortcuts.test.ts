@@ -49,6 +49,10 @@ describe('shortcutOf', () => {
     expect(shortcutOf(press('4'))).toBeNull();
   });
 
+  it('names every key of the crop that a language may spell differently in the catalogue', () => {
+    expect(CROP_KEYS.filter((key) => key.labelKey).map((key) => key.labelKey)).toEqual(['keys.space', 'keys.num_range']);
+  });
+
   it('keeps the letters of the crop apart from the others', () => {
     const letters = CROP_KEYS.flatMap((k) => (k.letter ? [k.letter] : []));
     expect(letters.length).toBeGreaterThan(0);

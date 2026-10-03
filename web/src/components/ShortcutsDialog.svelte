@@ -38,7 +38,7 @@
       <dl>
         {#each CROP_KEYS as crop (crop.action)}
           <div>
-            <dt><kbd>{crop.label}</kbd></dt>
+            <dt><kbd>{crop.labelKey ? t(crop.labelKey) : crop.label}</kbd></dt>
             <dd>{t(`keys.crop_${crop.action}`)}</dd>
           </div>
         {/each}
