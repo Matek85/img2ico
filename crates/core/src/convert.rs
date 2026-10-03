@@ -20,8 +20,8 @@ use crate::icns::{encode_icns, icns_sizes};
 use crate::layout::{CropRect, Layout, Trimmed, auto_sizes, crop, make_icon, trim_transparent};
 use crate::par::parallel_map;
 use crate::resize::{
-    AlphaMode, apply_grayscale, has_transparency, premultiply, warn_about_thin_content,
-    warn_about_upscaling,
+    AlphaMode, apply_grayscale, has_transparency, premultiply, shrink_for_sizes,
+    warn_about_thin_content, warn_about_upscaling,
 };
 use crate::rotate::rotate;
 use crate::source::Artwork;
@@ -466,18 +466,6 @@ pub fn convert_raster(
         apply_grayscale(&mut source);
     }
 
-    // Computed ONCE here and passed down to every icon size instead of
-    // re-checking per size - see has_transparency()'s doc comment for why
-    // this matters. A source with transparency is multiplied with its alpha
-    // ONCE, here - not once per icon size, which for a large image is a full
-    // copy each time (see resize.rs). The sizes are then scaled from that.
-    let alpha_mode = if has_transparency(&source) {
-        premultiply(&mut source);
-        AlphaMode::Premultiplied
-    } else {
-        AlphaMode::Opaque
-    };
-
     // `Sizes::Auto` can only be settled now: it depends on how big the image
     // is after crop and trim.
     let mut sizes = starting_sizes(options).to_vec();
@@ -494,6 +482,38 @@ pub fn convert_raster(
     }
 
     warn_about_small_source(&source, options, &sizes);
+
+    // A huge picture is made smaller once, by a whole factor, so that the icons are not each scaled down from the
+    // full picture (see `shrink_for_sizes`). After the sizes and the warnings, which go by the real size.
+    if let Some(smaller) = sizes
+        .iter()
+        .max()
+        .and_then(|&largest| shrink_for_sizes(&source, largest))
+    {
+        note(notes, || {
+            format!(
+                "{}the {}x{} pixel picture is made smaller to {}x{} pixels first, the icons are made from that",
+                file_prefix(),
+                source.width(),
+                source.height(),
+                smaller.width(),
+                smaller.height()
+            )
+        });
+        source = smaller;
+    }
+
+    // Computed ONCE here and passed down to every icon size instead of
+    // re-checking per size - see has_transparency()'s doc comment for why
+    // this matters. A source with transparency is multiplied with its alpha
+    // ONCE, here - not once per icon size, which for a large image is a full
+    // copy each time (see resize.rs). The sizes are then scaled from that.
+    let alpha_mode = if has_transparency(&source) {
+        premultiply(&mut source);
+        AlphaMode::Premultiplied
+    } else {
+        AlphaMode::Opaque
+    };
 
     let render = |size: u32| make_icon(&source, size, &options.layout, alpha_mode);
     // A small source is scaled so quickly that threads would not pay.
