@@ -540,7 +540,8 @@ a {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 1.5rem;
+  /* The frame is wider than the picture (1rem each side), so this is only a little of the gap. */
+  gap: 0.25rem;
 }
 
 .scene:not(:first-child) {
@@ -594,6 +595,10 @@ a {
   display: flex;
   align-items: flex-end;
   gap: 0.45rem;
+  /* Standing on the same ground as the picture: its bottom edge is 3.25rem below the middle of the scene, the
+     row (3.4rem high, centred) ends 1.7rem below it. */
+  position: relative;
+  top: 1.55rem;
 }
 
 .hero-art .sizes i {
