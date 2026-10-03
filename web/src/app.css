@@ -3748,6 +3748,11 @@ kbd {
   border-radius: 0.6rem;
 }
 
+/* The drop card reaches up into the heading; with the note above it, it must not cover the note. */
+.ai-note + main .drop {
+  margin-top: 0.5rem;
+}
+
 body.wide .ai-note {
   max-width: 64rem;
 }

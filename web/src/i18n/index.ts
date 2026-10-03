@@ -1,4 +1,5 @@
 import { en, type MessageKey } from './en';
+import { language } from './version.svelte';
 
 // The language in use. Each language page of the site (/, /de/, ...) is built in its own language and says so in
 // `<html lang>`; the page loads the texts of that language (English is always there, for the tests and as the start).
@@ -40,6 +41,7 @@ export type Params = Record<string, string | number>;
  * `key_other`, ...) for the current language is used if there is one.
  */
 export function t(key: MessageKey | string, params: Params = {}): string {
+  void language.version; // a language switched in place draws the texts again
   const table = messages as Record<string, string>;
   let template = table[key];
   if (typeof params.count === 'number') {
