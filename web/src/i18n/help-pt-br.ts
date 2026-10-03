@@ -125,6 +125,9 @@ export const helpPtBr: Record<keyof typeof helpEn, string> = {
   'help.settings.22.h2': 'A coluna de configurações',
   'help.settings.23.p':
     'A coluna se recolhe em uma barra de ícones para que a pré-visualização possa ser larga; a seta no topo dela a abre. Ao iniciar as ferramentas de imagem ela se recolhe sozinha e abre de novo quando você termina. **Restaurar padrões** pergunta antes e depois volta tamanhos, aparência, fundo, corte e rotação ao início.',
+  'help.settings.24.h3': 'As configurações como arquivo',
+  'help.settings.25.p':
+    '**Exportar configurações**, ao lado de Restaurar padrões, salva os tamanhos, a margem, os cantos, o ajuste, o preto e branco, a remoção do fundo e o tipo de arquivo em um pequeno arquivo de texto chamado `img2ico.toml`. É o mesmo tipo de arquivo que a linha de comando lê, então a exportação é compatível com ela: `img2ico --config img2ico.toml logo.png`, ou deixe o arquivo na sua pasta e a linha de comando o encontra sozinha. No sentido contrário, **Importar configurações** usa um arquivo salvo aqui ou escrito para a linha de comando, mostra as configurações e diz o que não aproveitou (as opções da linha de comando que não servem aqui). Uma linha que a página não conhece, ou um valor que não é permitido, interrompe a importação com uma lista, e nada é alterado. O espelhamento, a rotação, o corte e o quadro de um GIF estão no arquivo quando você os usou, então um arquivo salvo aqui dá o mesmo ícone ao importá-lo de novo, e também na linha de comando (que conhece `--flip-horizontal`, `--flip-vertical`, `--rotate`, `--crop` e `--gif-frame`). Um corte que não cabe na imagem para a qual você importa é omitido, e um aviso diz isso.',
 
   // ---- Tipos de arquivo
   'help.types.01.h2': 'Imagens que você pode abrir',
@@ -217,7 +220,7 @@ export const helpPtBr: Record<keyof typeof helpEn, string> = {
     '`--report` grava um registro de uma execução como CSV ou JSON, com uma linha por arquivo e os totais. `--json` imprime os relatórios de `--inspect` e `--validate` como JSON.',
   'help.cli.03.dl.4.t': 'Arquivos de configuração',
   'help.cli.03.dl.4.d':
-    'Guarde suas configurações em um arquivo TOML (`--config`, `--out-toml`) e use as mesmas em toda execução, em todo computador.',
+    'Guarde suas configurações em um arquivo TOML (`--config`, `--out-toml`) e use as mesmas em toda execução, em todo computador. A página web salva e lê o mesmo arquivo ([as configurações explicadas](help:settings)).',
   'help.cli.03.dl.5.t': 'Verificações na automação',
   'help.cli.03.dl.5.d':
     '`--validate` verifica a estrutura de arquivos .ico, ou de pastas com eles, e termina com um código de erro quando um é inválido: feito para integração contínua.',

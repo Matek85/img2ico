@@ -295,9 +295,11 @@ pub fn check_vector_options(options: &Options) -> Result<(), String> {
     } else if options.crop.is_some() {
         Some("--crop")
     } else if crate::rotate::normalize(options.rotate) != 0 {
-        Some("rotate")
-    } else if options.flip_horizontal || options.flip_vertical {
-        Some("flip")
+        Some("--rotate")
+    } else if options.flip_horizontal {
+        Some("--flip-horizontal")
+    } else if options.flip_vertical {
+        Some("--flip-vertical")
     } else {
         None
     };

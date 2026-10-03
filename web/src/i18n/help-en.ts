@@ -129,6 +129,9 @@ export const helpEn = {
   'help.settings.22.h2': 'The settings column',
   'help.settings.23.p':
     'The column folds away to a rail of icons so the preview can be wide; the arrow at its top opens it. Starting the picture tools folds it for you, and it opens again when you are done. **Reset to defaults** asks first, then puts sizes, look, background, crop and turn back to the start.',
+  'help.settings.24.h3': 'Settings as a file',
+  'help.settings.25.p':
+    '**Export settings**, beside Reset to defaults, saves the sizes, margin, corners, fit, black and white, the background removal and the file type as a small text file named `img2ico.toml`. It is the same kind of file the command line reads, so the export is compatible with it: `img2ico --config img2ico.toml logo.png`, or leave the file in your folder and the command line finds it by itself. The other way round, **Import settings** takes a file saved here or written for the command line, shows the settings, and says what it did not take over (the options of the command line that have no use here). A line the page does not know, or a value that is not allowed, stops the import with a list, and nothing is changed. The mirror, the turn, the crop and the frame of a GIF are in the file when you used them, so a file saved here gives the same icon when you import it again, and on the command line (which knows `--flip-horizontal`, `--flip-vertical`, `--rotate`, `--crop` and `--gif-frame`). A crop that does not fit the picture you import into is left out, and a note says so.',
 
   // ---- File types
   'help.types.01.h2': 'Pictures you can open',
@@ -221,7 +224,7 @@ export const helpEn = {
     '`--report` writes a record of a run as CSV or JSON, with one line per file and the totals. `--json` prints the reports of `--inspect` and `--validate` as JSON.',
   'help.cli.03.dl.4.t': 'Settings files',
   'help.cli.03.dl.4.d':
-    'Keep your settings in a TOML file (`--config`, `--out-toml`) and use the same ones for every run, on every computer.',
+    'Keep your settings in a TOML file (`--config`, `--out-toml`) and use the same ones for every run, on every computer. The web page saves and reads the same file ([the settings explained](help:settings)).',
   'help.cli.03.dl.5.t': 'Checks in automation',
   'help.cli.03.dl.5.d':
     '`--validate` checks the structure of .ico files, or of folders of them, and ends with an error code when one is invalid: made for continuous integration.',

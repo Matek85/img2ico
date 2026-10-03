@@ -42,6 +42,10 @@ pub struct ResolvedSettings<'a> {
     pub grayscale: bool,
     pub padding: u8,
     pub fit: FitMode,
+    pub flip_horizontal: bool,
+    pub flip_vertical: bool,
+    /// Degrees clockwise (0: not turned).
+    pub rotate: i32,
     pub crop: Option<&'a str>,
     pub trim: bool,
     pub corner_radius: u8,
@@ -107,6 +111,9 @@ impl<'a> ResolvedSettings<'a> {
             grayscale: args.grayscale || settings.grayscale,
             padding: args.padding.or(settings.padding).unwrap_or(0),
             fit: args.fit.or(settings.fit).unwrap_or_default(),
+            flip_horizontal: args.flip_horizontal || settings.flip_horizontal,
+            flip_vertical: args.flip_vertical || settings.flip_vertical,
+            rotate: args.rotate.or(settings.rotate).unwrap_or(0),
             crop: args.crop.as_deref().or(settings.crop.as_deref()),
             trim: args.trim || settings.trim,
             corner_radius: args
@@ -187,6 +194,9 @@ impl<'a> ResolvedSettings<'a> {
             grayscale: self.grayscale,
             padding: Some(self.padding),
             fit: Some(self.fit),
+            flip_horizontal: self.flip_horizontal,
+            flip_vertical: self.flip_vertical,
+            rotate: (self.rotate != 0).then_some(self.rotate),
             crop: self.crop.map(str::to_owned),
             trim: self.trim,
             corner_radius: Some(self.corner_radius),
@@ -309,6 +319,45 @@ mod tests {
             resolved.trim,
             "an on/off flag stays on if either layer sets it"
         );
+    }
+
+    #[test]
+    fn mirroring_and_turning_come_from_the_file_and_the_command_line_wins() {
+        let (cli, file) = (args(&[]), Settings::default());
+        let none = ResolvedSettings::resolve(&cli, &file);
+        assert!(!none.flip_horizontal && !none.flip_vertical);
+        assert_eq!(none.rotate, 0);
+
+        let file = Settings {
+            flip_horizontal: true,
+            rotate: Some(90),
+            ..Settings::default()
+        };
+        let cli = args(&[]);
+        let resolved = ResolvedSettings::resolve(&cli, &file);
+        assert!(resolved.flip_horizontal && !resolved.flip_vertical);
+        assert_eq!(resolved.rotate, 90);
+
+        let cli = args(&["--flip-vertical", "--rotate", "-45"]);
+        let resolved = ResolvedSettings::resolve(&cli, &file);
+        assert!(
+            resolved.flip_horizontal && resolved.flip_vertical,
+            "an on/off flag stays on if either layer sets it"
+        );
+        assert_eq!(resolved.rotate, -45, "a negative angle is read as one");
+    }
+
+    #[test]
+    fn mirroring_and_turning_survive_the_out_toml_snapshot() {
+        let cli = args(&["--flip-horizontal", "--rotate", "30"]);
+        let file = Settings::default();
+        let snapshot = ResolvedSettings::resolve(&cli, &file).to_settings();
+        assert!(snapshot.flip_horizontal && !snapshot.flip_vertical);
+        assert_eq!(snapshot.rotate, Some(30));
+        // Not turned: nothing is written.
+        let cli = args(&[]);
+        let plain = ResolvedSettings::resolve(&cli, &file).to_settings();
+        assert_eq!(plain.rotate, None);
     }
 
     #[test]

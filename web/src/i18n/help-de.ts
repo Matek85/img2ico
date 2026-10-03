@@ -124,6 +124,9 @@ export const helpDe: Record<keyof typeof helpEn, string> = {
   'help.settings.22.h2': 'Die Einstellungsspalte',
   'help.settings.23.p':
     'Die Spalte klappt zu einer Leiste aus Symbolen zusammen, damit die Vorschau breit sein kann; der Pfeil an ihrem oberen Ende öffnet sie. Wenn du die Bildwerkzeuge startest, klappt sie von selbst zu und öffnet sich wieder, wenn du fertig bist. **Auf Standard zurücksetzen** fragt vorher nach und setzt dann Größen, Aussehen, Hintergrund, Zuschnitt und Drehung auf den Anfang zurück.',
+  'help.settings.24.h3': 'Einstellungen als Datei',
+  'help.settings.25.p':
+    '**Einstellungen exportieren**, neben „Auf Standard zurücksetzen“, speichert Größen, Rand, Ecken, Anpassung, Schwarzweiß, das Entfernen des Hintergrunds und den Dateityp als kleine Textdatei namens `img2ico.toml`. Das ist dieselbe Art Datei, die die Kommandozeile liest, der Export ist also mit ihr kompatibel: `img2ico --config img2ico.toml logo.png`, oder lege die Datei in deinen Ordner, dann findet die Kommandozeile sie von selbst. Umgekehrt übernimmt **Einstellungen importieren** eine Datei, die hier gespeichert oder für die Kommandozeile geschrieben wurde, zeigt die Einstellungen und sagt, was nicht übernommen wurde (die Optionen der Kommandozeile, die hier keinen Zweck haben). Eine Zeile, die die Seite nicht kennt, oder ein Wert, der nicht erlaubt ist, hält den Import mit einer Liste an, und es ändert sich nichts. Das Spiegeln, die Drehung, der Zuschnitt und das Einzelbild einer Animation stehen in der Datei, wenn du sie benutzt hast. Eine hier gespeicherte Datei ergibt beim erneuten Import dasselbe Icon, und auch auf der Kommandozeile (die `--flip-horizontal`, `--flip-vertical`, `--rotate`, `--crop` und `--gif-frame` kennt). Ein Zuschnitt, der nicht zum Bild passt, in das du importierst, wird weggelassen, und ein Hinweis sagt es.',
 
   // ---- Dateitypen
   'help.types.01.h2': 'Bilder, die du öffnen kannst',
@@ -216,7 +219,7 @@ export const helpDe: Record<keyof typeof helpEn, string> = {
     '`--report` schreibt ein Protokoll eines Laufs als CSV oder JSON, mit einer Zeile pro Datei und den Summen. `--json` gibt die Berichte von `--inspect` und `--validate` als JSON aus.',
   'help.cli.03.dl.4.t': 'Einstellungsdateien',
   'help.cli.03.dl.4.d':
-    'Halte deine Einstellungen in einer TOML-Datei (`--config`, `--out-toml`) und nutze bei jedem Lauf auf jedem Computer dieselben.',
+    'Halte deine Einstellungen in einer TOML-Datei (`--config`, `--out-toml`) und nutze bei jedem Lauf auf jedem Computer dieselben. Die Webseite speichert und liest dieselbe Datei ([die Einstellungen erklärt](help:settings)).',
   'help.cli.03.dl.5.t': 'Prüfungen in der Automatisierung',
   'help.cli.03.dl.5.d':
     '`--validate` prüft den Aufbau von .ico-Dateien oder von Ordnern damit und endet mit einem Fehlercode, wenn eine ungültig ist: gemacht für Continuous Integration.',

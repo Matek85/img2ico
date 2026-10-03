@@ -125,6 +125,9 @@ export const helpFr: Record<keyof typeof helpEn, string> = {
   'help.settings.22.h2': 'La colonne des réglages',
   'help.settings.23.p':
     'La colonne se replie en une barre d’icônes pour que l’aperçu puisse être large ; la flèche en haut l’ouvre. Quand vous lancez les outils d’image, elle se replie toute seule et se rouvre quand vous avez fini. **Rétablir les valeurs par défaut** demande confirmation, puis remet tailles, aspect, arrière-plan, recadrage et rotation au départ.',
+  'help.settings.24.h3': 'Les réglages comme fichier',
+  'help.settings.25.p':
+    '**Exporter les réglages**, à côté de Rétablir les valeurs par défaut, enregistre les tailles, la marge, les coins, l’ajustement, le noir et blanc, la suppression de l’arrière-plan et le type de fichier dans un petit fichier texte nommé `img2ico.toml`. C’est le même genre de fichier que lit la ligne de commande, l’export lui est donc compatible : `img2ico --config img2ico.toml logo.png`, ou laissez le fichier dans votre dossier et la ligne de commande le trouve toute seule. Dans l’autre sens, **Importer des réglages** reprend un fichier enregistré ici ou écrit pour la ligne de commande, montre les réglages et dit ce qu’il n’a pas repris (les options de la ligne de commande qui ne servent à rien ici). Une ligne que la page ne connaît pas, ou une valeur interdite, arrête l’importation avec une liste, et rien n’est modifié. Le retournement, la rotation, le recadrage et l’image d’un GIF sont dans le fichier quand vous les avez utilisés, donc un fichier enregistré ici donne la même icône quand vous l’importez de nouveau, et aussi sur la ligne de commande (qui connaît `--flip-horizontal`, `--flip-vertical`, `--rotate`, `--crop` et `--gif-frame`). Un recadrage qui ne convient pas à l’image dans laquelle vous importez est omis, et une note le dit.',
 
   // ---- Types de fichiers
   'help.types.01.h2': 'Images que vous pouvez ouvrir',
@@ -217,7 +220,7 @@ export const helpFr: Record<keyof typeof helpEn, string> = {
     '`--report` écrit un journal d’une exécution en CSV ou JSON, avec une ligne par fichier et les totaux. `--json` affiche les rapports de `--inspect` et `--validate` en JSON.',
   'help.cli.03.dl.4.t': 'Fichiers de réglages',
   'help.cli.03.dl.4.d':
-    'Gardez vos réglages dans un fichier TOML (`--config`, `--out-toml`) et utilisez les mêmes à chaque exécution, sur chaque ordinateur.',
+    'Gardez vos réglages dans un fichier TOML (`--config`, `--out-toml`) et utilisez les mêmes à chaque exécution, sur chaque ordinateur. La page web enregistre et lit le même fichier ([les réglages expliqués](help:settings)).',
   'help.cli.03.dl.5.t': 'Contrôles dans l’automatisation',
   'help.cli.03.dl.5.d':
     '`--validate` vérifie la structure de fichiers .ico, ou de dossiers qui en contiennent, et se termine par un code d’erreur quand l’un est invalide : conçu pour l’intégration continue.',

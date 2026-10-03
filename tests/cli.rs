@@ -1240,6 +1240,54 @@ fn command_line_beats_the_config_file() {
     assert_eq!(ico_sizes(&dir.path().join("logo.ico")), vec![48]);
 }
 
+// The settings files the web page saves (tests/fixtures/web-settings-*.toml; a test of the page keeps them
+// current) are read by the command line without a word of complaint, and what they say is what happens.
+#[test]
+fn settings_files_saved_by_the_web_page_work_on_the_command_line() {
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let mut checked = 0;
+    for entry in std::fs::read_dir(&fixtures).unwrap() {
+        let path = entry.unwrap().path();
+        let name = path.file_name().unwrap().to_string_lossy().into_owned();
+        if !(name.starts_with("web-settings-") && name.ends_with(".toml")) {
+            continue;
+        }
+        let text = std::fs::read_to_string(&path).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        write_green_background_red_square(dir.path(), "logo.png");
+        // Under the name the page suggests, so the command line picks it up by itself.
+        std::fs::write(dir.path().join("img2ico.toml"), &text).unwrap();
+
+        let out = img2ico(dir.path(), &["logo.png"]);
+        assert_success(&out);
+        let said = format!("{}{}", stdout(&out), stderr(&out));
+        assert!(
+            said.contains("Using settings from 'img2ico.toml'"),
+            "{name}: {said}"
+        );
+        assert!(!said.contains("unknown setting"), "{name}: {said}");
+
+        if text.contains("output-format = \"icns\"") {
+            assert!(dir.path().join("logo.icns").is_file(), "{name}: {said}");
+        } else {
+            let wanted: Vec<u32> = text
+                .lines()
+                .find_map(|line| line.strip_prefix("sizes = \""))
+                .unwrap()
+                .trim_end_matches('"')
+                .split(',')
+                .map(|size| size.parse().unwrap())
+                .collect();
+            assert_eq!(ico_sizes(&dir.path().join("logo.ico")), wanted, "{name}");
+        }
+        checked += 1;
+    }
+    assert!(
+        checked >= 3,
+        "expected the files of the web page, found {checked}"
+    );
+}
+
 #[test]
 fn img2ico_toml_in_the_working_directory_is_picked_up_automatically() {
     let dir = tempfile::tempdir().unwrap();
@@ -2193,6 +2241,110 @@ fn write_two_color(dir: &Path, name: &str) -> PathBuf {
 /// The color of the icon's pixel at (x, y) in the `size`x`size` entry.
 fn icon_pixel(path: &Path, size: u32, x: u32, y: u32) -> [u8; 4] {
     icon_image(path, size).get_pixel(x, y).0
+}
+
+// --- Mirroring and turning ------------------------------------------------------
+
+/// Converts the red-left, green-right picture with `extra` flags and returns the 16x16 icon's colors at the
+/// middle of the left edge, the right edge, the top edge and the bottom edge.
+fn edges_after(extra: &[&str]) -> ([u8; 4], [u8; 4], [u8; 4], [u8; 4]) {
+    let dir = tempfile::tempdir().unwrap();
+    write_two_color(dir.path(), "two.png");
+    let mut args = vec!["two.png", "-o", "out.ico", "--sizes", "16", "--force"];
+    args.extend_from_slice(extra);
+    assert_success(&convert(dir.path(), &args));
+    let ico = dir.path().join("out.ico");
+    (
+        icon_pixel(&ico, 16, 2, 8),
+        icon_pixel(&ico, 16, 13, 8),
+        icon_pixel(&ico, 16, 8, 2),
+        icon_pixel(&ico, 16, 8, 13),
+    )
+}
+
+#[test]
+fn flip_horizontal_swaps_left_and_right() {
+    let (left, right, _, _) = edges_after(&["--flip-horizontal"]);
+    assert_eq!((left, right), (GREEN, RED));
+}
+
+#[test]
+fn flip_vertical_changes_nothing_for_a_picture_that_is_the_same_in_every_row() {
+    let (left, right, _, _) = edges_after(&["--flip-vertical"]);
+    assert_eq!((left, right), (RED, GREEN));
+}
+
+#[test]
+fn rotate_turns_clockwise_and_a_negative_angle_the_other_way() {
+    // A quarter turn to the right: what was on the left is now on top.
+    let (_, _, top, bottom) = edges_after(&["--rotate", "90"]);
+    assert_eq!((top, bottom), (RED, GREEN));
+    let (_, _, top, bottom) = edges_after(&["--rotate", "-90"]);
+    assert_eq!((top, bottom), (GREEN, RED));
+    let (_, _, top, bottom) = edges_after(&["--rotate", "270"]);
+    assert_eq!((top, bottom), (GREEN, RED));
+    let (left, right, _, _) = edges_after(&["--rotate", "180"]);
+    assert_eq!((left, right), (GREEN, RED));
+}
+
+#[test]
+fn the_picture_is_mirrored_first_and_then_turned() {
+    // Mirrored: green left, red right. Then a quarter turn to the right: green is on top.
+    let (_, _, top, bottom) = edges_after(&["--flip-horizontal", "--rotate", "90"]);
+    assert_eq!((top, bottom), (GREEN, RED));
+}
+
+#[test]
+fn the_crop_is_counted_on_the_turned_picture() {
+    // After a quarter turn the red half is the top half, so the strip along the top is red from left to right
+    // (counted on the original it would be red on the left and green on the right).
+    let (left, right, _, _) = edges_after(&["--rotate", "90", "--crop", "0,0,32,8"]);
+    assert_eq!((left, right), (RED, RED));
+}
+
+#[test]
+fn mirroring_and_turning_can_come_from_the_settings_file_too() {
+    let dir = tempfile::tempdir().unwrap();
+    write_two_color(dir.path(), "two.png");
+    std::fs::write(
+        dir.path().join("img2ico.toml"),
+        "flip-horizontal = true\nrotate = 90\n",
+    )
+    .unwrap();
+    let out = convert(
+        dir.path(),
+        &["two.png", "-o", "out.ico", "--sizes", "16", "--force"],
+    );
+    assert_success(&out);
+    assert!(
+        !stderr(&out).contains("unknown setting"),
+        "{}",
+        describe(&out)
+    );
+    assert_eq!(icon_pixel(&dir.path().join("out.ico"), 16, 8, 2), GREEN);
+    // The command line wins over the file.
+    assert_success(&convert(
+        dir.path(),
+        &[
+            "two.png", "-o", "out.ico", "--sizes", "16", "--force", "--rotate", "0",
+        ],
+    ));
+    assert_eq!(icon_pixel(&dir.path().join("out.ico"), 16, 2, 8), GREEN);
+}
+
+#[test]
+fn an_svg_is_not_mirrored_or_turned() {
+    let dir = tempfile::tempdir().unwrap();
+    write_svg(dir.path(), "logo.svg");
+    for flag in [
+        &["--rotate", "90"][..],
+        &["--flip-horizontal"],
+        &["--flip-vertical"],
+    ] {
+        let mut all = vec!["logo.svg", "--sizes", "16"];
+        all.extend_from_slice(flag);
+        assert_failure_containing(&convert(dir.path(), &all), "does not apply to an SVG");
+    }
 }
 
 #[test]

@@ -101,7 +101,9 @@ Usage: img2ico [OPTIONS] <INPUT>...
 | `--preset` | | `windows` / `favicon` / `minimal` | A predefined size set, instead of `--sizes` |
 | `--padding` | | 0–100 (default 0) | Shrink the artwork by this percent, leaving a transparent margin around it |
 | `--fit` | | `contain` (default), `cover` | Fit the whole image into the square, or fill the square and cut off the overhang |
-| `--crop` | | `X,Y,WIDTH,HEIGHT` | Cut this part (in pixels) out of the source image first |
+| `--flip-horizontal`, `--flip-vertical` | | | Mirror the picture left to right, top to bottom (done first, then the turn, then the crop) |
+| `--rotate` | | `DEGREES` | Turn the picture clockwise by this many whole degrees (negative: the other way) |
+| `--crop` | | `X,Y,WIDTH,HEIGHT` | Cut this part (in pixels) out of the source image, as it is after any mirror and turn |
 | `--trim` | | | Cut off the transparent margin around the artwork |
 | `--corner-radius` | | 0–50 (default 0) | Round the corners, in percent of the image's shorter edge |
 | `--grayscale` | | | Remove all color, keep only brightness |
@@ -191,7 +193,7 @@ What to know:
 
 - **Size and shape.** The drawing is fitted into the square icon as large as it goes and centered, on a transparent background — like a non-square raster image. `--padding` and `--grayscale` work as for any source.
 - **Removing a background color** works: `--chroma-key` (also `auto`), `--tolerance`, `--feather` and `--replace-color` are applied to every rendered size, so a logo drawn on a white square can be freed from it. The color is detected and checked once, and the warnings appear once, not per size. At the very smallest sizes the anti-aliased edge of the artwork can leave a thin fringe of the background color. `--seed` and `--find` name pixel positions, which mean something else at every size, so they are refused for an SVG with a message (in a batch with `--keep-going`, only the SVG files fail); run them on a raster image made from the SVG instead.
-- **Layout.** `--fit`, `--trim` and `--corner-radius` work for an SVG too, drawn sharp at every size; `--crop` is refused (no pixels).
+- **Layout.** `--fit`, `--trim` and `--corner-radius` work for an SVG too, drawn sharp at every size; `--crop`, `--rotate`, `--flip-horizontal` and `--flip-vertical` are refused (no pixels).
 - **Text depends on your fonts.** Text in an SVG is drawn with the fonts installed on the computer img2ico runs on, so the same file can look different on another machine. For logos, convert the text to paths in your drawing program ("outline text" / "convert to curves") — then the result is the same everywhere. Shapes, paths and gradients are always drawn identically.
 - **Nothing is fetched.** Images embedded in the SVG itself (`data:` URIs) are drawn; links to other files or to the web are not followed, so an SVG cannot make img2ico read your files or open a connection.
 - **Compressed `.svgz`** files work, and the format is recognized from the content, also from standard input.
@@ -241,6 +243,8 @@ img2ico small.png --sizes auto           # only the sizes the source can supply
 ```
 
 **`--fit`.** `contain` (the default) fits the whole image inside the square; an image that is not square leaves transparent bars. `cover` fills the whole square and cuts off what does not fit, keeping the **middle** of the image — right for a photo or a wide banner that should not leave bars. For a square image both are the same. `--padding` applies to both: with `cover` the image fills the area inside the padding.
+
+**`--rotate DEGREES`, `--flip-horizontal`, `--flip-vertical`.** `--rotate 90` turns the picture a quarter to the right, `--rotate -90` (or `270`) to the left. A quarter turn is exact; any other angle makes the canvas larger so that the whole picture fits, and the corners that are left are transparent. The mirrors swap left and right, or top and bottom. The order is always: mirror, turn, then `--crop` (which is counted on the picture as it is then), then `--trim`. They are for raster images; an SVG is drawn anew at every size and refuses them.
 
 **`--crop X,Y,WIDTH,HEIGHT`.** Takes that part of the source image, in pixels, counted from the top left corner: `--crop 10,10,200,200` is the 200×200 pixels starting 10 pixels from the left and from the top. The part has to lie completely inside the image, otherwise img2ico stops with a message that names the image's size (`--inspect` shows it too). `--crop` is for raster images; an SVG has no pixels to count, so it is refused there.
 

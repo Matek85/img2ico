@@ -215,6 +215,76 @@ test.describe('shortcuts and the look of the page', () => {
     expect((await downloaded(again)).equals(before)).toBe(true);
   });
 
+  test('settings as a file: exported for the command line, taken back, and a mistake stops the import', async ({ page }) => {
+    await openInEditor(page, LOGO);
+    const exportSettings = async () => {
+      const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Export settings' }).click()]);
+      expect(download.suggestedFilename()).toBe('img2ico.toml');
+      return (await downloaded(download)).toString('utf8');
+    };
+    const first = await exportSettings();
+    expect(first).toContain('sizes = "16,32,48,64,128,256"');
+    expect(first).toContain('output-format = "ico"');
+
+    // Taking settings from a file: some are the command line's only and are reported, the rest is in use.
+    const file = (...lines: string[]) => ({ name: 'img2ico.toml', mimeType: 'text/plain', buffer: Buffer.from(lines.join('\n') + '\n') });
+    const fromFile = file('sizes = "16,32"', 'fit = "cover"', 'padding = 12', 'jobs = 4');
+    await page.setInputFiles('input[type=file][accept=".toml,text/plain"]', fromFile);
+    await expect(page.locator('dialog[open]')).toContainText('Only for the command line, not used here: jobs');
+    await page.getByRole('button', { name: 'Close' }).click();
+    const second = await exportSettings();
+    expect(second).toContain('sizes = "16,32"');
+    expect(second).toContain('fit = "cover"');
+    expect(second).toContain('padding = 12');
+    expect(second).not.toContain('jobs');
+
+    // A name nobody knows: nothing changes, and the dialog says which line.
+    const typo = file('padding = 30', 'toleranse = 20');
+    await page.setInputFiles('input[type=file][accept=".toml,text/plain"]', typo);
+    await expect(page.locator('dialog[open]')).toContainText('Line 2: “toleranse” is not a setting img2ico knows');
+    await page.getByRole('button', { name: 'Close' }).click();
+    expect(await exportSettings()).toBe(second);
+  });
+
+  test('a file saved after mirroring, turning and cropping brings all of it back after a reset', async ({ page }) => {
+    await openInEditor(page, LOGO);
+    await page.keyboard.press('c');
+    await page.keyboard.press('h');
+    await page.keyboard.press('z');
+    const angle = page.locator('input[type=range]');
+    await expect(angle).toHaveValue('-90');
+    // A frame smaller than the picture: the crop.
+    await page.locator('.numbers.sides input[type=number]').nth(2).fill('100');
+    await page.locator('.numbers.sides input[type=number]').nth(2).blur();
+    await page.keyboard.press('Escape');
+    const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Export settings' }).click()]);
+    const text = (await downloaded(download)).toString('utf8');
+    expect(text).toContain('flip-horizontal = true');
+    expect(text).toContain('rotate = 270');
+    expect(text).toMatch(/crop = "\d+,\d+,100,\d+"/);
+
+    await page.getByRole('button', { name: 'Reset to defaults' }).click();
+    await page.getByRole('button', { name: /Yes, reset/ }).click();
+    const [reset] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Export settings' }).click()]);
+    expect((await downloaded(reset)).toString('utf8')).not.toMatch(/flip|rotate|crop =/);
+
+    await page.setInputFiles('input[type=file][accept=".toml,text/plain"]', { name: 'img2ico.toml', mimeType: 'text/plain', buffer: Buffer.from(text) });
+    await expect(page.locator('dialog[open]')).toHaveCount(0);
+    const [again] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Export settings' }).click()]);
+    expect((await downloaded(again)).toString('utf8')).toBe(text);
+    // And the tools show it.
+    await page.keyboard.press('c');
+    await expect(page.getByRole('button', { name: 'Mirror the picture left to right' })).toHaveAttribute('aria-pressed', 'true');
+    await expect(angle).toHaveValue('-90');
+  });
+
+  test('a crop that does not fit the picture is left out, and a note says so', async ({ page }) => {
+    await openInEditor(page, LOGO);
+    const file = { name: 'img2ico.toml', mimeType: 'text/plain', buffer: Buffer.from('crop = "10,10,5000,5000"\n') };
+    await page.setInputFiles('input[type=file][accept=".toml,text/plain"]', file);
+    await expect(page.locator('dialog[open]')).toContainText('does not fit this picture');
+  });
+
   test('a help page is styled from the first frame', async ({ page }) => {
     await page.goto('/help/settings/');
     await expect(page.locator('h1')).toBeVisible();

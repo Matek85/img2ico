@@ -47,6 +47,7 @@
   import { type Preset, STYLE_PRESETS, USE_PRESETS, isActive, withPreset } from '../lib/presets';
   import { stemOf } from '../lib/batch';
   import { ICNS_TYPE, ICO_TYPE, ZIP_TYPE, saveBytes } from '../lib/download';
+  import { type Imported, MAX_FILE_BYTES, type Problem, SettingsFileError, exportSettings, importSettings } from '../lib/settingsFile';
   import { type QueueItem, queue } from '../lib/queue.svelte';
   import { loadAutoSave, loadSettings, loadSideOpen, saveAutoSave, saveSettings, saveSideOpen } from '../lib/storage';
   import {
@@ -465,6 +466,74 @@
     showBackgroundSettings();
   }
 
+  // --- Settings as a file (the command line's TOML): saved, and taken from a file ---------------------------------
+  let fileInput = $state<HTMLInputElement>();
+  let fileDialog = $state<HTMLDialogElement>();
+  // What the last import did: the problems that stopped it, or what it did not take over.
+  let fileReport = $state<{ problems: Problem[] } | { notes: string[] } | null>(null);
+  let flashSettings = $state(false);
+
+  function saveSettingsFile() {
+    saveBytes(new TextEncoder().encode(exportSettings($state.snapshot(settings) as Settings)), 'img2ico.toml', 'text/plain');
+  }
+
+  async function takeSettingsFile(file: File) {
+    try {
+      if (file.size > MAX_FILE_BYTES) throw new SettingsFileError([{ code: 'size', key: file.name, line: 0 }]);
+      const imported = importSettings(await file.text(), $state.snapshot(settings) as Settings);
+      const next = { ...imported.settings };
+      const notes = noteLines(imported);
+      // What the file says about this picture's own mirror, turn, crop and GIF frame is used where it fits.
+      if (opened?.vector && (next.rotate !== 0 || next.flipH || next.flipV || next.crop)) {
+        Object.assign(next, { rotate: 0, flipH: false, flipV: false, crop: null });
+        notes.push(t('settingsfile.note_vector'));
+      }
+      const turned = opened ? turnedSize(opened, next.rotate) : null;
+      const crop = next.crop;
+      if (crop && turned && (crop.x + crop.width > turned.width || crop.y + crop.height > turned.height)) {
+        next.crop = null;
+        notes.push(t('settingsfile.note_crop_outside', { width: turned.width, height: turned.height }));
+      }
+      if (!gif) {
+        next.gifFrame = 0;
+      } else if (next.gifFrame >= gif.count) {
+        next.gifFrame = gif.count - 1;
+        notes.push(t('settingsfile.note_frame', { frame: gif.count }));
+      }
+      if (masking) endMask();
+      Object.assign(settings, next);
+      // The frame of the crop tool is what `settings.crop` is made from (see the effect above).
+      frame = next.crop ? { ...next.crop } : turned ? fullRect(turned) : frame;
+      cropOn = next.crop !== null;
+      fileReport = { notes };
+      showSettings();
+      if (notes.length > 0) fileDialog?.showModal();
+    } catch (error) {
+      if (!(error instanceof SettingsFileError)) throw error;
+      fileReport = { problems: error.problems };
+      fileDialog?.showModal();
+    }
+  }
+
+  // The settings changed: open them, bring them into view and let them flash once.
+  async function showSettings() {
+    sideOpen = true;
+    await tick();
+    document.querySelector('.controls')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    flashSettings = false;
+    await tick();
+    flashSettings = true;
+    setTimeout(() => (flashSettings = false), 1600);
+  }
+
+  const noteLines = (imported: Imported): string[] =>
+    [
+      imported.skipped.length > 0 && t('settingsfile.note_skipped', { keys: imported.skipped.join(', ') }),
+      imported.sizesLeftOut.length > 0 && t('settingsfile.note_sizes', { sizes: imported.sizesLeftOut.join(', ') }),
+      imported.paddingLowered && t('settingsfile.note_padding'),
+      imported.sizesAuto && t('settingsfile.note_auto'),
+    ].filter((line): line is string => typeof line === 'string');
+
   // Show where the color went: open the advanced editor, bring the background
   // settings into view and let them flash once.
   let flashBackground = $state(false);
@@ -837,10 +906,31 @@
           : t('editor.source_size', { width: opened.width, height: opened.height })}
       </figcaption>
     </figure>
-    <button type="button" class="outline reset" onclick={askReset} disabled={isDefault} title={hint(t('editor.reset_hint'), 'reset')}>
-      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
-      {t('editor.reset')}
-    </button>
+    <div class="bar-end">
+      <span class="settings-file">
+        <button type="button" class="quiet small" title={t('settingsfile.export_hint')} aria-label={t('settingsfile.export')} onclick={saveSettingsFile}>
+          <Icon name="download" size={16} />{t('settingsfile.export_short')}
+        </button>
+        <button type="button" class="quiet small" title={t('settingsfile.import_hint')} aria-label={t('settingsfile.import')} onclick={() => fileInput?.click()}>
+          <Icon name="upload" size={16} />{t('settingsfile.import_short')}
+        </button>
+        <input
+          type="file"
+          accept=".toml,text/plain"
+          hidden
+          bind:this={fileInput}
+          onchange={(event) => {
+            const chosen = event.currentTarget.files?.[0];
+            event.currentTarget.value = '';
+            if (chosen) void takeSettingsFile(chosen);
+          }}
+        />
+      </span>
+      <button type="button" class="outline reset" onclick={askReset} disabled={isDefault} title={hint(t('editor.reset_hint'), 'reset')}>
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+        {t('editor.reset')}
+      </button>
+    </div>
   </div>
 
   {#if confirmingReset}
@@ -1184,7 +1274,7 @@
           <Icon name="collapse" size={16} />
         </button>
       </div>
-      <fieldset class="presets">
+      <fieldset class="presets" class:flash={flashSettings}>
         <legend>{t('presets.title')}</legend>
         {#each [{ label: 'presets.use', list: USE_PRESETS }, { label: 'presets.style', list: STYLE_PRESETS }] as group (group.label)}
           <div class="preset-group">
@@ -1218,7 +1308,7 @@
         </summary>
         <div class="advanced-body">
       {#if settings.format !== 'favicon'}
-      <fieldset>
+      <fieldset class:flash={flashSettings}>
         <legend>{t('controls.sizes')}</legend>
         <div class="checks">
           {#each SIZE_CHOICES as size (size)}
@@ -1235,7 +1325,7 @@
       </fieldset>
       {/if}
 
-      <fieldset id="background-settings" class:empty={!settings.removeBackground} class:flash={flashBackground}>
+      <fieldset id="background-settings" class:empty={!settings.removeBackground} class:flash={flashBackground || flashSettings}>
         <legend>
           <label><input type="checkbox" bind:checked={settings.removeBackground} /> {t('controls.background')}</label>
         </legend>
@@ -1267,7 +1357,7 @@
         {/if}
       </fieldset>
 
-      <fieldset>
+      <fieldset class:flash={flashSettings}>
         <legend>{t('controls.look')}</legend>
 
         <label class="slider">
@@ -1385,6 +1475,29 @@
       <button type="button" class="quiet" disabled={applying !== null} onclick={() => applyDialog?.close()}><Icon name="close" />{t('queue.sub_close')}</button>
     </div>
   </dialog>
+  <dialog class="site-dialog" bind:this={fileDialog} aria-labelledby="file-title" onclick={(e) => e.target === fileDialog && fileDialog?.close()}>
+    {#if fileReport && 'problems' in fileReport}
+      <h3 id="file-title"><Icon name="close" />{t('settingsfile.error_title')}</h3>
+      <p class="hint">{t('settingsfile.error_intro')}</p>
+      <ul class="findings bad">
+        {#each fileReport.problems as problem}
+          <li>{t(`settingsfile.problem_${problem.code}`, { key: problem.key, line: problem.line })}</li>
+        {/each}
+      </ul>
+    {:else if fileReport}
+      <h3 id="file-title"><Icon name="check" />{t('settingsfile.done_title')}</h3>
+      <p class="hint">{t('settingsfile.done_intro')}</p>
+      <ul class="findings warn">
+        {#each fileReport.notes as line}
+          <li>{line}</li>
+        {/each}
+      </ul>
+    {/if}
+    <div class="dialog-actions">
+      <button type="button" class="primary" onclick={() => fileDialog?.close()}><Icon name="check" />{t('keys.close')}</button>
+    </div>
+  </dialog>
+
   <ShortcutsDialog bind:this={shortcutsDialog} />
   <DropOverlay onfiles={nextPicture} label={t('queue.drop')} />
   <Queue activeId={editId} onopen={jump} onnext={nextPicture} onpicture={nextPicture} />

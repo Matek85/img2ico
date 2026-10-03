@@ -378,13 +378,35 @@ pub struct Args {
     #[arg(long = "fit", value_enum)]
     pub fit: Option<FitMode>,
 
+    /// Mirrors the picture left to right. Done first: the picture is
+    /// mirrored, then turned (--rotate), then cropped (--crop). Raster
+    /// images only: an SVG is drawn anew at every size.
+    #[arg(long = "flip-horizontal")]
+    pub flip_horizontal: bool,
+
+    /// Mirrors the picture top to bottom. Like --flip-horizontal, and the
+    /// two can be combined.
+    #[arg(long = "flip-vertical")]
+    pub flip_vertical: bool,
+
+    /// Turns the picture clockwise by this many whole degrees (a negative
+    /// number turns it the other way): --rotate 90 is a quarter turn to the
+    /// right. A quarter turn is exact; any other angle makes the canvas
+    /// larger so the whole picture fits, and the corners that are left are
+    /// transparent. Happens after a background removal (so --seed positions
+    /// still refer to the picture as it is) and before --crop. Raster
+    /// images only.
+    #[arg(long = "rotate", value_name = "DEGREES", allow_negative_numbers = true)]
+    pub rotate: Option<i32>,
+
     /// Cuts this part out of the source image before anything else is
     /// done with it: X,Y,WIDTH,HEIGHT in pixels, counted from the top left
     /// corner - --crop 10,10,200,200 takes the 200x200 pixels starting at
     /// 10 pixels from the left and from the top. The part has to lie inside
-    /// the image. Happens after a background removal (so --seed positions
-    /// still refer to the whole image) and before --trim. For raster
-    /// images only: an SVG has no pixels to count.
+    /// the image - as it is after --flip-horizontal, --flip-vertical and
+    /// --rotate, if you use them. Happens after a background removal (so
+    /// --seed positions still refer to the whole image) and before --trim.
+    /// For raster images only: an SVG has no pixels to count.
     #[arg(long = "crop", value_name = "X,Y,WIDTH,HEIGHT")]
     pub crop: Option<String>,
 
@@ -654,7 +676,7 @@ pub struct Args {
     /// Loads default values for the "tuning" settings above (--sizes,
     /// --preset, --chroma-key, --tolerance, --seed, --find,
     /// --find-min-size, --auto-apply, --replace-color, --grayscale,
-    /// --feather, --padding, --fit, --crop, --trim, --corner-radius, --max-pixels, --jobs,
+    /// --feather, --padding, --fit, --flip-horizontal, --flip-vertical, --rotate, --crop, --trim, --corner-radius, --max-pixels, --jobs,
     /// --gif-frame,
     /// --output-format, --delete-source, --force,
     /// --skip-existing, --keep-going, --recursive, --include, --exclude,

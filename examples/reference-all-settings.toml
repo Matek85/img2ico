@@ -66,6 +66,13 @@ padding = 10
 # image fills the square, the overhang is cut off).
 fit = "contain"
 
+# Mirror the picture left to right and/or top to bottom, then turn it
+# clockwise by this many whole degrees (negative: the other way). The crop
+# below is counted on the picture as it is after that. Raster images only.
+# flip-horizontal = false
+# flip-vertical = false
+# rotate = 90
+
 # Cut this part out of the source image first: "x,y,width,height" in
 # pixels from the top left corner. Raster images only (not for SVG).
 # crop = "10,10,200,200"
