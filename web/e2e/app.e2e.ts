@@ -149,6 +149,15 @@ test.describe('languages', () => {
     await expect(page.locator('.download button.primary')).toHaveText(/logo\.ico herunterladen/);
   });
 
+  test('the footer line is written again in the new language', async ({ page }) => {
+    await page.goto('/es/');
+    await expect(page.locator('#engine')).toHaveText(/^Versión del \d{4}-\d{2}-\d{2} · \S+$/);
+    await page.locator('.menu.lang summary').click();
+    await page.locator('.menu.lang a[data-lang="de"]').click();
+    await expect(page.locator('html')).toHaveAttribute('lang', 'de');
+    await expect(page.locator('#engine')).toHaveText(/^Stand \d{4}-\d{2}-\d{2} · \S+$/);
+  });
+
   test.describe('detection', () => {
     test.use({ locale: 'de-DE' });
     test('a browser in German is sent to the German page', async ({ page }) => {
