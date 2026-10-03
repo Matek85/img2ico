@@ -54,7 +54,7 @@ describe('shortcutOf', () => {
   });
 
   it('keeps the letters of the crop apart from the others', () => {
-    const letters = CROP_KEYS.flatMap((k) => (k.letter ? [k.letter] : []));
+    const letters = CROP_KEYS.flatMap((k) => (k.letter ? [k.letter, ...(k.also ? [k.also] : [])] : []));
     expect(letters.length).toBeGreaterThan(0);
     for (const letter of letters) expect(shortcutOf(press(letter))).toBeNull();
   });

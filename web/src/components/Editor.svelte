@@ -742,9 +742,9 @@
         showShape = !showShape;
         return;
       }
-      if ((letter === 'z' || letter === 'x') && cropLocked && !opened?.vector) {
+      if ((letter === 'z' || letter === 'y' || letter === 'x') && cropLocked && !opened?.vector) {
         event.preventDefault();
-        turnBy(letter === 'z' ? -90 : 90);
+        turnBy(letter === 'x' ? 90 : -90);
         return;
       }
     }
@@ -1075,7 +1075,7 @@
           </button>
         </div>
         <div class="turn-buttons">
-          <button type="button" class="outline small" title={keys.on ? `${t('turn.left')} (Z)` : t('turn.left')} aria-label={t('turn.left')} onclick={() => turnBy(-90)}>
+          <button type="button" class="outline small" title={keys.on ? `${t('turn.left')} (Z / Y)` : t('turn.left')} aria-label={t('turn.left')} onclick={() => turnBy(-90)}>
             <Icon name="rotateLeft" size={16} />{t('turn.degrees', { degrees: 90 })}
           </button>
           <button type="button" class="outline small" title={t('turn.half')} aria-label={t('turn.half')} onclick={() => turnBy(180)}>
