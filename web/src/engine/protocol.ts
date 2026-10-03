@@ -2,11 +2,18 @@
 
 import type { EngineOptions } from '../lib/settings';
 
+/** A message of the engine: a code, the values in it (a value may be a message itself) and its English sentence. */
+export interface EngineMessage {
+  code: string;
+  params: Record<string, string | EngineMessage>;
+  text: string;
+}
+
 /** The website icon package the engine made. */
 export interface FaviconPack {
   zip: Uint8Array;
   snippet: string;
-  warnings: string[];
+  warnings: EngineMessage[];
 }
 
 export type Request =
@@ -57,7 +64,7 @@ export interface Pixels {
 export interface Converted {
   bytes: Uint8Array;
   sizes: number[];
-  warnings: string[];
+  warnings: EngineMessage[];
 }
 
 export type Response =

@@ -1,3 +1,4 @@
+import { EngineError } from '../lib/messages';
 import { latestOnly } from '../lib/latest';
 import { parseReport, type ValidationReport } from '../lib/report';
 import type { EngineOptions } from '../lib/settings';
@@ -18,7 +19,7 @@ function engine(): Worker {
       pending.delete(response.id);
       if (!waiting) return;
       if (response.ok) waiting.resolve(response);
-      else waiting.reject(new Error(response.error));
+      else waiting.reject(new EngineError(response.error));
     };
     worker.onerror = (event) => {
       for (const waiting of pending.values()) {
