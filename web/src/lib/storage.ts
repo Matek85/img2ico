@@ -9,6 +9,7 @@ import { SIZE_CHOICES, type Settings, defaultSettings } from './settings';
 const KEY = 'img2ico.settings.v1';
 const AUTOSAVE_KEY = 'img2ico.autosave.v1';
 const SIDE_KEY = 'img2ico.side.v2';
+const KEYS_KEY = 'img2ico.keys.v1';
 
 /** Whether the settings beside the preview are open (folded away to a rail of icons, unless opened). */
 export function loadSideOpen(): boolean {
@@ -22,6 +23,23 @@ export function loadSideOpen(): boolean {
 export function saveSideOpen(open: boolean): void {
   try {
     localStorage.setItem(SIDE_KEY, open ? '1' : '0');
+  } catch {
+    // Without storage the choice only lasts until the page is closed.
+  }
+}
+
+/** Whether the keyboard shortcuts are on (they are, unless they were switched off). */
+export function loadShortcutsOn(): boolean {
+  try {
+    return localStorage.getItem(KEYS_KEY) !== '0';
+  } catch {
+    return true;
+  }
+}
+
+export function saveShortcutsOn(on: boolean): void {
+  try {
+    localStorage.setItem(KEYS_KEY, on ? '1' : '0');
   } catch {
     // Without storage the choice only lasts until the page is closed.
   }

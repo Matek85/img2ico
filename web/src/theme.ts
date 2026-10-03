@@ -46,6 +46,17 @@ function showButton(button: HTMLButtonElement): void {
   button.setAttribute('aria-label', label);
 }
 
+/** Changes to the other theme (the switch of the top bar and the keyboard shortcut do this). */
+export function toggleTheme(): void {
+  const next: Theme = currentTheme() === 'dark' ? 'light' : 'dark';
+  const systemTheme: Theme = system.matches ? 'dark' : 'light';
+  const choice = next === systemTheme ? null : next;
+  remember(choice);
+  apply(choice);
+  const button = document.querySelector<HTMLButtonElement>('.theme-switch');
+  if (button) showButton(button);
+}
+
 /**
  * Brings the switch of the top bar to life: it is disabled in the page's HTML (it cannot work without
  * a script). A click changes to the other theme; choosing what the system has anyway goes back to
@@ -57,14 +68,7 @@ export function startThemeSwitch(): void {
   if (!button) return;
   button.disabled = false;
   showButton(button);
-  button.addEventListener('click', () => {
-    const next: Theme = currentTheme() === 'dark' ? 'light' : 'dark';
-    const systemTheme: Theme = system.matches ? 'dark' : 'light';
-    const choice = next === systemTheme ? null : next;
-    remember(choice);
-    apply(choice);
-    showButton(button);
-  });
+  button.addEventListener('click', toggleTheme);
   // The system's setting changes (and nothing was chosen): the label follows.
   system.addEventListener('change', () => showButton(button));
 }

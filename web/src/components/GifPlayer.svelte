@@ -2,6 +2,8 @@
   import { onDestroy } from 'svelte';
   import { t } from '../i18n';
   import Icon from './Icon.svelte';
+  import { keys } from '../lib/keys.svelte';
+  import { withKey } from '../lib/shortcuts';
 
   // A small player for an animated GIF: it plays the frames, steps through them one by
   // one, and the frame it stops at is the one the icon is made from (`frame`, from 0).
@@ -61,7 +63,13 @@
     frame = shown;
   }
 
-  function step(delta: number) {
+  /** Play or pause (the play button and its keyboard shortcut). */
+  export function toggle() {
+    if (playing) pause();
+    else play();
+  }
+
+  export function step(delta: number) {
     if (playing) pause();
     frame = (frame + delta + count) % count;
   }
@@ -80,13 +88,13 @@
     <button
       type="button"
       class="primary icon-button"
-      title={t(playing ? 'gif.pause' : 'gif.play')}
+      title={withKey(t(playing ? 'gif.pause' : 'gif.play'), 'play', keys.on)}
       aria-label={t(playing ? 'gif.pause' : 'gif.play')}
-      onclick={() => (playing ? pause() : play())}
+      onclick={toggle}
     >
       <Icon name={playing ? 'pause' : 'play'} />
     </button>
-    <button type="button" class="outline icon-button" title={t('gif.prev')} aria-label={t('gif.prev')} onclick={() => step(-1)}>
+    <button type="button" class="outline icon-button" title={withKey(t('gif.prev'), 'framePrev', keys.on)} aria-label={t('gif.prev')} onclick={() => step(-1)}>
       <Icon name="framePrev" />
     </button>
     <input
@@ -101,7 +109,7 @@
         frame = event.currentTarget.valueAsNumber;
       }}
     />
-    <button type="button" class="outline icon-button" title={t('gif.next')} aria-label={t('gif.next')} onclick={() => step(1)}>
+    <button type="button" class="outline icon-button" title={withKey(t('gif.next'), 'frameNext', keys.on)} aria-label={t('gif.next')} onclick={() => step(1)}>
       <Icon name="frameNext" />
     </button>
     <span class="gif-count" aria-live="polite">{t('gif.frame', { frame: (playing ? shown : frame) + 1, count })}</span>
