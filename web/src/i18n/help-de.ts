@@ -1,5 +1,5 @@
 // German help texts: the same keys and marks as help-en.ts, with the names of the buttons as they read in de.ts.
-import type { helpEn } from './help-en';
+import type { helpEn } from './help-en.ts';
 
 export const helpDe: Record<keyof typeof helpEn, string> = {
   // ---- Erste Schritte

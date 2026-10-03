@@ -1,6 +1,6 @@
 // German (Deutsch). The same keys as en.ts, addressed to the reader as "du". Terms: Icon, Bild, Warteschlange
 // (queue), Rahmen (frame), Bearbeiten (edit), Hinweise (notes). Written by an AI; the maintainer, a native speaker, reviews it (so this page has no AI note).
-import type { MessageKey } from './en';
+import type { MessageKey } from './en.ts';
 
 export const de: Record<MessageKey, string> = {
   'app.name': 'img2ico',

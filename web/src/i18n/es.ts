@@ -1,6 +1,6 @@
 // Spanish (Español). The same keys as en.ts, addressed to the reader as "tú". Terms: icono, imagen, cola (queue),
 // marco (frame), Editar (edit), fotograma (GIF frame), ajustes (settings). Translated by an AI.
-import type { MessageKey } from './en';
+import type { MessageKey } from './en.ts';
 
 export const es: Record<MessageKey, string> = {
   'app.name': 'img2ico',
