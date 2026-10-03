@@ -435,15 +435,34 @@ pub fn convert_raster(
     // picture as it is, not on a canvas with transparent corners) and before the crop, whose frame is
     // placed on the mirrored and turned picture.
     crate::rotate::flip(&mut source, options.flip_horizontal, options.flip_vertical);
+    // A free angle with a frame on it: only the frame's pixels are turned (the same picture, much sooner).
+    let mut cropped = false;
     if crate::rotate::normalize(options.rotate) != 0 {
-        source = rotate(&source, options.rotate)?;
+        let turned = match options.crop {
+            Some(rect) if crate::rotate::is_free_angle(options.rotate) => {
+                let canvas =
+                    crate::rotate::rotated_size(source.width(), source.height(), options.rotate);
+                source = crate::rotate::rotate_then_crop(
+                    &source,
+                    options.rotate,
+                    rect,
+                    crate::source::DEFAULT_MAX_PIXELS,
+                )?;
+                cropped = true;
+                canvas
+            }
+            _ => {
+                source = rotate(&source, options.rotate)?;
+                source.dimensions()
+            }
+        };
         note(notes, || {
             format!(
                 "{}rotated by {} degrees to {}x{} pixels",
                 file_prefix(),
                 options.rotate,
-                source.width(),
-                source.height()
+                turned.0,
+                turned.1
             )
         });
     }
@@ -453,7 +472,9 @@ pub fn convert_raster(
     // --seed positions still refer to the whole image and --trim finds the
     // transparent margin a removed background leaves.
     if let Some(rect) = options.crop {
-        source = crop(&source, rect)?;
+        if !cropped {
+            source = crop(&source, rect)?;
+        }
         note(notes, || {
             format!(
                 "{}cropped to {}x{} pixels",
