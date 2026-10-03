@@ -1647,8 +1647,8 @@
     <section id="changes" class="changes" class:flash={flashChanges} bind:this={changesBox} tabindex="-1" aria-labelledby="changes-title">
       <div class="changes-head">
         <h2 id="changes-title">{t('history.title')}</h2>
-        <button type="button" class="quiet small" onclick={toggleChanges}>
-          {t('history.hide')}
+        <button type="button" class="quiet small" title={t('history.hide')} aria-label={t('history.hide')} onclick={toggleChanges}>
+          <span class="hide-label">{t('history.hide')}</span>
           <Icon name="chevronUp" size={16} />
         </button>
       </div>
