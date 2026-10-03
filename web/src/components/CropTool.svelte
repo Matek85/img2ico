@@ -15,6 +15,8 @@
     aspect = null,
     locked = true,
     ontogglelock,
+    turn = 0,
+    original,
   }: {
     src: string;
     size: Size;
@@ -23,6 +25,13 @@
     locked?: boolean;
     /** The space bar was pressed: lock or unlock the frame. */
     ontogglelock?: () => void;
+    /**
+     * The picture is shown turned by this many degrees (clockwise) by the browser itself, so a turn
+     * that is being dragged is smooth; `size` is then the canvas of the turned picture and `original`
+     * the size of the picture as it is in `src`.
+     */
+    turn?: number;
+    original?: Size;
   } = $props();
 
   const MARGIN = 14;
@@ -49,6 +58,12 @@
   let top = $derived(locked ? fitTop : free.top);
 
   let imageStyle = $derived(`left:${left}px;top:${top}px;width:${size.width * scale}px;height:${size.height * scale}px`);
+  // Turned: the picture lies in the middle of its canvas, turned around the middle of it.
+  let turnedStyle = $derived(
+    original
+      ? `left:50%;top:50%;width:${original.width * scale}px;height:${original.height * scale}px;transform:translate(-50%,-50%) rotate(${turn}deg)`
+      : '',
+  );
   let frameStyle = $derived(
     `left:${left + rect.x * scale}px;top:${top + rect.y * scale}px;width:${rect.width * scale}px;height:${rect.height * scale}px`,
   );
@@ -160,7 +175,13 @@
 </script>
 
 <div class="crop-view" class:unlocked={!locked} bind:this={box} bind:clientWidth={width} bind:clientHeight={height}>
-  <img {src} alt="" draggable="false" style={imageStyle} />
+  {#if turn !== 0 && original}
+    <div class="crop-canvas" style={imageStyle}>
+      <img {src} alt="" draggable="false" style={turnedStyle} />
+    </div>
+  {:else}
+    <img {src} alt="" draggable="false" style={imageStyle} />
+  {/if}
   <!-- The pane is a small custom control: it takes the pointer and the keys. -->
   <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
   <div

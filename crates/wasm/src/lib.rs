@@ -539,6 +539,13 @@ impl Source {
         matches!(self.picture, Picture::Vector(_))
     }
 
+    /// The picture turned clockwise by `degrees` as a PNG, for the crop view: at most `max_edge`
+    /// pixels on its longer side (0: whole size). Its pixels are placed exactly as in the icon, so
+    /// the page shows the crop frame on what the icon is made from.
+    pub fn rotated_preview(&self, degrees: i32, max_edge: u32) -> Result<Vec<u8>, JsError> {
+        self.preview_with(degrees, max_edge).map_err(failure)
+    }
+
     /// Makes the website icon package from the options (JSON text, see
     /// `parse_options`; the sizes and the format are decided here) and
     /// `meta`: `{ "name", "themeColor", "appleBackground" }`.
@@ -579,6 +586,37 @@ impl Source {
                 (w.round() as u32, h.round() as u32)
             }
         }
+    }
+
+    /// `rotated_preview` without the JavaScript error type.
+    pub fn preview_with(&self, degrees: i32, max_edge: u32) -> Result<Vec<u8>, String> {
+        use image::{DynamicImage, ImageFormat, imageops};
+        let Picture::Raster(image) = &self.picture else {
+            return Err(img2ico_core::msg!(
+                "rotate.vector",
+                "A drawing (SVG) cannot be turned: it is drawn anew at every size."
+            ));
+        };
+        let (width, height) = image.dimensions();
+        let (canvas_w, canvas_h) = img2ico_core::rotate::rotated_size(width, height, degrees);
+        let longest = canvas_w.max(canvas_h);
+        let turned = if max_edge > 0 && longest > max_edge {
+            let scale = f64::from(max_edge) / f64::from(longest);
+            let small = imageops::resize(
+                image,
+                ((f64::from(width) * scale).round() as u32).max(1),
+                ((f64::from(height) * scale).round() as u32).max(1),
+                imageops::FilterType::Triangle,
+            );
+            img2ico_core::rotate::rotate(&small, degrees)?
+        } else {
+            img2ico_core::rotate::rotate(image, degrees)?
+        };
+        let mut bytes = std::io::Cursor::new(Vec::new());
+        DynamicImage::ImageRgba8(turned)
+            .write_to(&mut bytes, ImageFormat::Png)
+            .map_err(|e| e.to_string())?;
+        Ok(bytes.into_inner())
     }
 
     /// `convert` without the JavaScript error type, so it can be tested.
@@ -699,6 +737,7 @@ pub fn open_source(bytes: &[u8], name: &str, gif_frame: usize) -> Result<Picture
 ///   "padding": 0-100, "cornerRadius": 0-50,    default 0
 ///   "fit": "contain" | "cover",                default "contain"
 ///   "grayscale": bool, "trim": bool,           default false
+///   "rotate": 0-359,                           degrees clockwise, before the crop; default 0
 ///   "flatten": "#rrggbb",                     lay the icon on this color (no transparency)
 ///   "crop": { "x", "y", "width", "height" },   default none
 ///   "background": {                            default none
@@ -729,6 +768,7 @@ pub fn parse_options(json: &str) -> Result<Options, String> {
             "fit",
             "grayscale",
             "trim",
+            "rotate",
             "crop",
             "background",
             "flatten",
@@ -800,6 +840,7 @@ pub fn parse_options(json: &str) -> Result<Options, String> {
         layout,
         background,
         grayscale: flag(&map, "grayscale")?,
+        rotate: number(&map, "rotate", 0, 359, 0)? as i32,
         crop,
         trim: flag(&map, "trim")?,
         // A browser page has no threads to hand out.
@@ -1326,6 +1367,29 @@ mod tests {
             let error = source.convert_with(json).err().unwrap_or_default();
             assert!(error.contains(expected), "{json}: {error}");
         }
+    }
+
+    #[test]
+    fn a_rotated_picture_is_cropped_on_its_turned_canvas() {
+        // 40 x 10 turned by a quarter is 10 x 40: a crop of 10 x 40 fits only after the turn.
+        let source = source(&png(40, 10));
+        let crop = r#""crop": {"x": 0, "y": 0, "width": 10, "height": 40}"#;
+        assert!(source.convert_with(&format!("{{{crop}}}")).is_err());
+        let turned = source
+            .convert_with(&format!(r#"{{"sizes": [16], "rotate": 90, {crop}}}"#))
+            .unwrap();
+        assert_eq!(turned.sizes, vec![16]);
+        assert!(source.convert_with(r#"{"rotate": 360}"#).is_err());
+    }
+
+    #[test]
+    fn the_turned_preview_has_the_canvas_of_the_turn_and_can_be_made_smaller() {
+        let source = source(&png(400, 200));
+        let full = image::load_from_memory(&source.preview_with(90, 0).unwrap()).unwrap();
+        assert_eq!((full.width(), full.height()), (200, 400));
+        let small = image::load_from_memory(&source.preview_with(30, 100).unwrap()).unwrap();
+        // 400 x 200 turned by 30 degrees is 447 x 372 (rounded up); made to fit 100 on the long side.
+        assert_eq!(small.width().max(small.height()), 100);
     }
 
     #[test]

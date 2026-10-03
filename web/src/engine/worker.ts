@@ -89,6 +89,13 @@ self.onmessage = async (event: MessageEvent<Request>) => {
         };
         break;
       }
+      case 'rotatedPreview': {
+        if (!source) throw new Error('No picture is open.');
+        const data = source.rotated_preview(request.degrees, request.maxEdge);
+        transfer.push(data.buffer);
+        response = { id: request.id, ok: true, data };
+        break;
+      }
       case 'convert': {
         if (!source) throw new Error('No picture is open.');
         const output = source.convert(JSON.stringify(request.options));

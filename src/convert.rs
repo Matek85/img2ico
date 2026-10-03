@@ -793,6 +793,7 @@ fn options_of(
             replacement,
         }),
         grayscale: resolved.grayscale,
+        rotate: 0,
         crop: resolved.crop.map(parse_crop).transpose()?,
         trim: resolved.trim,
         threads,

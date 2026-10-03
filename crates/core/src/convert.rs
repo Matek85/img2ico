@@ -23,6 +23,7 @@ use crate::resize::{
     AlphaMode, apply_grayscale, has_transparency, premultiply, warn_about_thin_content,
     warn_about_upscaling,
 };
+use crate::rotate::rotate;
 use crate::source::Artwork;
 use crate::vector::VectorImage;
 use image::RgbaImage;
@@ -99,6 +100,8 @@ pub struct Options {
     pub layout: Layout,
     pub background: Option<Background>,
     pub grayscale: bool,
+    /// The picture turned clockwise by this many degrees before it is cropped (0: not turned).
+    pub rotate: i32,
     pub crop: Option<CropRect>,
     pub trim: bool,
     /// How many threads the sizes may be made on. 1 does it in a plain loop
@@ -287,6 +290,8 @@ pub fn check_vector_options(options: &Options) -> Result<(), String> {
         Some("--seed")
     } else if options.crop.is_some() {
         Some("--crop")
+    } else if crate::rotate::normalize(options.rotate) != 0 {
+        Some("rotate")
     } else {
         None
     };
@@ -417,6 +422,22 @@ pub fn convert_raster(
     notes: &dyn Notes,
 ) -> Result<Converted, String> {
     remove_background(&mut source, options, analysis, notes)?;
+
+    // The picture is turned after the background is gone (so the color is found on the picture as it
+    // is, not on a canvas with transparent corners) and before the crop, whose frame is placed on
+    // the turned picture.
+    if crate::rotate::normalize(options.rotate) != 0 {
+        source = rotate(&source, options.rotate)?;
+        note(notes, || {
+            format!(
+                "{}rotated by {} degrees to {}x{} pixels",
+                file_prefix(),
+                options.rotate,
+                source.width(),
+                source.height()
+            )
+        });
+    }
 
     // The part of the image that is wanted: --crop first, then --trim, which
     // works on what is left. Both come after the background removal, so
@@ -743,6 +764,7 @@ mod tests {
             layout: Layout::default(),
             background: None,
             grayscale: false,
+            rotate: 0,
             crop: None,
             trim: false,
             threads: 1,

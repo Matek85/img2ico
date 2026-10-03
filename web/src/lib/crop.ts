@@ -181,6 +181,56 @@ export function rotateRect(rect: Rect, bounds: Size): Rect {
   return clampRect({ x, y, width, height }, bounds);
 }
 
+/** A turn as 0 to 359 degrees (-90 is 270). */
+export function normalizeTurn(degrees: number): number {
+  return ((Math.round(degrees) % 360) + 360) % 360;
+}
+
+/**
+ * The size of the canvas a picture turned by `degrees` needs: the box around it. It is the same
+ * arithmetic as `rotated_size` in the engine (crates/core/src/rotate.rs), so the frame is placed
+ * on the picture the icon is made from.
+ */
+export function turnedSize(size: Size, degrees: number): Size {
+  const turn = normalizeTurn(degrees);
+  if (turn === 0 || turn === 180) return { ...size };
+  if (turn === 90 || turn === 270) return { width: size.height, height: size.width };
+  const radians = (turn * Math.PI) / 180;
+  const sin = Math.abs(Math.sin(radians));
+  const cos = Math.abs(Math.cos(radians));
+  // A hair is taken off before rounding up, so 100.0000000001 stays 100.
+  const across = (a: number, b: number) => Math.max(1, Math.ceil(a * cos + b * sin - 1e-6));
+  return { width: across(size.width, size.height), height: across(size.height, size.width) };
+}
+
+/**
+ * The frame after the picture was turned clockwise by `delta` degrees, from a canvas of `from` to
+ * one of `to`: the frame keeps its size and what is under its middle (the picture turns beneath
+ * it); one that no longer fits is made smaller, in the same shape. Only a quarter turn of a frame
+ * around the whole picture gives the whole turned picture: any other turn would make the frame grow
+ * and shrink with the canvas while the slider is dragged.
+ */
+export function followTurn(rect: Rect, from: Size, to: Size, delta: number): Rect {
+  if (isFull(rect, from) && normalizeTurn(delta) % 90 === 0) return fullRect(to);
+  const radians = (delta * Math.PI) / 180;
+  const sin = Math.sin(radians);
+  const cos = Math.cos(radians);
+  const dx = rect.x + rect.width / 2 - from.width / 2;
+  const dy = rect.y + rect.height / 2 - from.height / 2;
+  const shrink = Math.min(1, to.width / rect.width, to.height / rect.height);
+  const width = Math.max(1, Math.round(rect.width * shrink));
+  const height = Math.max(1, Math.round(rect.height * shrink));
+  return clampRect(
+    {
+      x: Math.round(to.width / 2 + dx * cos - dy * sin - width / 2),
+      y: Math.round(to.height / 2 + dx * sin + dy * cos - height / 2),
+      width,
+      height,
+    },
+    to,
+  );
+}
+
 /** One of three places along an axis: the start (left, top), the middle or the end (right, bottom). */
 export type Place = 0 | 1 | 2;
 
