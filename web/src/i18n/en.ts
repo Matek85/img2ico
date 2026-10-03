@@ -161,6 +161,8 @@ export const en = {
   'msg.convert.vector_option': 'This setting does not apply to an SVG, which is drawn anew at every size. Use “Remove the background” to take away a background color, or cut the empty margin; or turn the SVG into a raster picture first.',
   'msg.crop.empty': 'The crop frame must be at least 1 pixel wide and high.',
   'msg.crop.invalid_format': 'The crop frame is not valid.',
+  'msg.rotate.too_big': 'Turned by {degrees}°, the picture would need a canvas of {width} × {height} pixels, which is too big. Turn it by a quarter, or use a smaller picture.',
+  'msg.rotate.vector': 'A drawing (SVG) cannot be turned: it is drawn anew at every size.',
   'msg.crop.outside': 'The crop frame ({x}, {y}, {width} × {height}) reaches outside the picture, which is {w} × {h} pixels.',
   'msg.gif.frame_out_of_range': 'Frame {frame_number} does not exist: {name} has {total} frame(s).',
   'msg.gif.frame_undecodable': 'A frame of {name} could not be read: {e}',

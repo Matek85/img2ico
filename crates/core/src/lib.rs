@@ -18,6 +18,7 @@ pub mod layout;
 pub mod msg;
 pub mod par;
 pub mod resize;
+pub mod rotate;
 pub mod source;
 pub mod validate;
 pub mod vector;
