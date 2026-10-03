@@ -1,6 +1,6 @@
 // Brazilian Portuguese help texts: the same keys and marks as help-en.ts, with the names of the buttons as they read
 // in pt-br.ts. Translated by an AI.
-import type { helpEn } from './help-en';
+import type { helpEn } from './help-en.ts';
 
 export const helpPtBr: Record<keyof typeof helpEn, string> = {
   // ---- Primeiros passos

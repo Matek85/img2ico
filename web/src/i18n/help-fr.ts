@@ -1,6 +1,6 @@
 // French help texts: the same keys and marks as help-en.ts, with the names of the buttons as they read in fr.ts.
 // Translated by an AI.
-import type { helpEn } from './help-en';
+import type { helpEn } from './help-en.ts';
 
 export const helpFr: Record<keyof typeof helpEn, string> = {
   // ---- Premiers pas

@@ -1,7 +1,7 @@
 // French (Français). The same keys as en.ts, addressed to the reader as "vous". Terms: icône, image, file d’attente
 // (queue), cadre (frame), Modifier (edit), réglages (settings). French typography: a no-break space before : ; ? ! and %,
 // « guillemets », and the typographic apostrophe ’. Translated by an AI.
-import type { MessageKey } from './en';
+import type { MessageKey } from './en.ts';
 
 export const fr: Record<MessageKey, string> = {
   'app.name': 'img2ico',

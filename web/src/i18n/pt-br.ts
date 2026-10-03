@@ -1,6 +1,6 @@
 // Brazilian Portuguese (Português do Brasil). The same keys as en.ts, addressed to the reader as "você". Terms: ícone,
 // imagem, fila (queue), moldura (frame), Editar (edit), quadro (GIF frame), configurações (settings). Translated by an AI.
-import type { MessageKey } from './en';
+import type { MessageKey } from './en.ts';
 
 export const ptBr: Record<MessageKey, string> = {
   'app.name': 'img2ico',
