@@ -418,6 +418,12 @@ test.describe('shortcuts and the look of the page', () => {
     await expect(page.locator('dialog[open]')).toContainText('does not fit this picture');
   });
 
+  test('the footer says which build the page is', async ({ page }) => {
+    await page.goto('/');
+    // The date of the build and the commit (a local build says "dev").
+    await expect(page.locator('#engine')).toHaveText(/^Build \d{4}-\d{2}-\d{2} · \S+$/);
+  });
+
   test('a help page is styled from the first frame', async ({ page }) => {
     await page.goto('/help/settings/');
     await expect(page.locator('h1')).toBeVisible();

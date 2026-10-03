@@ -580,5 +580,5 @@ export const es: Record<MessageKey, string> = {
   'iconfile.select_none': 'No elegir ninguna',
   'iconfile.missing': 'Tamaños que Windows querría y que este archivo no tiene (usará uno cercano): {sizes}.',
 
-  'footer.engine': 'Motor {version}',
+  'footer.build': 'Versión del {date} · {commit}',
 };

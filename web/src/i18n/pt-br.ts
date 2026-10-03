@@ -580,5 +580,5 @@ export const ptBr: Record<MessageKey, string> = {
   'iconfile.select_none': 'Não escolher nenhuma',
   'iconfile.missing': 'Tamanhos que o Windows gostaria de ter e que este arquivo não tem (ele vai escalar um próximo): {sizes}.',
 
-  'footer.engine': 'Motor {version}',
+  'footer.build': 'Versão de {date} · {commit}',
 };
