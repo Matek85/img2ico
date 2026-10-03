@@ -69,8 +69,8 @@ export function headTags(m: Messages, siteUrl: string, page?: PageInfo): string 
     `<meta name="color-scheme" content="light dark" />`,
     // The theme the visitor chose, before the page is drawn (see src/theme.ts).
     `<script>try{var t=localStorage.getItem('img2ico.theme.v1');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}</script>`,
-    `<meta name="theme-color" content="#f7f7f9" media="(prefers-color-scheme: light)" />`,
-    `<meta name="theme-color" content="#14141a" media="(prefers-color-scheme: dark)" />`,
+    `<meta name="theme-color" content="#16264a" media="(prefers-color-scheme: light)" />`,
+    `<meta name="theme-color" content="#16264a" media="(prefers-color-scheme: dark)" />`,
     `<meta property="og:type" content="website" />`,
     `<meta property="og:site_name" content="${escapeHtml(m['app.name'])}" />`,
     `<meta property="og:title" content="${title}" />`,

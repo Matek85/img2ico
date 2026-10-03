@@ -14,7 +14,7 @@
   --accent-text: #ffffff;
   --link: #1d4fd8;
   --tint: #e4ecfd;
-  --hero-from: #dbe7ff;
+  --hero-from: #16264a;
   --ok: #1b7f3b;
   --warn: #946200;
   --bad: #b3261e;
@@ -221,6 +221,20 @@ a {
   color: var(--link);
 }
 
+/* The head of the page - the top bar and the heading with its picture - is the same dark blue in
+   both themes: inside it the colours are the dark theme's, and the blue fades into the page below. */
+.topbar,
+.hero {
+  --text: #eef2fa;
+  --muted: #b3c0d9;
+  --border: #2d3a55;
+  --tint: #1f2e4d;
+  --surface: #161b26;
+  --link: #9bbaff;
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  color: var(--text);
+}
+
 .topbar {
   background: var(--hero-from);
 }
@@ -353,7 +367,7 @@ a {
 
 .hero {
   padding: 1.5rem 0 7rem;
-  background: linear-gradient(var(--hero-from), var(--bg));
+  background: linear-gradient(var(--hero-from) 55%, var(--bg));
 }
 
 .hero .shell {
