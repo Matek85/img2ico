@@ -3848,3 +3848,9 @@ body.wide .ai-note {
 .apply-dialog .dialog-actions {
   gap: 0.5rem;
 }
+
+/* The button for the list of keys under the start page's converter. */
+.start-keys {
+  margin: 1rem 0 0;
+  text-align: center;
+}
