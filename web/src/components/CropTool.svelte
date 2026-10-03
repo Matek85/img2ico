@@ -90,6 +90,12 @@
     drag = undefined;
   }
 
+  // Zooming while the button is held: the drag goes on from the zoomed picture, not from the one it
+  // began with (or the next move would undo the zoom).
+  function rebase(clientX: number, clientY: number) {
+    if (drag) drag = { ...drag, x: clientX, y: clientY, from: { ...rect } };
+  }
+
   // The wheel zooms, with the pointer anywhere on the preview box: the point under
   // the pointer stays where it is.
   function zoom(factor: number, clientX: number, clientY: number) {
@@ -99,6 +105,7 @@
     const py = clientY - at.top;
     if (locked) {
       rect = zoomRect(rect, factor, (px - (left + rect.x * scale)) / (rect.width * scale), (py - (top + rect.y * scale)) / (rect.height * scale), size);
+      rebase(clientX, clientY);
       return;
     }
     // Unlocked: the picture (and the frame on it) grows around the pointer.
@@ -106,6 +113,7 @@
     const next = Math.min(Math.max(wanted, Math.min(width / size.width, height / size.height) / 2), 12);
     const k = next / free.scale;
     free = { scale: next, left: px - (px - free.left) * k, top: py - (py - free.top) * k };
+    rebase(clientX, clientY);
   }
 
   onMount(() => {
