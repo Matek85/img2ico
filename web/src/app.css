@@ -741,8 +741,12 @@ main.part {
 }
 
 .about h2 {
-  margin: 2.5rem 0 1rem;
+  margin: 2.75rem 0 1rem;
   font-size: 1.5rem;
+}
+
+.about h2:first-child {
+  margin-top: 0;
 }
 
 .about > p {
@@ -791,26 +795,91 @@ main.part {
   font-size: 0.9rem;
 }
 
+/* What the page can do: a short list with check marks, not a wall of cards. */
+.about ul.can {
+  grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+  gap: 0.7rem 2rem;
+}
+
+.about ul.can li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 0;
+}
+
+.about ul.can .tick {
+  flex: none;
+  margin-top: 0.2rem;
+  color: var(--accent);
+}
+
+/* The questions: folded away until asked. */
 .qas {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
-  gap: 1rem;
+  gap: 0.5rem;
+  max-width: 46rem;
 }
 
 .qa {
-  padding: 1rem 1.25rem;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 0.75rem;
 }
 
-.qa h3 {
-  margin: 0 0 0.35rem;
+.qa summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+
+.qa summary::-webkit-details-marker {
+  display: none;
+}
+
+.qa summary::after {
+  content: '';
+  flex: none;
+  width: 0.55rem;
+  height: 0.55rem;
+  margin-right: 0.2rem;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(45deg);
+  transition: transform 0.2s ease;
+}
+
+.qa[open] summary::after {
+  transform: rotate(-135deg);
+}
+
+.qa summary:hover {
+  background: var(--tint);
+  border-radius: 0.75rem;
+}
+
+.qa summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: 0.75rem;
 }
 
 .qa p {
   margin: 0;
+  padding: 0 1.1rem 1rem;
   color: var(--muted);
+}
+
+.about .source {
+  margin-top: 2rem;
 }
 
 footer {
