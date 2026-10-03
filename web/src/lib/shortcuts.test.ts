@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type KeyInfo, SHORTCUTS, isTyping, shortcutOf, withKey } from './shortcuts';
+import { CROP_KEYS, type KeyInfo, SHORTCUTS, isTyping, shortcutOf, withKey } from './shortcuts';
 
 function press(key: string, more: Partial<KeyInfo> = {}): KeyInfo {
   const code = /^\d$/.test(key) ? `Digit${key}` : /^[a-z]$/i.test(key) ? `Key${key.toUpperCase()}` : '';
@@ -47,6 +47,12 @@ describe('shortcutOf', () => {
     expect(shortcutOf(press('Escape'))).toBeNull();
     expect(shortcutOf(press('F5'))).toBeNull();
     expect(shortcutOf(press('4'))).toBeNull();
+  });
+
+  it('keeps the letters of the crop apart from the others', () => {
+    const letters = CROP_KEYS.flatMap((k) => (k.letter ? [k.letter] : []));
+    expect(letters.length).toBeGreaterThan(0);
+    for (const letter of letters) expect(shortcutOf(press(letter))).toBeNull();
   });
 
   it('uses no key twice and none the browser takes without a modifier', () => {

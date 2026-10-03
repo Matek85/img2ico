@@ -147,6 +147,40 @@ export function zoomRect(rect: Rect, factor: number, ax: number, ay: number, bou
 }
 
 /** The frame moved by (`dx`, `dy`) picture pixels, kept inside the picture. */
+/**
+ * The largest frame of the same shape the picture allows (the shape of `aspect`, or of the frame
+ * itself where that is free), around the frame's own middle as far as the picture lets it.
+ */
+export function growRect(rect: Rect, aspect: number | null, bounds: Size): Rect {
+  const ratio = aspect ?? rect.width / rect.height;
+  let width = bounds.width;
+  let height = width / ratio;
+  if (height > bounds.height) {
+    height = bounds.height;
+    width = height * ratio;
+  }
+  width = Math.max(1, Math.round(width));
+  height = Math.max(1, Math.round(height));
+  const x = rect.x + rect.width / 2 - width / 2;
+  const y = rect.y + rect.height / 2 - height / 2;
+  return clampRect({ x, y, width, height }, bounds);
+}
+
+/**
+ * The frame turned by a quarter: wide becomes tall, around its middle. Where the turned frame is
+ * too big for the picture it is made smaller, keeping its new shape.
+ */
+export function rotateRect(rect: Rect, bounds: Size): Rect {
+  let width = rect.height;
+  let height = rect.width;
+  const shrink = Math.min(1, bounds.width / width, bounds.height / height);
+  width = Math.max(1, Math.round(width * shrink));
+  height = Math.max(1, Math.round(height * shrink));
+  const x = rect.x + rect.width / 2 - width / 2;
+  const y = rect.y + rect.height / 2 - height / 2;
+  return clampRect({ x, y, width, height }, bounds);
+}
+
 /** One of three places along an axis: the start (left, top), the middle or the end (right, bottom). */
 export type Place = 0 | 1 | 2;
 

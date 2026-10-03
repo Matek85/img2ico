@@ -47,6 +47,8 @@ export const ICONS = {
   framePrev: '<path d="M19 20 9 12l10-8z"/><path d="M5 19V5"/>',
   frameNext: '<path d="m5 4 10 8-10 8z"/><path d="M19 5v14"/>',
   keyboard: '<rect width="20" height="16" x="2" y="4" rx="2"/><path d="M6 8h.01"/><path d="M10 8h.01"/><path d="M14 8h.01"/><path d="M18 8h.01"/><path d="M8 12h.01"/><path d="M12 12h.01"/><path d="M16 12h.01"/><path d="M7 16h10"/>',
+  maximize: '<path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/>',
+  rotateFrame: '<path d="M12 5H6a2 2 0 0 0-2 2v3"/><path d="m9 8 3-3-3-3"/><rect width="8" height="8" x="14" y="14" rx="2"/>',
   checkNone: '<rect x="3" y="3" width="18" height="18" rx="2"/>',
 } as const;
 

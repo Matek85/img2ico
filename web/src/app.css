@@ -3394,14 +3394,33 @@ kbd {
 }
 
 /* The pad that places the crop frame: edges, corners and the middle of the picture, in one 3 x 3 block. */
-.mask .place {
-  display: grid;
-  grid-template-columns: repeat(3, auto);
-  gap: 0.25rem;
+.mask .place-group {
+  display: flex;
+  gap: 0.4rem;
   padding: 0.4rem;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 0.6rem;
+}
+
+.mask .place {
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+  gap: 0.25rem;
+}
+
+.place-tools {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.25rem;
+  padding-left: 0.4rem;
+  border-left: 1px solid var(--border);
+}
+
+.place-button:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .place-button {
@@ -3426,4 +3445,11 @@ kbd {
 .place-button.chosen {
   color: var(--accent-text);
   background: var(--accent);
+}
+
+.place-button:disabled,
+.place-button:disabled:hover {
+  color: var(--muted);
+  background: transparent;
+  border-color: transparent;
 }

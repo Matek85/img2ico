@@ -55,11 +55,13 @@ export const SHORTCUTS: readonly Shortcut[] = [
 ];
 
 /** The keys of the crop (handled by the crop itself, see CropTool.svelte), for the list. */
-export const CROP_KEYS: readonly { label: string; action: string }[] = [
+export const CROP_KEYS: readonly { label: string; action: string; letter?: string }[] = [
   { label: 'Space', action: 'lock' },
   { label: '← ↑ → ↓', action: 'move' },
   { label: '+ −', action: 'zoom' },
   { label: 'Num 1–9', action: 'place' },
+  { label: 'F', action: 'grow', letter: 'f' },
+  { label: 'O', action: 'rotate', letter: 'o' },
   { label: 'Esc', action: 'done' },
 ];
 
