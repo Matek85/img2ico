@@ -140,8 +140,10 @@ pub struct CropRect {
 /// counted from its top left corner.
 pub fn parse_crop(text: &str) -> Result<CropRect, String> {
     let wrong = || {
-        format!(
-            "Invalid --crop value '{text}': expected x,y,width,height in pixels, e.g. 10,10,200,200."
+        crate::msg!(
+            "crop.invalid_format",
+            "Invalid --crop value '{text}': expected x,y,width,height in pixels, e.g. 10,10,200,200.",
+            text = text
         )
     };
     let numbers: Vec<u32> = text
@@ -152,8 +154,10 @@ pub fn parse_crop(text: &str) -> Result<CropRect, String> {
         return Err(wrong());
     };
     if width == 0 || height == 0 {
-        return Err(format!(
-            "Invalid --crop value '{text}': the width and the height must be at least 1."
+        return Err(crate::msg!(
+            "crop.empty",
+            "Invalid --crop value '{text}': the width and the height must be at least 1.",
+            text = text
         ));
     }
     Ok(CropRect {
@@ -170,9 +174,15 @@ pub fn crop(img: &RgbaImage, rect: CropRect) -> Result<RgbaImage, String> {
     let fits = u64::from(rect.x) + u64::from(rect.width) <= u64::from(w)
         && u64::from(rect.y) + u64::from(rect.height) <= u64::from(h);
     if !fits {
-        return Err(format!(
-            "--crop {},{},{},{} reaches outside the image, which is {w}x{h} pixels.",
-            rect.x, rect.y, rect.width, rect.height
+        return Err(crate::msg!(
+            "crop.outside",
+            "--crop {x},{y},{width},{height} reaches outside the image, which is {w}x{h} pixels.",
+            x = rect.x,
+            y = rect.y,
+            width = rect.width,
+            height = rect.height,
+            w = w,
+            h = h
         ));
     }
     Ok(image::imageops::crop_imm(img, rect.x, rect.y, rect.width, rect.height).to_image())

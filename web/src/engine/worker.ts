@@ -17,7 +17,7 @@ import init, {
   icon_select,
   validate_ico,
 } from '../wasm/pkg/img2ico_wasm.js';
-import type { Request, Response } from './protocol';
+import type { EngineMessage, Request, Response } from './protocol';
 
 const ready = init();
 // In a worker, postMessage takes the list of things to hand over (the DOM typings
@@ -96,7 +96,7 @@ self.onmessage = async (event: MessageEvent<Request>) => {
         const converted = {
           bytes,
           sizes: Array.from(output.sizes()),
-          warnings: JSON.parse(output.warnings()) as string[],
+          warnings: JSON.parse(output.warnings()) as EngineMessage[],
         };
         output.free();
         transfer.push(bytes.buffer);
@@ -131,7 +131,7 @@ self.onmessage = async (event: MessageEvent<Request>) => {
         if (!source) throw new Error('No picture is open.');
         const made = source.favicon_pack(JSON.stringify(request.options), JSON.stringify(request.meta));
         const zipBytes = made.zip();
-        const pack = { zip: zipBytes, snippet: made.snippet(), warnings: JSON.parse(made.warnings()) as string[] };
+        const pack = { zip: zipBytes, snippet: made.snippet(), warnings: JSON.parse(made.warnings()) as EngineMessage[] };
         made.free();
         transfer.push(zipBytes.buffer);
         response = { id: request.id, ok: true, pack };

@@ -122,16 +122,22 @@ pub fn validate_bytes(bytes: &[u8]) -> Report {
 
     // --- header -------------------------------------------------------------
     if bytes.is_empty() {
-        add(Severity::Error, None, "the file is empty".to_string());
+        add(
+            Severity::Error,
+            None,
+            crate::msg!("validate.empty", "the file is empty"),
+        );
         return report;
     }
     if bytes.len() < HEADER_LEN {
         add(
             Severity::Error,
             None,
-            format!(
-                "the file is {} bytes, shorter than the {HEADER_LEN}-byte ICO header",
-                bytes.len()
+            crate::msg!(
+                "validate.too_short",
+                "the file is {bytes} bytes, shorter than the {header}-byte ICO header",
+                bytes = bytes.len(),
+                header = HEADER_LEN
             ),
         );
         return report;
@@ -152,14 +158,19 @@ pub fn validate_bytes(bytes: &[u8]) -> Report {
         add(
             Severity::Error,
             None,
-            format!(
-                "the header's reserved field is {reserved}, it must be 0 - this does not look like an ICO file{}",
-                if bytes.starts_with(&PNG_SIGNATURE) {
-                    " (it is a PNG image: convert it with img2ico instead)"
-                } else {
-                    ""
-                }
-            ),
+            if bytes.starts_with(&PNG_SIGNATURE) {
+                crate::msg!(
+                    "validate.reserved_png",
+                    "the header's reserved field is {reserved}, it must be 0 - this does not look like an ICO file (it is a PNG image: convert it with img2ico instead)",
+                    reserved = reserved
+                )
+            } else {
+                crate::msg!(
+                    "validate.reserved_nonzero",
+                    "the header's reserved field is {reserved}, it must be 0 - this does not look like an ICO file",
+                    reserved = reserved
+                )
+            },
         );
         return report;
     }
@@ -168,13 +179,20 @@ pub fn validate_bytes(bytes: &[u8]) -> Report {
         2 => add(
             Severity::Warning,
             None,
-            "the file is a cursor (.cur), not an icon (header type 2)".to_string(),
+            crate::msg!(
+                "validate.cursor",
+                "the file is a cursor (.cur), not an icon (header type 2)"
+            ),
         ),
         other => {
             add(
                 Severity::Error,
                 None,
-                format!("the header's type is {other}; an icon file has type 1 (a cursor, 2)"),
+                crate::msg!(
+                    "validate.bad_type",
+                    "the header's type is {other}; an icon file has type 1 (a cursor, 2)",
+                    other = other
+                ),
             );
             return report;
         }
@@ -183,7 +201,10 @@ pub fn validate_bytes(bytes: &[u8]) -> Report {
         add(
             Severity::Error,
             None,
-            "the header says the file holds no images".to_string(),
+            crate::msg!(
+                "validate.no_images",
+                "the header says the file holds no images"
+            ),
         );
         return report;
     }
@@ -195,9 +216,13 @@ pub fn validate_bytes(bytes: &[u8]) -> Report {
         add(
             Severity::Error,
             None,
-            format!(
-                "the header announces {count} images, whose directory needs {directory_end} bytes, but the file has only {} bytes (room for {complete} directory entries)",
-                bytes.len()
+            crate::msg!(
+                "validate.directory_truncated",
+                "the header announces {count} images, whose directory needs {directory_end} bytes, but the file has only {length} bytes (room for {complete} directory entries)",
+                count = count,
+                directory_end = directory_end,
+                length = bytes.len(),
+                complete = complete
             ),
         );
         return report;
@@ -236,9 +261,10 @@ pub fn validate_bytes(bytes: &[u8]) -> Report {
             add(
                 Severity::Warning,
                 Some(index),
-                format!(
-                    "the reserved byte of its directory entry is {}, it should be 0",
-                    bytes[at + 3]
+                crate::msg!(
+                    "validate.entry_reserved",
+                    "the reserved byte of its directory entry is {value}, it should be 0",
+                    value = bytes[at + 3]
                 ),
             );
         }
@@ -246,22 +272,34 @@ pub fn validate_bytes(bytes: &[u8]) -> Report {
             add(
                 Severity::Warning,
                 Some(index),
-                format!("the directory says {planes} color planes; an icon has 0 or 1"),
+                crate::msg!(
+                    "validate.entry_planes",
+                    "the directory says {planes} color planes; an icon has 0 or 1",
+                    planes = planes
+                ),
             );
         }
         if ![0, 1, 2, 4, 8, 16, 24, 32].contains(&bits) {
             add(
                 Severity::Warning,
                 Some(index),
-                format!("the directory says {bits} bits per pixel, which is not a usual value"),
+                crate::msg!(
+                    "validate.entry_bits",
+                    "the directory says {bits} bits per pixel, which is not a usual value",
+                    bits = bits
+                ),
             );
         }
         if !seen_sizes.insert((width, height, bits)) {
             add(
                 Severity::Warning,
                 Some(index),
-                format!(
-                    "the size {width}x{height} at {bits} bits per pixel is in the file more than once"
+                crate::msg!(
+                    "validate.duplicate_size",
+                    "the size {width}x{height} at {bits} bits per pixel is in the file more than once",
+                    width = width,
+                    height = height,
+                    bits = bits
                 ),
             );
         }
@@ -269,7 +307,10 @@ pub fn validate_bytes(bytes: &[u8]) -> Report {
             add(
                 Severity::Error,
                 Some(index),
-                "the directory says the image data is 0 bytes long".to_string(),
+                crate::msg!(
+                    "validate.zero_length",
+                    "the directory says the image data is 0 bytes long"
+                ),
             );
             report.entries.push(facts);
             continue;
@@ -279,8 +320,11 @@ pub fn validate_bytes(bytes: &[u8]) -> Report {
             add(
                 Severity::Error,
                 Some(index),
-                format!(
-                    "its image data starts at byte {offset}, inside the header and directory (which end at byte {directory_end})"
+                crate::msg!(
+                    "validate.inside_header",
+                    "its image data starts at byte {offset}, inside the header and directory (which end at byte {directory_end})",
+                    offset = offset,
+                    directory_end = directory_end
                 ),
             );
             report.entries.push(facts);
@@ -290,9 +334,12 @@ pub fn validate_bytes(bytes: &[u8]) -> Report {
             add(
                 Severity::Error,
                 Some(index),
-                format!(
-                    "its image data (bytes {offset} to {end}) reaches beyond the end of the file, which has {} bytes - the file is truncated or the directory is wrong",
-                    bytes.len()
+                crate::msg!(
+                    "validate.beyond_end",
+                    "its image data (bytes {offset} to {end}) reaches beyond the end of the file, which has {length} bytes - the file is truncated or the directory is wrong",
+                    offset = offset,
+                    end = end,
+                    length = bytes.len()
                 ),
             );
             report.entries.push(facts);
@@ -314,8 +361,12 @@ pub fn validate_bytes(bytes: &[u8]) -> Report {
             add(
                 Severity::Error,
                 Some(next),
-                format!(
-                    "its image data (from byte {start}) overlaps the data of image [{previous}] (which runs to byte {previous_end})"
+                crate::msg!(
+                    "validate.overlap",
+                    "its image data (from byte {start}) overlaps the data of image [{previous}] (which runs to byte {previous_end})",
+                    start = start,
+                    previous = previous,
+                    previous_end = previous_end
                 ),
             );
         }
@@ -325,9 +376,10 @@ pub fn validate_bytes(bytes: &[u8]) -> Report {
             add(
                 Severity::Warning,
                 None,
-                format!(
-                    "{} unused bytes between the directory and the first image",
-                    first.0 - directory_end as u64
+                crate::msg!(
+                    "validate.gap_before",
+                    "{count} unused bytes between the directory and the first image",
+                    count = first.0 - directory_end as u64
                 ),
             );
         }
@@ -335,9 +387,10 @@ pub fn validate_bytes(bytes: &[u8]) -> Report {
             add(
                 Severity::Warning,
                 None,
-                format!(
-                    "{} bytes after the last image that no directory entry points to",
-                    bytes.len() as u64 - last
+                crate::msg!(
+                    "validate.trailing",
+                    "{count} bytes after the last image that no directory entry points to",
+                    count = bytes.len() as u64 - last
                 ),
             );
         }
@@ -360,15 +413,24 @@ fn check_image_data(
             Err(problem) => add(
                 Severity::Error,
                 Some(index),
-                format!("PNG image data: {problem}"),
+                crate::msg!(
+                    "validate.png_problem",
+                    "PNG image data: {problem}",
+                    problem = problem
+                ),
             ),
             Ok((png_width, png_height)) => {
                 if (png_width, png_height) != (width, height) {
                     add(
                         Severity::Error,
                         Some(index),
-                        format!(
-                            "the directory says {width}x{height}, but the PNG inside is {png_width}x{png_height}"
+                        crate::msg!(
+                            "validate.png_size_mismatch",
+                            "the directory says {width}x{height}, but the PNG inside is {png_width}x{png_height}",
+                            width = width,
+                            height = height,
+                            png_width = png_width,
+                            png_height = png_height
                         ),
                     );
                 }
@@ -376,8 +438,12 @@ fn check_image_data(
                     add(
                         Severity::Warning,
                         Some(index),
-                        format!(
-                            "the PNG is {png_width}x{png_height}; Windows reads icon images only up to {MAX_ICON_EDGE}x{MAX_ICON_EDGE}"
+                        crate::msg!(
+                            "validate.png_too_big",
+                            "the PNG is {png_width}x{png_height}; Windows reads icon images only up to {max}x{max}",
+                            png_width = png_width,
+                            png_height = png_height,
+                            max = MAX_ICON_EDGE
                         ),
                     );
                 }
@@ -391,9 +457,10 @@ fn check_image_data(
         add(
             Severity::Error,
             Some(index),
-            format!(
-                "the image data ({} bytes) is neither a PNG nor a complete BMP header (40 bytes)",
-                data.len()
+            crate::msg!(
+                "validate.not_png_or_bmp_short",
+                "the image data ({length} bytes) is neither a PNG nor a complete BMP header (40 bytes)",
+                length = data.len()
             ),
         );
         return DataFormat::Unknown;
@@ -404,8 +471,10 @@ fn check_image_data(
         add(
             Severity::Error,
             Some(index),
-            format!(
-                "the image data is neither a PNG nor a BMP: its first four bytes would be a BMP header size of {header_size}, which no BMP version has"
+            crate::msg!(
+                "validate.not_png_or_bmp",
+                "the image data is neither a PNG nor a BMP: its first four bytes would be a BMP header size of {header_size}, which no BMP version has",
+                header_size = header_size
             ),
         );
         return DataFormat::Unknown;
@@ -421,38 +490,56 @@ fn check_image_data(
         add(
             Severity::Error,
             Some(index),
-            format!("the directory says width {width}, but the BMP inside is {bmp_width} wide"),
+            crate::msg!(
+                "validate.bmp_width",
+                "the directory says width {width}, but the BMP inside is {bmp_width} wide",
+                width = width,
+                bmp_width = bmp_width
+            ),
         );
     }
     // The BMP in an icon holds the color image and the AND mask on top of
     // each other, so its height is twice the icon's.
     if bmp_height != 2 * i64::from(height) {
-        let note = if bmp_height == i64::from(height) {
-            " - without the doubling for the transparency mask, so it has no mask"
+        let message = if bmp_height == i64::from(height) {
+            crate::msg!(
+                "validate.bmp_height_no_mask",
+                "the directory says height {height}, so the BMP should be {expected} high (color image and mask), but it is {bmp_height} - without the doubling for the transparency mask, so it has no mask",
+                height = height,
+                expected = 2 * height,
+                bmp_height = bmp_height
+            )
         } else {
-            ""
+            crate::msg!(
+                "validate.bmp_height",
+                "the directory says height {height}, so the BMP should be {expected} high (color image and mask), but it is {bmp_height}",
+                height = height,
+                expected = 2 * height,
+                bmp_height = bmp_height
+            )
         };
-        add(
-            Severity::Error,
-            Some(index),
-            format!(
-                "the directory says height {height}, so the BMP should be {} high (color image and mask), but it is {bmp_height}{note}",
-                2 * height
-            ),
-        );
+        add(Severity::Error, Some(index), message);
     }
     if planes != 1 {
         add(
             Severity::Error,
             Some(index),
-            format!("the BMP says {planes} color planes, it must be 1"),
+            crate::msg!(
+                "validate.bmp_planes",
+                "the BMP says {planes} color planes, it must be 1",
+                planes = planes
+            ),
         );
     }
     if ![1, 4, 8, 16, 24, 32].contains(&bits) {
         add(
             Severity::Error,
             Some(index),
-            format!("the BMP says {bits} bits per pixel, which BMP does not have"),
+            crate::msg!(
+                "validate.bmp_bits",
+                "the BMP says {bits} bits per pixel, which BMP does not have",
+                bits = bits
+            ),
         );
         return DataFormat::Bmp;
     }
@@ -460,9 +547,11 @@ fn check_image_data(
         add(
             Severity::Warning,
             Some(index),
-            format!(
-                "the directory says {} bits per pixel, the BMP inside {bits}",
-                facts.bits_per_pixel
+            crate::msg!(
+                "validate.bits_mismatch",
+                "the directory says {directory_bits} bits per pixel, the BMP inside {bits}",
+                directory_bits = facts.bits_per_pixel,
+                bits = bits
             ),
         );
     }
@@ -470,8 +559,10 @@ fn check_image_data(
         add(
             Severity::Error,
             Some(index),
-            format!(
-                "the BMP is compressed (method {compression}); icons use uncompressed BMP data"
+            crate::msg!(
+                "validate.bmp_compressed",
+                "the BMP is compressed (method {compression}); icons use uncompressed BMP data",
+                compression = compression
             ),
         );
         return DataFormat::Bmp;
@@ -509,17 +600,27 @@ fn check_image_data(
         add(
             Severity::Error,
             Some(index),
-            format!(
-                "the BMP data is truncated: a {width}x{height} image with {bits} bits per pixel needs {minimum} bytes, the entry has {have}"
+            crate::msg!(
+                "validate.bmp_truncated",
+                "the BMP data is truncated: a {width}x{height} image with {bits} bits per pixel needs {minimum} bytes, the entry has {have}",
+                width = width,
+                height = height,
+                bits = bits,
+                minimum = minimum,
+                have = have
             ),
         );
     } else if have > needed {
         add(
             Severity::Warning,
             Some(index),
-            format!(
-                "the BMP data has {} bytes more than a {width}x{height} image with {bits} bits per pixel needs",
-                have - needed
+            crate::msg!(
+                "validate.bmp_extra",
+                "the BMP data has {extra} bytes more than a {width}x{height} image with {bits} bits per pixel needs",
+                extra = have - needed,
+                width = width,
+                height = height,
+                bits = bits
             ),
         );
     }
@@ -540,20 +641,28 @@ fn check_png(data: &[u8]) -> Result<(u32, u32), String> {
         let name = String::from_utf8_lossy(kind).into_owned();
         let end = at + 8 + length + 4;
         if end > data.len() {
-            return Err(format!(
-                "the chunk '{name}' says it is {length} bytes long, which reaches beyond the end of the image data - truncated"
+            return Err(crate::msg!(
+                "validate.png_chunk_truncated",
+                "the chunk '{name}' says it is {length} bytes long, which reaches beyond the end of the image data - truncated",
+                name = name,
+                length = length
             ));
         }
         let stored =
             u32::from_be_bytes([data[end - 4], data[end - 3], data[end - 2], data[end - 1]]);
         if crc32(&data[at + 4..end - 4]) != stored {
-            return Err(format!(
-                "the checksum of the chunk '{name}' is wrong - the data is corrupted"
+            return Err(crate::msg!(
+                "validate.png_checksum",
+                "the checksum of the chunk '{name}' is wrong - the data is corrupted",
+                name = name
             ));
         }
         if first {
             if kind != b"IHDR" || length != 13 {
-                return Err("the first chunk is not a valid IHDR".to_string());
+                return Err(crate::msg!(
+                    "validate.png_ihdr",
+                    "the first chunk is not a valid IHDR"
+                ));
             }
             let body = &data[at + 8..at + 8 + 13];
             dimensions = Some((
@@ -567,13 +676,20 @@ fn check_png(data: &[u8]) -> Result<(u32, u32), String> {
         }
         if kind == b"IEND" {
             if !has_pixels {
-                return Err("there is no IDAT chunk - the image has no pixel data".to_string());
+                return Err(crate::msg!(
+                    "validate.png_no_idat",
+                    "there is no IDAT chunk - the image has no pixel data"
+                ));
             }
-            return dimensions.ok_or_else(|| "there is no IHDR chunk".to_string());
+            return dimensions
+                .ok_or_else(|| crate::msg!("validate.png_no_ihdr", "there is no IHDR chunk"));
         }
         at = end;
     }
-    Err("the end chunk IEND is missing - the image data is truncated".to_string())
+    Err(crate::msg!(
+        "validate.png_no_iend",
+        "the end chunk IEND is missing - the image data is truncated"
+    ))
 }
 
 /// The CRC-32 PNG uses for its chunks.

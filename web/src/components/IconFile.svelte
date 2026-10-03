@@ -13,7 +13,7 @@
   import Icon from './Icon.svelte';
   import { baseName, stemOf } from '../lib/batch';
   import { ICO_TYPE, PNG_TYPE, ZIP_TYPE, saveBytes } from '../lib/download';
-  import { explain } from '../lib/messages';
+  import { describeMessage, explain } from '../lib/messages';
   import { shortName } from '../lib/names';
   import { queue } from '../lib/queue.svelte';
   import type { ValidationReport } from '../lib/report';
@@ -158,8 +158,11 @@
           {#each group.list as finding}
             <li>
               {finding.image === null
-                ? finding.message
-                : t('result.about_image', { number: finding.image + 1, message: finding.message })}
+                ? finding.info ? describeMessage(finding.info) : finding.message
+                : t('result.about_image', {
+                    number: finding.image + 1,
+                    message: finding.info ? describeMessage(finding.info) : finding.message,
+                  })}
             </li>
           {/each}
         </ul>

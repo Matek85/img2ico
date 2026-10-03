@@ -1,3 +1,5 @@
+import type { EngineMessage } from '../engine/protocol';
+
 /** One image inside an .ico file, as the engine describes it. */
 export interface IconImage {
   index: number;
@@ -12,7 +14,10 @@ export interface IconImage {
 /** A problem the check found; `image` is the zero-based entry it is about. */
 export interface Finding {
   image: number | null;
+  /** The engine's English sentence. */
   message: string;
+  /** The same as a code with its values, for the page's own sentence. */
+  info?: EngineMessage;
 }
 
 /** The engine's verdict on an .ico file (the shape of `img2ico --validate --json`). */

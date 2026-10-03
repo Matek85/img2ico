@@ -48,7 +48,7 @@
     packMeta,
     toEngineOptions,
   } from '../lib/settings';
-  import { explain, friendly } from '../lib/messages';
+  import { describeMessage, explain } from '../lib/messages';
   import { shortName } from '../lib/names';
 
   let {
@@ -814,7 +814,7 @@
         <h3>{t('editor.warnings')}</h3>
         <ul class="findings warn">
           {#each converted.warnings as warning}
-            <li>{friendly(warning)}</li>
+            <li>{describeMessage(warning)}</li>
           {/each}
         </ul>
       {/if}

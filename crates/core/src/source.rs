@@ -24,10 +24,13 @@ pub const DEFAULT_MAX_PIXELS: u64 = 100_000_000;
 pub fn check_pixel_limit(width: u32, height: u32, max_pixels: u64) -> Result<(), String> {
     let pixels = u64::from(width) * u64::from(height);
     if max_pixels != 0 && pixels > max_pixels {
-        return Err(format!(
-            "the image is {width}x{height} pixels ({:.1} megapixels), more than the limit of {:.1} megapixels. Raise the limit with --max-pixels N (0 for no limit) if you trust the file.",
-            pixels as f64 / 1e6,
-            max_pixels as f64 / 1e6
+        return Err(crate::msg!(
+            "source.too_many_pixels",
+            "the image is {width}x{height} pixels ({megapixels} megapixels), more than the limit of {limit} megapixels. Raise the limit with --max-pixels N (0 for no limit) if you trust the file.",
+            width = width,
+            height = height,
+            megapixels = format!("{:.1}", pixels as f64 / 1e6),
+            limit = format!("{:.1}", max_pixels as f64 / 1e6)
         ));
     }
     Ok(())
@@ -77,12 +80,32 @@ pub fn decode_image_bytes_limited(
             .map_err(|e| e.to_string())
     };
     if max_pixels != 0 {
-        let (width, height) = reader()?.into_dimensions().map_err(|e| e.to_string())?;
+        let (width, height) = reader()?.into_dimensions().map_err(image_error)?;
         check_pixel_limit(width, height, max_pixels)?;
     }
     let mut reader = reader()?;
     reader.limits(decoder_limits(max_pixels));
-    reader.decode().map_err(|e| e.to_string())
+    reader.decode().map_err(image_error)
+}
+
+/// The message for what the image library could not do. The most common case - a file that is
+/// no picture at all - has a code of its own; the rest keep the library's own sentence.
+fn image_error(error: image::ImageError) -> String {
+    use image::error::{ImageFormatHint, UnsupportedErrorKind};
+    match &error {
+        image::ImageError::Unsupported(unsupported)
+            if matches!(
+                unsupported.kind(),
+                UnsupportedErrorKind::Format(ImageFormatHint::Unknown)
+            ) =>
+        {
+            crate::msg!(
+                "source.format_unknown",
+                "The image format could not be determined"
+            )
+        }
+        _ => error.to_string(),
+    }
 }
 
 /// Whether `bytes` - an image already in memory - start like a GIF. This goes
@@ -113,16 +136,29 @@ pub fn extract_gif_frame_from<R: BufRead + Seek>(
     max_pixels: u64,
 ) -> Result<image::RgbaImage, String> {
     if frame_number == 0 {
-        return Err(
-            "--gif-frame must be 1 or greater (frames are numbered starting at 1).".to_string(),
-        );
+        return Err(crate::msg!(
+            "gif.frame_zero",
+            "--gif-frame must be 1 or greater (frames are numbered starting at 1)."
+        ));
     }
 
-    let decoder =
-        GifDecoder::new(reader).map_err(|e| format!("Could not read '{name}' as a GIF: {e}"))?;
+    let decoder = GifDecoder::new(reader).map_err(|e| {
+        crate::msg!(
+            "gif.unreadable",
+            "Could not read '{name}' as a GIF: {e}",
+            name = name,
+            e = e
+        )
+    })?;
     let (width, height) = image::ImageDecoder::dimensions(&decoder);
-    check_pixel_limit(width, height, max_pixels)
-        .map_err(|e| format!("Could not read '{name}': {e}"))?;
+    check_pixel_limit(width, height, max_pixels).map_err(|e| {
+        crate::msg!(
+            "source.unreadable",
+            "Could not read '{name}': {e}",
+            name = name,
+            e = e
+        )
+    })?;
 
     // A single pass over the frames: decoding happens once per frame
     // regardless, so counting the total (for a helpful error message if
@@ -131,7 +167,14 @@ pub fn extract_gif_frame_from<R: BufRead + Seek>(
     let mut selected: Option<image::RgbaImage> = None;
     let mut total = 0usize;
     for (index, frame) in decoder.into_frames().enumerate() {
-        let frame = frame.map_err(|e| format!("Could not decode a frame in '{name}': {e}"))?;
+        let frame = frame.map_err(|e| {
+            crate::msg!(
+                "gif.frame_undecodable",
+                "Could not decode a frame in '{name}': {e}",
+                name = name,
+                e = e
+            )
+        })?;
         total += 1;
         if index + 1 == frame_number {
             selected = Some(frame.into_buffer());
@@ -139,8 +182,12 @@ pub fn extract_gif_frame_from<R: BufRead + Seek>(
     }
 
     selected.ok_or_else(|| {
-        format!(
-            "--gif-frame {frame_number} is out of range - '{name}' has {total} frame(s), so valid values are 1..{total}."
+        crate::msg!(
+            "gif.frame_out_of_range",
+            "--gif-frame {frame_number} is out of range - '{name}' has {total} frame(s), so valid values are 1..{total}.",
+            frame_number = frame_number,
+            name = name,
+            total = total
         )
     })
 }
@@ -165,21 +212,44 @@ pub fn decode_gif_frames_from_bytes(
     name: &str,
     max_pixels: u64,
 ) -> Result<Vec<GifFrame>, String> {
-    let decoder = GifDecoder::new(Cursor::new(bytes))
-        .map_err(|e| format!("Could not read '{name}' as a GIF: {e}"))?;
+    let decoder = GifDecoder::new(Cursor::new(bytes)).map_err(|e| {
+        crate::msg!(
+            "gif.unreadable",
+            "Could not read '{name}' as a GIF: {e}",
+            name = name,
+            e = e
+        )
+    })?;
     let (width, height) = image::ImageDecoder::dimensions(&decoder);
-    check_pixel_limit(width, height, max_pixels)
-        .map_err(|e| format!("Could not read '{name}': {e}"))?;
+    check_pixel_limit(width, height, max_pixels).map_err(|e| {
+        crate::msg!(
+            "source.unreadable",
+            "Could not read '{name}': {e}",
+            name = name,
+            e = e
+        )
+    })?;
     let per_frame = u64::from(width) * u64::from(height);
 
     let mut frames = Vec::new();
     for frame in decoder.into_frames() {
         if (frames.len() as u64 + 1) * per_frame > MAX_GIF_TOTAL_PIXELS {
-            return Err(format!(
-                "'{name}' has too many frames of {width}x{height} pixels to hold them all in memory."
+            return Err(crate::msg!(
+                "gif.too_many_frames",
+                "'{name}' has too many frames of {width}x{height} pixels to hold them all in memory.",
+                name = name,
+                width = width,
+                height = height
             ));
         }
-        let frame = frame.map_err(|e| format!("Could not decode a frame in '{name}': {e}"))?;
+        let frame = frame.map_err(|e| {
+            crate::msg!(
+                "gif.frame_undecodable",
+                "Could not decode a frame in '{name}': {e}",
+                name = name,
+                e = e
+            )
+        })?;
         let (numerator, denominator) = frame.delay().numer_denom_ms();
         let delay_ms = numerator.checked_div(denominator).unwrap_or(0);
         frames.push(GifFrame {
@@ -247,6 +317,19 @@ mod tests {
             decode_source_bytes(svg, "a.svg", DEFAULT_MAX_PIXELS),
             Ok(Artwork::Vector(_))
         ));
+    }
+
+    #[test]
+    fn a_file_that_is_no_picture_has_a_code_of_its_own() {
+        crate::msg::remember_messages();
+        let error = decode_source_bytes(b"not an image", "a", DEFAULT_MAX_PIXELS)
+            .err()
+            .unwrap();
+        assert_eq!(error, "The image format could not be determined");
+        assert_eq!(
+            crate::msg::lookup(&error).unwrap().code,
+            "source.format_unknown"
+        );
     }
 
     #[test]

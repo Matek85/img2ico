@@ -15,6 +15,7 @@ pub mod favicon;
 pub mod icns;
 pub mod icon;
 pub mod layout;
+pub mod msg;
 pub mod par;
 pub mod resize;
 pub mod source;
