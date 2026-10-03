@@ -219,7 +219,7 @@ jobs:
 
       # Keep this in step with rust-version in Cargo.toml.
       - name: Install Rust 1.88
-        uses: dtolnay/rust-toolchain@1.88
+        uses: dtolnay/rust-toolchain@1.120
 
       - name: Cache Cargo dependencies
         uses: Swatinem/rust-cache@v2
