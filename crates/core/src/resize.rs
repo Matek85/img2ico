@@ -247,6 +247,77 @@ fn resize_premultiplied(src: &RgbaImage, new_width: u32, new_height: u32) -> Rgb
     resized
 }
 
+/// How many times larger than the biggest icon the picture is kept when a huge picture is made smaller first
+/// (see `shrink_for_sizes`). Four times leaves the final resize far from any loss of quality.
+const KEEP_TIMES_LARGEST_SIZE: u32 = 4;
+
+/// For a huge picture: a copy made smaller by a whole factor, so that the icons are not each scaled down from the
+/// full picture (a 40-megapixel photo scaled to seven sizes is seven passes over 160 MB).
+///
+/// Every `factor` x `factor` block of pixels becomes one pixel, its average weighted by alpha (so the invisible
+/// color of a transparent pixel does not seep into its neighbours, the same fringe `premultiply` is there to
+/// prevent). The factor is the largest whole number that keeps the shorter side at least
+/// `KEEP_TIMES_LARGEST_SIZE` times the largest size, so a picture only gets this when it is at least twice that
+/// big: an ordinary picture is left alone, and the icons come out exactly as they always did. Returns `None`
+/// when there is nothing to gain.
+pub fn shrink_for_sizes(src: &RgbaImage, largest_size: u32) -> Option<RgbaImage> {
+    let (width, height) = src.dimensions();
+    let keep = largest_size.max(1).saturating_mul(KEEP_TIMES_LARGEST_SIZE);
+    let factor = width.min(height) / keep;
+    if factor < 2 {
+        return None;
+    }
+    Some(box_shrink(src, factor))
+}
+
+/// Averages every `factor` x `factor` block of pixels (the blocks at the right and bottom edge may be smaller)
+/// into one, weighting the color by alpha.
+fn box_shrink(src: &RgbaImage, factor: u32) -> RgbaImage {
+    let (width, height) = src.dimensions();
+    let out_width = width.div_ceil(factor);
+    let out_height = height.div_ceil(factor);
+    let mut out = RgbaImage::new(out_width, out_height);
+    let factor = factor as usize;
+    let row_len = width as usize * 4;
+    let raw = src.as_raw();
+    // Per output pixel: the sum of alpha, of color x alpha for the three channels, and the number of pixels.
+    let mut sums = vec![[0u32; 5]; out_width as usize];
+    for out_y in 0..out_height as usize {
+        sums.iter_mut().for_each(|sum| *sum = [0; 5]);
+        let first = out_y * factor;
+        let last = (first + factor).min(height as usize);
+        for y in first..last {
+            let row = &raw[y * row_len..(y + 1) * row_len];
+            let (pixels, _) = row.as_chunks::<4>();
+            for (x, pixel) in pixels.iter().enumerate() {
+                let sum = &mut sums[x / factor];
+                let alpha = u32::from(pixel[3]);
+                sum[0] += alpha;
+                sum[1] += u32::from(pixel[0]) * alpha;
+                sum[2] += u32::from(pixel[1]) * alpha;
+                sum[3] += u32::from(pixel[2]) * alpha;
+                sum[4] += 1;
+            }
+        }
+        for (out_x, sum) in sums.iter().enumerate() {
+            let [alpha, red, green, blue, count] = *sum;
+            let pixel = if alpha == 0 {
+                Rgba([0, 0, 0, 0])
+            } else {
+                let color = |total: u32| ((total + alpha / 2) / alpha) as u8;
+                Rgba([
+                    color(red),
+                    color(green),
+                    color(blue),
+                    ((alpha + count / 2) / count) as u8,
+                ])
+            };
+            out.put_pixel(out_x as u32, out_y as u32, pixel);
+        }
+    }
+    out
+}
+
 /// Scales an image into a square icon of the desired edge length `size`,
 /// without distortion.
 ///
@@ -317,6 +388,90 @@ mod tests {
     }
 
     // --- has_transparency ------------------------------------------------------
+
+    #[test]
+    fn a_picture_is_only_made_smaller_first_when_it_is_far_larger_than_the_icons() {
+        // 256 x 4 = 1024 must be kept: a shorter side of 2047 leaves a factor of 1, so nothing changes.
+        assert!(shrink_for_sizes(&solid(3000, 2047, Rgba([1, 2, 3, 255])), 256).is_none());
+        let small = shrink_for_sizes(&solid(3000, 2048, Rgba([1, 2, 3, 255])), 256).unwrap();
+        assert_eq!(small.dimensions(), (1500, 1024));
+        assert!(small.pixels().all(|p| *p == Rgba([1, 2, 3, 255])));
+    }
+
+    #[test]
+    fn icons_from_the_smaller_copy_look_like_icons_from_the_full_picture() {
+        // A picture with soft and hard edges: a gradient with a bright disc and a stripe, half transparent
+        // at one side.
+        let (width, height) = (2304u32, 2048u32);
+        let mut img = RgbaImage::new(width, height);
+        for (x, y, pixel) in img.enumerate_pixels_mut() {
+            let (dx, dy) = (x as f32 - 1100.0, y as f32 - 1000.0);
+            let disc = dx * dx + dy * dy < 600.0 * 600.0;
+            let stripe = (x + y) % 400 < 40;
+            let base = if disc { 240 } else { (x * 255 / width) as u8 };
+            let alpha = if x < 300 { 0 } else { 255 };
+            *pixel = Rgba([
+                base,
+                if stripe { 20 } else { (y * 255 / height) as u8 },
+                200 - base / 2,
+                alpha,
+            ]);
+        }
+        let largest = 256;
+        let small = shrink_for_sizes(&img, largest).expect("far larger than the icons");
+        assert_eq!(small.dimensions(), (1152, 1024));
+        for size in [16, 48, 256] {
+            let mut full = img.clone();
+            premultiply(&mut full);
+            let mut shrunk = small.clone();
+            premultiply(&mut shrunk);
+            let a = make_square_icon(&full, size, 0, AlphaMode::Premultiplied);
+            let b = make_square_icon(&shrunk, size, 0, AlphaMode::Premultiplied);
+            assert_eq!(a.dimensions(), b.dimensions());
+            let total: u64 = a
+                .as_raw()
+                .iter()
+                .zip(b.as_raw())
+                .map(|(p, q)| u64::from(p.abs_diff(*q)))
+                .sum();
+            let mean = total as f64 / a.as_raw().len() as f64;
+            assert!(
+                mean < 1.5,
+                "size {size}: the icons differ by {mean} levels on average"
+            );
+        }
+    }
+
+    #[test]
+    fn shrinking_averages_the_blocks_and_handles_a_ragged_edge() {
+        // Width 5, factor 2: blocks of 2, 2 and a last one of 1 pixel.
+        let mut img = RgbaImage::new(5, 2);
+        for y in 0..2 {
+            for x in 0..5 {
+                img.put_pixel(x, y, Rgba([(x * 40) as u8, 100, 200, 255]));
+            }
+        }
+        let out = box_shrink(&img, 2);
+        assert_eq!(out.dimensions(), (3, 1));
+        assert_eq!(out.get_pixel(0, 0), &Rgba([20, 100, 200, 255]));
+        assert_eq!(out.get_pixel(1, 0), &Rgba([100, 100, 200, 255]));
+        assert_eq!(out.get_pixel(2, 0), &Rgba([160, 100, 200, 255]));
+    }
+
+    #[test]
+    fn shrinking_weights_the_color_by_alpha() {
+        // A red opaque pixel beside a transparent one that still carries a blue color: the block is red, half
+        // as opaque. A plain average would be purple.
+        let mut img = RgbaImage::new(2, 1);
+        img.put_pixel(0, 0, Rgba([255, 0, 0, 255]));
+        img.put_pixel(1, 0, Rgba([0, 0, 255, 0]));
+        let out = box_shrink(&img, 2);
+        assert_eq!(out.get_pixel(0, 0), &Rgba([255, 0, 0, 128]));
+        // Nothing visible in the block: black, fully transparent.
+        let mut img = RgbaImage::new(2, 1);
+        img.put_pixel(0, 0, Rgba([9, 9, 9, 0]));
+        assert_eq!(box_shrink(&img, 2).get_pixel(0, 0), &Rgba([0, 0, 0, 0]));
+    }
 
     #[test]
     fn opaque_image_has_no_transparency() {

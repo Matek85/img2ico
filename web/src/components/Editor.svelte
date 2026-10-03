@@ -136,7 +136,7 @@
       busy = false;
       return;
     }
-    const timer = setTimeout(() => (busy = true), 250);
+    const timer = setTimeout(() => (busy = true), 400);
     return () => clearTimeout(timer);
   });
   let convertFailure = $state('');
