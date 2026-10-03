@@ -11,9 +11,12 @@ publish = false
 # read and write the fit mode, so that type gets clap and serde support. The web
 # version does not use either.
 cli = ["dep:clap", "dep:serde"]
-# Lets SVG text use the fonts installed on the machine. The command line turns
-# this on; a browser has no such fonts to read, so the web version leaves it off.
-system-fonts = ["resvg/system-fonts"]
+# SVG text: the code that lays text out (fonts, shaping, Unicode tables) is about a third of the engine. The command
+# line turns it on with the system fonts below. The web version leaves it off: a browser has no fonts to read, so text
+# would not show anyway (an SVG with text still converts, the text is left out). A bundled font would turn it on.
+svg-text = ["resvg/text"]
+# Lets SVG text use the fonts installed on the machine (the command line turns this on).
+system-fonts = ["svg-text", "resvg/system-fonts"]
 
 [dependencies]
 clap = { version = "4", features = ["derive"], optional = true }
@@ -21,7 +24,7 @@ serde = { version = "1", features = ["derive"], optional = true }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp", "gif", "ico", "webp", "tiff", "tga"] }
 icns = "0.5"
 ico = "0.5"
-resvg = { version = "0.48.1", default-features = false, features = ["text", "svgz", "raster-images"] }
+resvg = { version = "0.48.1", default-features = false, features = ["svgz", "raster-images"] }
 miniz_oxide = { version = "0.9", default-features = false, features = ["with-alloc"] }
 
 [dev-dependencies]
