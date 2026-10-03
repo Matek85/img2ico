@@ -329,6 +329,7 @@ test.describe('shortcuts and the look of the page', () => {
   test('the list of changes goes back several steps at once and shows the picture as it was', async ({ page }) => {
     await openInEditor(page, LOGO);
     const list = page.locator('.change-list');
+    // Folded away until asked for.
     await expect(list).toHaveCount(0);
     await page.keyboard.press('c');
     await page.keyboard.press('h');
@@ -337,9 +338,13 @@ test.describe('shortcuts and the look of the page', () => {
     await page.waitForTimeout(700);
     await page.keyboard.press('v');
     await page.waitForTimeout(700);
+    await page.getByRole('button', { name: 'Show the changes' }).click();
+    await expect(page.locator('#changes')).toBeFocused();
     const rows = list.locator('button.change');
     await expect(rows).toHaveCount(4);
-    // The newest on top; the first is where the picture was opened.
+    // The newest on top, each with its number, date and time; the first is where the picture was opened.
+    await expect(rows.nth(0)).toContainText(/^4\s.*\d{1,2}[:.]\d{2}[:.]\d{2}.*Mirror/s);
+    await expect(rows.nth(3)).toContainText(/^1\s/);
     await expect(rows.nth(0)).toContainText('Mirror');
     await expect(rows.nth(1)).toContainText('Turn');
     await expect(rows.nth(3)).toContainText('Picture opened');
@@ -371,15 +376,18 @@ test.describe('shortcuts and the look of the page', () => {
     await page.waitForTimeout(700);
     await page.keyboard.press('v');
     await page.waitForTimeout(700);
+    await page.getByRole('button', { name: 'Show the changes' }).click();
     await expect(page.locator('.change-list button.change')).toHaveCount(3);
 
     // The other picture has none of them ...
     await page.getByRole('button', { name: /Edit text\.ico/ }).first().click();
     await expect(page.locator('.bar .file')).toHaveText('text.svg');
-    await expect(page.locator('.change-list')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Show the changes' }).click();
+    await expect(page.locator('.change-list button.change')).toHaveCount(1);
     // ... and the first has them still.
     await page.getByRole('button', { name: /Edit logo\.ico/ }).first().click();
     await expect(page.locator('.bar .file')).toHaveText('logo.png');
+    await page.getByRole('button', { name: 'Show the changes' }).click();
     await expect(page.locator('.change-list button.change')).toHaveCount(3);
     await page.keyboard.press('Control+z');
     await expect(page.locator('.change-list button.change').nth(1)).toHaveAttribute('aria-current', 'step');

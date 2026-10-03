@@ -51,12 +51,26 @@ describe('History', () => {
     expect(history.current).toEqual({ list: [1] });
   });
 
-  it('keeps only the most recent states', () => {
-    const history = new History<number>(3);
-    history.start(0);
-    for (let n = 1; n <= 5; n += 1) history.record(n);
-    expect(history.all).toEqual([2, 3, 4, 5]);
-    expect(history.index).toBe(3);
+  it('keeps only the most recent states and counts the ones let go', () => {
+    const history = new History<number, string>(3);
+    history.start(0, 'zero');
+    for (let n = 1; n <= 5; n += 1) history.record(n, `n${n}`);
+    expect(history.all).toEqual([3, 4, 5]);
+    expect(history.noted).toEqual(['n3', 'n4', 'n5']);
+    expect(history.dropped).toBe(3);
+    expect(history.index).toBe(2);
+    expect(history.undo()).toBe(4);
+    expect(history.undo()).toBe(3);
+    expect(history.undo()).toBeNull();
+  });
+
+  it('keeps what was noted with each state', () => {
+    const history = new History<number, string>();
+    history.start(1, 'opened');
+    history.record(2, 'two');
+    history.undo();
+    history.record(3, 'three');
+    expect(history.noted).toEqual(['opened', 'three']);
   });
 
   it('is kept for an icon of the queue until it is dropped', () => {

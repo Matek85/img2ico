@@ -3937,6 +3937,7 @@ body.wide .ai-note {
 /* The list of changes under the editor: what each step changed, and the picture as it was when pointed at. */
 .changes {
   margin-top: 1.25rem;
+  margin-bottom: 2rem;
 }
 
 .changes-body {
@@ -3944,6 +3945,33 @@ body.wide .ai-note {
   flex-wrap: wrap;
   gap: 1rem;
   align-items: flex-start;
+}
+
+.changes-toggle {
+  display: flex;
+  justify-content: center;
+  margin-top: 0.75rem;
+}
+
+.changes-toggle button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.changes:focus {
+  outline: none;
+}
+
+.changes.flash {
+  animation: flash-border 1.6s ease-out;
+  border-radius: 0.5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .changes.flash {
+    animation: none;
+  }
 }
 
 .change-list {
@@ -3959,9 +3987,9 @@ body.wide .ai-note {
 }
 
 button.change {
-  display: flex;
+  display: grid;
+  grid-template-columns: 2.5rem auto 1fr auto;
   align-items: center;
-  justify-content: space-between;
   gap: 0.75rem;
   width: 100%;
   padding: 0.4rem 0.7rem;
@@ -4016,4 +4044,17 @@ button.change .badge {
   max-width: 100%;
   max-height: 100%;
   image-rendering: auto;
+}
+
+button.change .step-number {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+button.change .step-when {
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }

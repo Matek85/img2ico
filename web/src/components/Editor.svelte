@@ -15,7 +15,7 @@
     selectGifFrame,
   } from '../engine/client';
   import type { Converted, GifInfo, Opened } from '../engine/protocol';
-  import { t } from '../i18n';
+  import { locale, t } from '../i18n';
   import Compare from './Compare.svelte';
   import PixelInspector from './PixelInspector.svelte';
   import CropTool from './CropTool.svelte';
@@ -48,7 +48,7 @@
   import { stemOf } from '../lib/batch';
   import { ICNS_TYPE, ICO_TYPE, ZIP_TYPE, saveBytes } from '../lib/download';
   import { History, histories } from '../lib/history';
-  import { changedGroups } from '../lib/changes';
+  import { changedGroups, type ChangeGroup } from '../lib/changes';
   import { type Imported, MAX_FILE_BYTES, type Problem, SettingsFileError, exportSettings, importSettings } from '../lib/settingsFile';
   import { type QueueItem, queue } from '../lib/queue.svelte';
   import { loadAutoSave, loadSettings, loadSideOpen, saveAutoSave, saveSettings, saveSideOpen } from '../lib/storage';
@@ -478,19 +478,23 @@
   // have been still for a moment. The frame of an animated GIF is left out; it moves by itself while it plays.
   // The timeline belongs to the icon of the queue this picture is: leaving it and coming back finds it again.
   // svelte-ignore state_referenced_locally
-  const history = (editing && histories.take<Settings>(editing.id)) || new History<Settings>(100);
+  // The last 50 steps are kept (the first state counts as one); what is older is let go.
+  type ChangeNote = { time: number; groups: ChangeGroup[] };
+  const HISTORY_STEPS = 50;
+  // svelte-ignore state_referenced_locally
+  const history = (editing && histories.take<Settings, ChangeNote>(editing.id)) || new History<Settings, ChangeNote>(HISTORY_STEPS);
   let taken = false;
   let settleTimer: ReturnType<typeof setTimeout> | undefined;
   let canUndo = $state(false);
   let canRedo = $state(false);
   // The timeline as the list shows it: the states, oldest first, and the one the person is at.
-  let timeline = $state<{ states: Settings[]; at: number }>({ states: [], at: 0 });
+  let timeline = $state<{ states: Settings[]; notes: ChangeNote[]; at: number; dropped: number }>({ states: [], notes: [], at: 0, dropped: 0 });
   const stateKey = (state: Settings) => JSON.stringify({ ...state, gifFrame: 0 });
   const shownKeys = () => {
     const pending = history.started && stateKey(history.current) !== stateKey($state.snapshot(settings) as Settings);
     canUndo = history.canUndo || pending;
     canRedo = history.canRedo;
-    timeline = { states: history.all, at: history.index };
+    timeline = { states: history.all, notes: history.noted, at: history.index, dropped: history.dropped };
   };
 
   $effect(() => {
@@ -499,10 +503,10 @@
     // A timeline that was kept is only taken up if the icon is still as it was left.
     if (!taken) {
       taken = true;
-      if (history.started && stateKey(history.current) !== stateKey(current)) history.start(current);
+      if (history.started && stateKey(history.current) !== stateKey(current)) history.start(current, { time: Date.now(), groups: [] });
     }
     if (!history.started) {
-      history.start(current);
+      history.start(current, { time: Date.now(), groups: [] });
       shownKeys();
       return;
     }
@@ -519,7 +523,7 @@
   function settleHistory() {
     clearTimeout(settleTimer);
     const current = $state.snapshot(settings) as Settings;
-    if (history.started && stateKey(current) !== stateKey(history.current)) history.record(current);
+    if (history.started && stateKey(current) !== stateKey(history.current)) history.record(current, { time: Date.now(), groups: changedGroups(history.current, current) });
     shownKeys();
   }
 
@@ -553,18 +557,34 @@
     if (state) restore(state);
   }
 
-  // The list of changes: what each step changed, newest first.
+  // The list of changes: what each step changed, newest first, numbered from the first step ever made.
+  const when = (time: number) => new Date(time).toLocaleString(locale(), { dateStyle: 'short', timeStyle: 'medium' });
   let changeList = $derived(
     timeline.states
-      .map((state, index) => {
-        const groups = index === 0 ? [] : changedGroups(timeline.states[index - 1], state);
-        const names = groups.map((group) => t(`history.what.${group}`));
+      .map((_, index) => {
+        const note = timeline.notes[index];
+        const names = note.groups.map((group) => t(`history.what.${group}`));
         const shown = names.slice(0, 3).join(', ');
-        const label = index === 0 ? t('history.start') : names.length > 3 ? `${shown} ${t('history.more', { count: names.length - 3 })}` : shown;
-        return { index, label };
+        const task = note.groups.length === 0 ? t('history.start') : names.length > 3 ? `${shown} ${t('history.more', { count: names.length - 3 })}` : shown;
+        return { index, number: timeline.dropped + index + 1, when: when(note.time), task };
       })
       .reverse(),
   );
+
+  // The list is folded away until asked for; opening it makes it flash once and takes the focus.
+  let changesOpen = $state(false);
+  let changesBox = $state<HTMLElement>();
+  let flashChanges = $state(false);
+  async function toggleChanges() {
+    changesOpen = !changesOpen;
+    if (!changesOpen) return;
+    await tick();
+    changesBox?.focus();
+    flashChanges = false;
+    await tick();
+    flashChanges = true;
+    setTimeout(() => (flashChanges = false), 1600);
+  }
 
   // The picture as it was at a step, made small on request (the engine has the open picture); kept for the next time.
   const pastPictures = new Map<string, string>();
@@ -1576,10 +1596,23 @@
     {/if}
   </div>
 
-  {#if opened && timeline.states.length > 1}
-    <section class="changes" aria-labelledby="changes-title">
+  {#if opened}
+    <div class="changes-toggle">
+      <button type="button" class="quiet small" aria-expanded={changesOpen} aria-controls="changes" onclick={toggleChanges}>
+        <Icon name="history" size={16} />
+        {changesOpen ? t('history.hide') : t('history.show')}
+        <Icon name={changesOpen ? 'chevronUp' : 'chevronDown'} size={16} />
+      </button>
+    </div>
+  {/if}
+
+  {#if opened && changesOpen}
+    <section id="changes" class="changes" class:flash={flashChanges} bind:this={changesBox} tabindex="-1" aria-labelledby="changes-title">
       <h2 id="changes-title">{t('history.title')}</h2>
-      <p class="hint">{t('history.hint')}</p>
+      <p class="hint">{t('history.hint', { count: HISTORY_STEPS })}</p>
+      {#if timeline.states.length < 2}
+        <p class="hint">{t('history.empty')}</p>
+      {/if}
       <div class="changes-body">
         <ol class="change-list">
           {#each changeList as entry (entry.index)}
@@ -1596,7 +1629,9 @@
                 onfocus={() => showPast(entry.index)}
                 onblur={hidePast}
               >
-                <span class="step-label">{entry.label}</span>
+                <span class="step-number">{entry.number}</span>
+                <span class="step-when">{entry.when}</span>
+                <span class="step-label">{entry.task}</span>
                 {#if entry.index === timeline.at}<span class="badge">{t('history.current')}</span>{/if}
               </button>
             </li>
