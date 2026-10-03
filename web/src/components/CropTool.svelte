@@ -133,6 +133,8 @@
   // Shift; plus and minus zoom: the way to place it exactly, and the way without a pointer.
   // The space bar locks or unlocks the frame.
   function key(event: KeyboardEvent) {
+    // The number pad places the frame (the editor handles it), whatever NumLock makes of the key.
+    if (/^Numpad\d$/.test(event.code)) return;
     const step = event.shiftKey ? 10 : 1;
     const delta: Record<string, [number, number]> = {
       ArrowLeft: [-step, 0],

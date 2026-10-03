@@ -4,6 +4,7 @@ import {
   type Handle,
   MIN_EDGE,
   type Rect,
+  alignRect,
   aspectValue,
   clampRect,
   dragRect,
@@ -187,6 +188,24 @@ describe('zooming the frame', () => {
     const tiny = zoomRect(square, 0.001, 0.5, 0.5, bounds);
     expect(tiny.width).toBeGreaterThanOrEqual(4);
     expect(tiny.height).toBeGreaterThanOrEqual(4);
+  });
+});
+
+describe('alignRect', () => {
+  const picture = { width: 1000, height: 600 };
+  const frame = { x: 300, y: 200, width: 200, height: 100 };
+
+  it('puts the frame at an edge, a corner or the middle of the picture, with its size unchanged', () => {
+    expect(alignRect(frame, picture, 0, 0)).toEqual({ x: 0, y: 0, width: 200, height: 100 });
+    expect(alignRect(frame, picture, 2, 2)).toEqual({ x: 800, y: 500, width: 200, height: 100 });
+    expect(alignRect(frame, picture, 1, 1)).toEqual({ x: 400, y: 250, width: 200, height: 100 });
+    expect(alignRect(frame, picture, 0, 1)).toEqual({ x: 0, y: 250, width: 200, height: 100 });
+    expect(alignRect(frame, picture, 1, 0)).toEqual({ x: 400, y: 0, width: 200, height: 100 });
+  });
+
+  it('rounds the middle to a whole pixel and leaves a frame as big as the picture where it is', () => {
+    expect(alignRect({ x: 0, y: 0, width: 200, height: 100 }, { width: 501, height: 301 }, 1, 1)).toEqual({ x: 151, y: 101, width: 200, height: 100 });
+    expect(alignRect({ x: 0, y: 0, ...picture }, picture, 2, 2)).toEqual({ x: 0, y: 0, ...picture });
   });
 });
 

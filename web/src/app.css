@@ -3392,3 +3392,38 @@ kbd {
 .keys-groups dt kbd {
   white-space: nowrap;
 }
+
+/* The pad that places the crop frame: edges, corners and the middle of the picture, in one 3 x 3 block. */
+.mask .place {
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+  gap: 0.25rem;
+  padding: 0.4rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+}
+
+.place-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-small);
+  height: var(--control-small);
+  padding: 0;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 0.5rem;
+  cursor: pointer;
+}
+
+.place-button:hover {
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.place-button.chosen {
+  color: var(--accent-text);
+  background: var(--accent);
+}

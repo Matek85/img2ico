@@ -147,6 +147,18 @@ export function zoomRect(rect: Rect, factor: number, ax: number, ay: number, bou
 }
 
 /** The frame moved by (`dx`, `dy`) picture pixels, kept inside the picture. */
+/** One of three places along an axis: the start (left, top), the middle or the end (right, bottom). */
+export type Place = 0 | 1 | 2;
+
+/** The frame moved, without changing its size, to the left/middle/right (`h`) and top/middle/bottom (`v`) of the picture. */
+export function alignRect(rect: Rect, bounds: Size, h: Place, v: Place): Rect {
+  const along = (place: Place, free: number) => (place === 0 ? 0 : place === 1 ? Math.round(free / 2) : free);
+  return clampRect(
+    { ...rect, x: along(h, bounds.width - rect.width), y: along(v, bounds.height - rect.height) },
+    bounds,
+  );
+}
+
 export function panRect(rect: Rect, dx: number, dy: number, bounds: Size): Rect {
   return clampRect({ ...rect, x: rect.x + dx, y: rect.y + dy }, bounds);
 }
