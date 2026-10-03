@@ -21,6 +21,7 @@ export type Request =
   | { id: number; op: 'validate'; bytes: Uint8Array }
   | { id: number; op: 'open'; bytes: Uint8Array; name: string; gifFrame: number }
   | { id: number; op: 'convert'; options: EngineOptions }
+  | { id: number; op: 'convertOnce'; bytes: Uint8Array; name: string; gifFrame: number; jobs: EngineOptions[] }
   | { id: number; op: 'gifOpen'; bytes: Uint8Array; name: string }
   | { id: number; op: 'gifFrame'; index: number }
   | { id: number; op: 'gifSelect'; index: number }
@@ -73,6 +74,7 @@ export type Response =
   | { id: number; ok: true; opened: Opened }
   | { id: number; ok: true; gif: GifInfo }
   | { id: number; ok: true; converted: Converted }
+  | { id: number; ok: true; many: Converted[] }
   | { id: number; ok: true; pixels: Pixels }
   | { id: number; ok: true; data: Uint8Array }
   | { id: number; ok: true; pack: FaviconPack }

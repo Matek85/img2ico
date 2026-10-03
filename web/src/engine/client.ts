@@ -37,6 +37,7 @@ type Call =
   | { op: 'validate'; bytes: Uint8Array }
   | { op: 'open'; bytes: Uint8Array; name: string; gifFrame: number }
   | { op: 'convert'; options: EngineOptions }
+  | { op: 'convertOnce'; bytes: Uint8Array; name: string; gifFrame: number; jobs: EngineOptions[] }
   | { op: 'gifOpen'; bytes: Uint8Array; name: string }
   | { op: 'gifFrame'; index: number }
   | { op: 'gifSelect'; index: number }
@@ -61,7 +62,7 @@ function call(request: Call, transfer: Transferable[] = []): Promise<Response & 
   });
 }
 
-function field<K extends 'value' | 'opened' | 'gif' | 'converted' | 'pixels' | 'data' | 'pack'>(
+function field<K extends 'value' | 'opened' | 'gif' | 'converted' | 'many' | 'pixels' | 'data' | 'pack'>(
   response: Response & { ok: true },
   key: K,
 ): NonNullable<Extract<Response, Record<K, unknown>>[K]> {
@@ -86,6 +87,14 @@ export async function openPicture(bytes: Uint8Array, name: string, gifFrame = 1)
 /** Makes the icon file the options ask for from the open picture. */
 export async function convert(options: EngineOptions): Promise<Converted> {
   return field(await call({ op: 'convert', options }), 'converted');
+}
+
+/**
+ * Makes icon files from a picture that is opened just for this (the open picture stays open, so the editor goes on):
+ * one file for each of the `jobs`. `gifFrame` counts from 1.
+ */
+export async function convertOnce(bytes: Uint8Array, name: string, gifFrame: number, jobs: EngineOptions[]): Promise<Converted[]> {
+  return field(await call({ op: 'convertOnce', bytes, name, gifFrame, jobs }), 'many');
 }
 
 /**

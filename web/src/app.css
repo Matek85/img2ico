@@ -1819,6 +1819,7 @@ h3 {
 }
 
 .queue-list li {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 0.75rem;
@@ -3685,4 +3686,82 @@ body.wide .ai-note {
 .help-main .ai-note {
   max-width: none;
   margin: 0 0 1.25rem;
+}
+
+/* Changing the order by dragging: the grip, the row that is lifted and the line where it will land. */
+.queue-list .grip {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 1.4rem;
+  height: 2rem;
+  margin-right: -0.4rem;
+  color: var(--muted);
+  cursor: grab;
+  touch-action: none;
+  border-radius: 0.3rem;
+}
+
+.queue-list .grip:hover {
+  color: var(--text);
+  background: var(--tint);
+}
+
+.queue-list.sorting {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.queue-list.sorting .grip {
+  cursor: grabbing;
+}
+
+.queue-list li.dragged {
+  opacity: 0.45;
+}
+
+.queue-list li.drop-above::before,
+.queue-list li.drop-below::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--accent);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.queue-list li.drop-above::before {
+  top: -0.3rem;
+}
+
+.queue-list li.drop-below::after {
+  bottom: -0.3rem;
+}
+
+/* Using the settings of one icon for the others: the choice in a dialog. */
+.apply-dialog h3 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.5rem;
+}
+
+.apply-parts {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+  padding: 0;
+  border: 0;
+}
+
+.apply-parts label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.apply-dialog .dialog-actions {
+  gap: 0.5rem;
 }
