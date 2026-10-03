@@ -281,27 +281,37 @@ export function noticeHtml(m: Messages, lang: string): string {
   return language?.ai ? `<p class="ai-note" role="note">${inlineHtml(m['lang.ai_note'], '')}</p>` : '';
 }
 
-/** The text under the converter. */
+/** A check mark for the list of what the page can do (decoration). */
+const TICK =
+  '<svg class="tick" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7"/></svg>';
+
+/**
+ * The text under the converter. It is all in the page's HTML for a search engine, but laid out so that a reader is
+ * not swamped: the steps as numbered cards, what the page can do as a short list with check marks, and each
+ * question folded away until it is asked (a `<details>` needs no script).
+ */
 export function aboutHtml(m: Messages): string {
   const e = (key: string) => escapeHtml(m[key]);
-  const list = (tag: 'ul' | 'ol', prefix: string, count: number) =>
-    `<${tag}>\n` +
-    Array.from({ length: count }, (_, i) => `          <li>${e(`${prefix}${i + 1}`)}</li>`).join('\n') +
-    `\n        </${tag}>`;
+  const steps = Array.from({ length: 3 }, (_, i) => `          <li>${e(`about.how_${i + 1}`)}</li>`).join('\n');
+  const can = Array.from({ length: 5 }, (_, i) => `          <li>${TICK}<span>${e(`about.can_${i + 1}`)}</span></li>`).join('\n');
   const questions = ['free', 'private', 'sizes', 'favicon', 'formats', 'cli']
-    .map((id) => `<div class="qa"><h3>${e(`about.q_${id}`)}</h3>\n          <p>${e(`about.a_${id}`)}</p></div>`)
+    .map((id) => `<details class="qa"><summary>${e(`about.q_${id}`)}</summary>\n          <p>${e(`about.a_${id}`)}</p></details>`)
     .join('\n        ');
   return `<h2>${e('about.title')}</h2>
         <p>${e('about.intro')}</p>
         <h2>${e('about.how_title')}</h2>
-        ${list('ol', 'about.how_', 3)}
+        <ol>
+${steps}
+        </ol>
         <h2>${e('about.can_title')}</h2>
-        ${list('ul', 'about.can_', 5)}
+        <ul class="can">
+${can}
+        </ul>
         <h2>${e('about.faq_title')}</h2>
         <div class="qas">
         ${questions}
         </div>
-        <p><a href="${REPOSITORY}">${e('about.source')}</a></p>`;
+        <p class="source"><a href="${REPOSITORY}">${e('about.source')}</a></p>`;
 }
 
 export function robotsTxt(siteUrl: string): string {
