@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { t } from '../i18n';
-  import { HANDLES, type Handle, type Rect, type Size, dragRect, panRect, zoomRect } from '../lib/crop';
+  import { HANDLES, type Handle, type Rect, type Size, dragRect, panRect, shapePath, zoomRect } from '../lib/crop';
 
   // Locked: the frame stays in the middle of the box (it has the shape of the crop) and
   // the picture is dragged and zoomed beneath it. `rect` is the part of the picture under
@@ -17,6 +17,9 @@
     ontogglelock,
     turn = 0,
     original,
+    radius = 0,
+    fitMode = 'contain',
+    shape = true,
   }: {
     src: string;
     size: Size;
@@ -32,6 +35,10 @@
      */
     turn?: number;
     original?: Size;
+    /** The icon style's corner radius in percent (0: square) and how the picture is fitted; the corners it cuts are shaded in the frame. */
+    radius?: number;
+    fitMode?: 'contain' | 'cover';
+    shape?: boolean;
   } = $props();
 
   const MARGIN = 14;
@@ -64,6 +71,7 @@
       ? `left:50%;top:50%;width:${original.width * scale}px;height:${original.height * scale}px;transform:translate(-50%,-50%) rotate(${turn}deg)`
       : '',
   );
+  let cutAway = $derived(shape ? shapePath(rect.width * scale, rect.height * scale, fitMode, radius) : '');
   let frameStyle = $derived(
     `left:${left + rect.x * scale}px;top:${top + rect.y * scale}px;width:${rect.width * scale}px;height:${rect.height * scale}px`,
   );
@@ -208,6 +216,11 @@
       onpointerup={end}
       onpointercancel={end}
     >
+      {#if cutAway}
+        <svg class="crop-shape" viewBox="0 0 {rect.width * scale} {rect.height * scale}" preserveAspectRatio="none" aria-hidden="true">
+          <path d={cutAway} fill-rule="evenodd" />
+        </svg>
+      {/if}
       {#if !locked}
         {#each HANDLES as handle (handle)}
           <span

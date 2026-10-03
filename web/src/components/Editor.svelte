@@ -173,6 +173,8 @@
   // removal (or the color would already be gone), and a click on a pixel takes it.
   let picking = $state(false);
   let cropAspect = $state<AspectChoice>('free');
+  // The corners the icon style (round, rounded) cuts away are shaded in the crop frame.
+  let showShape = $state(true);
   let frame = $state<Rect>({ x: 0, y: 0, width: 1, height: 1 });
   // The picture the frame is placed on: the open picture, turned.
   let picture = $derived(opened ? turnedSize({ width: opened.width, height: opened.height }, settings.rotate) : undefined);
@@ -718,6 +720,11 @@
         else turnFrame();
         return;
       }
+      if (letter === 'm' && settings.cornerRadius > 0) {
+        event.preventDefault();
+        showShape = !showShape;
+        return;
+      }
       if ((letter === 'z' || letter === 'x') && cropLocked && !opened?.vector) {
         event.preventDefault();
         turnBy(letter === 'z' ? -90 : 90);
@@ -905,7 +912,7 @@
         {#if settings.sizes.length === 0}
           <p class="note">{t('editor.no_sizes')}</p>
         {:else if masking && view === 'icon' && picture}
-          <CropTool src={originalUrl} size={picture} turn={settings.rotate} original={{ width: opened.width, height: opened.height }} bind:rect={frame} aspect={aspectValue(cropAspect)} locked={cropLocked} ontogglelock={() => (cropLocked = !cropLocked)} />
+          <CropTool src={originalUrl} size={picture} turn={settings.rotate} original={{ width: opened.width, height: opened.height }} radius={settings.cornerRadius} fitMode={settings.fit} shape={showShape} bind:rect={frame} aspect={aspectValue(cropAspect)} locked={cropLocked} ontogglelock={() => (cropLocked = !cropLocked)} />
         {:else if converted && tiles.length > 0 && view === 'pixels'}
           <PixelInspector
             bytes={converted.bytes}
@@ -1037,7 +1044,19 @@
           <p class="hint">{t(cropLocked ? 'crop.hint' : 'crop.hint_unlocked')}</p>
           <div class="mask-actions">
             <button type="button" class="primary small" onclick={endMask}><Icon name="check" size={16} />{t('crop.done')}</button>
-            <button type="button" class="quiet small" onclick={() => (frame = fullRect(picture))} disabled={isFull(frame, picture)}><Icon name="reset" size={16} />{t('crop.reset')}</button>
+            {#if settings.cornerRadius > 0}
+            <button
+              type="button"
+              class="chip small"
+              class:chosen={showShape}
+              aria-pressed={showShape}
+              title={keys.on ? `${t('crop.shape_hint')} (M)` : t('crop.shape_hint')}
+              onclick={() => (showShape = !showShape)}
+            >
+              <Icon name="rounded" size={16} />{t('crop.shape')}
+            </button>
+          {/if}
+          <button type="button" class="quiet small" onclick={() => (frame = fullRect(picture))} disabled={isFull(frame, picture)}><Icon name="reset" size={16} />{t('crop.reset')}</button>
           </div>
         </div>
       {/if}
