@@ -74,6 +74,20 @@ export const CROP_KEYS: readonly { label: string; action: string; letter?: strin
   { label: 'Esc', action: 'done' },
 ];
 
+/**
+ * Undo and redo: combinations with Ctrl (Cmd on a Mac), which are handled by the editor apart from the single keys
+ * (they work when those are off). `combos` are the ways to press it, each a list of keys.
+ */
+export const HISTORY_KEYS: readonly { action: 'undo' | 'redo'; combos: readonly (readonly string[])[] }[] = [
+  { action: 'undo', combos: [['ctrl', 'Z']] },
+  { action: 'redo', combos: [['ctrl', 'shift', 'Z'], ['ctrl', 'Y']] },
+];
+
+/** A combination as the person reads it, like "Ctrl+Shift+Z": `names` says how a language calls Ctrl and Shift. */
+export function comboText(combo: readonly string[], names: { ctrl: string; shift: string }): string {
+  return combo.map((key) => (key === 'ctrl' ? names.ctrl : key === 'shift' ? names.shift : key)).join('+');
+}
+
 export const GROUPS: readonly ShortcutGroup[] = ['view', 'edit', 'save', 'gif', 'page'];
 
 const BY_LETTER: Record<string, ShortcutId> = {

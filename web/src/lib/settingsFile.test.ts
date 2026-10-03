@@ -14,7 +14,8 @@ import { type Settings, defaultSettings } from './settings';
 const root = new URL('../../../', import.meta.url);
 // (The page's type check has no Node types; this is only the environment of the test run.)
 const env = (globalThis as unknown as { process: { env: Record<string, string | undefined> } }).process.env;
-const read = (path: string) => readFileSync(new URL(path, root), 'utf8');
+// (A checkout on Windows may have changed the line ends of the files: they are compared with LF.)
+const read = (path: string) => readFileSync(new URL(path, root), 'utf8').replace(/\r\n/g, '\n');
 
 function problemsOf(text: string, current = defaultSettings()) {
   try {

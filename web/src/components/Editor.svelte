@@ -47,6 +47,7 @@
   import { type Preset, STYLE_PRESETS, USE_PRESETS, isActive, withPreset } from '../lib/presets';
   import { stemOf } from '../lib/batch';
   import { ICNS_TYPE, ICO_TYPE, ZIP_TYPE, saveBytes } from '../lib/download';
+  import { History } from '../lib/history';
   import { type Imported, MAX_FILE_BYTES, type Problem, SettingsFileError, exportSettings, importSettings } from '../lib/settingsFile';
   import { type QueueItem, queue } from '../lib/queue.svelte';
   import { loadAutoSave, loadSettings, loadSideOpen, saveAutoSave, saveSettings, saveSideOpen } from '../lib/storage';
@@ -466,6 +467,74 @@
     showBackgroundSettings();
   }
 
+  // --- Undo and redo --------------------------------------------------------------------------------------
+  // Every change of the settings (the crop frame, the turn and the mirror included) can be taken back. A run of
+  // small changes - a slider dragged along, a frame pulled - is one: the state before it is kept once the settings
+  // have been still for a moment. The frame of an animated GIF is left out; it moves by itself while it plays.
+  const history = new History<Settings>(100);
+  let committed: Settings | null = null;
+  let settleTimer: ReturnType<typeof setTimeout> | undefined;
+  let canUndo = $state(false);
+  let canRedo = $state(false);
+  const stateKey = (state: Settings) => JSON.stringify({ ...state, gifFrame: 0 });
+  const shownKeys = () => {
+    canUndo = history.canUndo || stateKey(committed ?? settings) !== stateKey($state.snapshot(settings) as Settings);
+    canRedo = history.canRedo;
+  };
+
+  $effect(() => {
+    if (!opened) return;
+    const current = $state.snapshot(settings) as Settings;
+    if (committed === null) {
+      committed = current;
+      return;
+    }
+    clearTimeout(settleTimer);
+    if (stateKey(current) === stateKey(committed)) {
+      shownKeys();
+      return;
+    }
+    shownKeys();
+    settleTimer = setTimeout(settleHistory, 500);
+  });
+
+  /** The settings have changed and are still: the state before is kept for Undo. */
+  function settleHistory() {
+    clearTimeout(settleTimer);
+    const current = $state.snapshot(settings) as Settings;
+    if (committed !== null && stateKey(current) !== stateKey(committed)) {
+      history.push(committed);
+      committed = current;
+    }
+    shownKeys();
+  }
+
+  /** Puts these settings in place, the crop frame with them; the GIF frame is the one being shown. */
+  function restore(state: Settings) {
+    if (!opened) return;
+    const next = { ...state, gifFrame: settings.gifFrame };
+    committed = next;
+    const turned = turnedSize(opened, next.rotate);
+    settings = next;
+    frame = next.crop ? { ...next.crop } : fullRect(turned);
+    cropOn = masking || next.crop !== null;
+    shownKeys();
+  }
+
+  function undo() {
+    settleHistory();
+    const previous = committed ? history.undo(committed) : null;
+    if (previous) restore(previous);
+  }
+
+  function redo() {
+    settleHistory();
+    const next = committed ? history.redo(committed) : null;
+    if (next) restore(next);
+  }
+
+  const modifier = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : `${t('keys.ctrl')}+`;
+
   // --- Settings as a file (the command line's TOML): saved, and taken from a file ---------------------------------
   let fileInput = $state<HTMLInputElement>();
   let fileDialog = $state<HTMLDialogElement>();
@@ -792,6 +861,17 @@
   }
 
   function onKeydown(event: KeyboardEvent) {
+    // Undo and redo are combinations with Ctrl (Cmd), so they never clash with the single keys, and they work
+    // when those are off. While a text is typed, the field's own undo is left alone.
+    if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.defaultPrevented && !isTyping(event.target)) {
+      const letter = event.key.toLowerCase();
+      if (!confirmingReset && !document.querySelector('dialog[open]') && (letter === 'z' || letter === 'y')) {
+        event.preventDefault();
+        if (letter === 'z' && !event.shiftKey) undo();
+        else redo();
+        return;
+      }
+    }
     if (!keys.on || event.defaultPrevented || isTyping(event.target)) return;
     if (confirmingReset || document.querySelector('dialog[open]')) return;
     if (event.key === 'Escape' && masking && !event.ctrlKey && !event.metaKey && !event.altKey) {
@@ -908,6 +988,12 @@
     </figure>
     <div class="bar-end">
       <span class="settings-file">
+        <button type="button" class="quiet small icon-button" disabled={!canUndo} title={`${t('history.undo')} (${modifier}Z)`} aria-label={t('history.undo')} onclick={undo}>
+          <Icon name="undo" size={16} />
+        </button>
+        <button type="button" class="quiet small icon-button" disabled={!canRedo} title={`${t('history.redo')} (${modifier}⇧Z)`} aria-label={t('history.redo')} onclick={redo}>
+          <Icon name="redo" size={16} />
+        </button>
         <button type="button" class="quiet small" title={t('settingsfile.export_hint')} aria-label={t('settingsfile.export')} onclick={saveSettingsFile}>
           <Icon name="download" size={16} />{t('settingsfile.export_short')}
         </button>

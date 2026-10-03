@@ -2,7 +2,7 @@
 // that search engines and people without scripts read. A page is the keys
 //   help.<page>.<nn>.<kind>[.<item>[.t|d]]
 // in the order of the numbers (see src/i18n/help-en.ts for what they look like).
-import { CROP_KEYS, GROUPS, SHORTCUTS } from './src/lib/shortcuts.ts';
+import { CROP_KEYS, GROUPS, HISTORY_KEYS, SHORTCUTS, comboText } from './src/lib/shortcuts.ts';
 
 type Messages = Record<string, string>;
 
@@ -77,6 +77,13 @@ function keysHtml(m: Messages, label: string): string {
     group(
       m[`keys.group_${name}`],
       SHORTCUTS.filter((shortcut) => shortcut.group === name).map((shortcut) => entry(shortcut.label, m[`keys.act_${shortcut.id}`])),
+    ),
+  );
+  const names = { ctrl: m['keys.ctrl'], shift: m['keys.shift'] };
+  groups.push(
+    group(
+      m['keys.group_history'],
+      HISTORY_KEYS.map((key) => entry(key.combos.map((combo) => comboText(combo, names)).join(' / '), m[`keys.act_${key.action}`])),
     ),
   );
   groups.push(group(m['keys.group_crop'], CROP_KEYS.map((key) => entry(key.labelKey ? m[key.labelKey] : key.label, m[`keys.crop_${key.action}`]))));

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { t } from '../i18n';
   import { keys, setShortcutsOn } from '../lib/keys.svelte';
-  import { CROP_KEYS, GROUPS, SHORTCUTS, labelOf } from '../lib/shortcuts';
+  import { CROP_KEYS, GROUPS, HISTORY_KEYS, SHORTCUTS, comboText, labelOf } from '../lib/shortcuts';
   import Icon from './Icon.svelte';
 
   // The list of the keys, with the switch for them. Opened by the keyboard button or by "?".
@@ -33,6 +33,19 @@
         </dl>
       </section>
     {/each}
+    <section>
+      <h4>{t('keys.group_history')}</h4>
+      <dl>
+        {#each HISTORY_KEYS as entry (entry.action)}
+          <div>
+            <dt>
+              {#each entry.combos as combo, at}{#if at > 0}<span class="or">{' / '}</span>{/if}<kbd>{comboText(combo, { ctrl: t('keys.ctrl'), shift: t('keys.shift') })}</kbd>{/each}
+            </dt>
+            <dd>{t(`keys.act_${entry.action}`)}</dd>
+          </div>
+        {/each}
+      </dl>
+    </section>
     <section>
       <h4>{t('keys.group_crop')}</h4>
       <dl>
