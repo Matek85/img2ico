@@ -2,28 +2,27 @@
 // `--out-toml`), so a file made on the page works on the command line and the other way round.
 //
 // A settings file has flat `key = value` lines (the keys are the long names of the command-line flags). The page
-// writes the ones it has; it reads any file the command line reads. What the command line knows but the page has
-// no use for (folders, threads, ...) is skipped and reported; a name that neither knows is an error, so a typo
-// does not pass quietly (the command line only warns about it).
+// writes the ones it has - also the picture's own mirror, turn, crop and GIF frame, so a file saved here gives the
+// same icon here again and on the command line - and reads any file the command line reads. What the command line
+// knows but the page has no use for (folders, threads, ...) is skipped and reported; a name that neither knows is
+// an error, so a typo does not pass quietly (the command line only warns about it).
 
 import { DEFAULT_SIZES, type Fit, type Format, SIZE_CHOICES, type Settings } from './settings';
 
 /** Every key the command line reads (`KNOWN_SETTINGS_KEYS` in src/config.rs; a test keeps this list in step). */
 export const CLI_KEYS = [
   'sizes', 'preset', 'chroma-key', 'tolerance', 'feather', 'seeds', 'find', 'find-min-size', 'auto-apply',
-  'replace-color', 'grayscale', 'padding', 'fit', 'crop', 'trim', 'corner-radius', 'max-pixels', 'jobs',
+  'replace-color', 'grayscale', 'padding', 'fit', 'flip-horizontal', 'flip-vertical', 'rotate', 'crop', 'trim',
+  'corner-radius', 'max-pixels', 'jobs',
   'gif-frame', 'output-format', 'delete-source', 'force', 'keep-going', 'skip-existing', 'recursive', 'include',
   'exclude', 'combine', 'index', 'silent',
 ] as const;
 
 /** The keys the page uses. */
 export const USED_KEYS = [
-  'sizes', 'preset', 'chroma-key', 'tolerance', 'feather', 'grayscale', 'padding', 'fit', 'trim', 'corner-radius',
-  'output-format',
+  'sizes', 'preset', 'chroma-key', 'tolerance', 'feather', 'grayscale', 'padding', 'fit', 'flip-horizontal',
+  'flip-vertical', 'rotate', 'crop', 'trim', 'corner-radius', 'gif-frame', 'output-format',
 ] as const;
-
-/** Keys that belong to one picture (the page does not keep them across pictures either). */
-export const PICTURE_KEYS = ['crop', 'gif-frame'] as const;
 
 /** The most bytes a settings file may have (the largest real one is a few hundred). */
 export const MAX_FILE_BYTES = 100_000;
@@ -70,8 +69,6 @@ export interface Imported {
   settings: Settings;
   /** Keys of the command line that the page has no use for: skipped. */
   skipped: string[];
-  /** Keys that belong to one picture (`crop`, `gif-frame`): skipped. */
-  perPicture: string[];
   /** Sizes the page does not offer, left out of the list. */
   sizesLeftOut: number[];
   /** The padding was above what the page offers and was brought to it. */
@@ -211,16 +208,16 @@ function hexOf(color: string): string {
 }
 
 /**
- * The settings as a settings file. Only what the command line also knows is in it; the picture's own settings
- * (the crop, the turn, the mirror, the frame of a GIF) and the website package's names and colors are not, as a
- * file of settings is for many pictures.
+ * The settings as a settings file. Only what the command line also knows is in it (the website package's names
+ * and colors are not). The mirror, the turn, the crop and the GIF frame are in it when they are used: for the
+ * command line they give the same icon, and the page takes them back.
  */
 export function exportSettings(settings: Settings): string {
   const lines = [
     '# img2ico settings, saved from the web page.',
     '# For the command line:  img2ico --config img2ico.toml picture.png',
     '# (or leave the file named img2ico.toml in the folder you work in). On the page, use "Import settings".',
-    '# Not in it: the crop, the turn, the mirror and the frame of a GIF, which belong to one picture.',
+    '# It also holds the mirror, the turn, the crop and the GIF frame of the picture you worked on, when you used them.',
     '',
     `sizes = "${sizesText(settings.sizes)}"`,
     `padding = ${settings.padding}`,
@@ -229,6 +226,13 @@ export function exportSettings(settings: Settings): string {
     `grayscale = ${settings.grayscale}`,
     `trim = ${settings.trim}`,
   ];
+  // The picture's own settings, in the order the command line applies them: mirror, turn, crop. The command line
+  // counts the frames of a GIF from 1.
+  if (settings.flipH) lines.push('flip-horizontal = true');
+  if (settings.flipV) lines.push('flip-vertical = true');
+  if (settings.rotate !== 0) lines.push(`rotate = ${settings.rotate}`);
+  if (settings.crop) lines.push(`crop = "${settings.crop.x},${settings.crop.y},${settings.crop.width},${settings.crop.height}"`);
+  if (settings.gifFrame > 0) lines.push(`gif-frame = ${settings.gifFrame + 1}`);
   if (settings.removeBackground) {
     lines.push(
       `chroma-key = "${settings.backgroundAuto ? 'auto' : hexOf(settings.backgroundColor)}"`,
@@ -244,16 +248,16 @@ export function exportSettings(settings: Settings): string {
 const wholeNumber = (value: Value): value is number => typeof value === 'number' && Number.isInteger(value);
 
 /**
- * Settings out of the text of a settings file, laid over `current`: the picture's own settings and the website
- * package's names and colors stay as they are; everything else the file does not say is the default (as it is for
- * the command line). Throws a `SettingsFileError` listing everything that is wrong, and changes nothing then.
+ * Settings out of the text of a settings file, laid over `current`: the website package's names and colors and the
+ * file type (when the file has none) stay as they are; everything else the file does not say is the default (as it
+ * is for the command line), also the mirror, the turn, the crop and the GIF frame. Throws a `SettingsFileError`
+ * listing everything that is wrong, and changes nothing then.
  */
 export function importSettings(text: string, current: Settings): Imported {
   const entries = parseSettingsToml(text);
   const problems: Problem[] = [];
   const seen = new Set<string>();
   const skipped: string[] = [];
-  const perPicture: string[] = [];
   const result: Settings = {
     ...current,
     sizes: [...DEFAULT_SIZES],
@@ -262,6 +266,11 @@ export function importSettings(text: string, current: Settings): Imported {
     fit: 'contain',
     grayscale: false,
     trim: false,
+    flipH: false,
+    flipV: false,
+    rotate: 0,
+    crop: null,
+    gifFrame: 0,
     removeBackground: false,
     backgroundAuto: true,
     backgroundColor: '#00ff00',
@@ -363,6 +372,36 @@ export function importSettings(text: string, current: Settings): Imported {
         if (value !== null) result.cornerRadius = value;
         break;
       }
+      case 'flip-horizontal': {
+        const value = flag(entry);
+        if (value !== null) result.flipH = value;
+        break;
+      }
+      case 'flip-vertical': {
+        const value = flag(entry);
+        if (value !== null) result.flipV = value;
+        break;
+      }
+      case 'rotate': {
+        // Any whole number of degrees, as on the command line; the page keeps it as 0 to 359.
+        const value = number(entry, -1_000_000, 1_000_000);
+        if (value !== null) result.rotate = ((value % 360) + 360) % 360;
+        break;
+      }
+      case 'crop': {
+        const text = word(entry);
+        if (text === null) break;
+        const parts = text.split(',').map((part) => (/^\s*\d{1,9}\s*$/.test(part) ? Number(part) : NaN));
+        if (parts.length !== 4 || parts.some((part) => Number.isNaN(part)) || parts[2] < 1 || parts[3] < 1) bad(entry, 'value');
+        else result.crop = { x: parts[0], y: parts[1], width: parts[2], height: parts[3] };
+        break;
+      }
+      case 'gif-frame': {
+        // The command line counts frames from 1, the page from 0.
+        const value = number(entry, 1, 1_000_000);
+        if (value !== null) result.gifFrame = value - 1;
+        break;
+      }
       case 'fit': {
         const name = word(entry);
         if (name === null) break;
@@ -378,8 +417,7 @@ export function importSettings(text: string, current: Settings): Imported {
         break;
       }
       default:
-        if ((PICTURE_KEYS as readonly string[]).includes(entry.key)) perPicture.push(entry.key);
-        else skipped.push(entry.key);
+        skipped.push(entry.key);
     }
   }
   if (problems.length > 0) throw new SettingsFileError(problems);
@@ -395,5 +433,5 @@ export function importSettings(text: string, current: Settings): Imported {
       throw new SettingsFileError([{ code: 'value', key: presetSizes ? 'preset' : 'sizes', line: entries.find((e) => e.key === (presetSizes ? 'preset' : 'sizes'))?.line ?? 1 }]);
     }
   }
-  return { settings: result, skipped, perPicture, sizesLeftOut, paddingLowered, sizesAuto };
+  return { settings: result, skipped, sizesLeftOut, paddingLowered, sizesAuto };
 }

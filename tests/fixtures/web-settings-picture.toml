@@ -3,13 +3,14 @@
 # (or leave the file named img2ico.toml in the folder you work in). On the page, use "Import settings".
 # It also holds the mirror, the turn, the crop and the GIF frame of the picture you worked on, when you used them.
 
-sizes = "16,32,48,64,128,256"
+sizes = "16,32"
 padding = 0
 corner-radius = 0
 fit = "contain"
 grayscale = false
 trim = false
-chroma-key = "auto"
-tolerance = 20
-feather = 50
+flip-horizontal = true
+rotate = 90
+crop = "4,2,20,24"
+gif-frame = 3
 output-format = "ico"

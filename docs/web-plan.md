@@ -54,7 +54,7 @@ The heavy work is in WebAssembly; the page itself is mostly state: many controls
 
 **Later:** undo/redo, comparing variants, crop per size, custom presets, copying the result to the clipboard.
 
-**Web only for now:** turning and mirroring the picture (`rotate`, `flipHorizontal` and `flipVertical` in the engine; the command line has no flags for them yet, they are on the backlog). The picture is mirrored first, then turned, then cropped; an SVG is not mirrored (it is refused, like a crop).
+**Mirroring and turning:** `rotate`, `flipHorizontal` and `flipVertical` in the engine, and `--rotate`, `--flip-horizontal` and `--flip-vertical` on the command line (the same order: mirrored first, then turned, then cropped; an SVG is refused, like a crop).
 
 **Not planned:** everything that belongs to a desktop program (target folders, opening folders, tray, sounds, shell integration, plugins, tabs, a separate preview window, recent files), a customizable interface, and image-editor features (pixel editor, shapes, lines, watermarks, palettes, guides).
 

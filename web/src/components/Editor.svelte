@@ -470,7 +470,7 @@
   let fileInput = $state<HTMLInputElement>();
   let fileDialog = $state<HTMLDialogElement>();
   // What the last import did: the problems that stopped it, or what it did not take over.
-  let fileReport = $state<{ problems: Problem[] } | { imported: Imported } | null>(null);
+  let fileReport = $state<{ problems: Problem[] } | { notes: string[] } | null>(null);
   let flashSettings = $state(false);
 
   function saveSettingsFile() {
@@ -481,10 +481,33 @@
     try {
       if (file.size > MAX_FILE_BYTES) throw new SettingsFileError([{ code: 'size', key: file.name, line: 0 }]);
       const imported = importSettings(await file.text(), $state.snapshot(settings) as Settings);
-      Object.assign(settings, imported.settings);
-      fileReport = { imported };
+      const next = { ...imported.settings };
+      const notes = noteLines(imported);
+      // What the file says about this picture's own mirror, turn, crop and GIF frame is used where it fits.
+      if (opened?.vector && (next.rotate !== 0 || next.flipH || next.flipV || next.crop)) {
+        Object.assign(next, { rotate: 0, flipH: false, flipV: false, crop: null });
+        notes.push(t('settingsfile.note_vector'));
+      }
+      const turned = opened ? turnedSize(opened, next.rotate) : null;
+      const crop = next.crop;
+      if (crop && turned && (crop.x + crop.width > turned.width || crop.y + crop.height > turned.height)) {
+        next.crop = null;
+        notes.push(t('settingsfile.note_crop_outside', { width: turned.width, height: turned.height }));
+      }
+      if (!gif) {
+        next.gifFrame = 0;
+      } else if (next.gifFrame >= gif.count) {
+        next.gifFrame = gif.count - 1;
+        notes.push(t('settingsfile.note_frame', { frame: gif.count }));
+      }
+      if (masking) endMask();
+      Object.assign(settings, next);
+      // The frame of the crop tool is what `settings.crop` is made from (see the effect above).
+      frame = next.crop ? { ...next.crop } : turned ? fullRect(turned) : frame;
+      cropOn = next.crop !== null;
+      fileReport = { notes };
       showSettings();
-      if (noteLines(imported).length > 0) fileDialog?.showModal();
+      if (notes.length > 0) fileDialog?.showModal();
     } catch (error) {
       if (!(error instanceof SettingsFileError)) throw error;
       fileReport = { problems: error.problems };
@@ -506,7 +529,6 @@
   const noteLines = (imported: Imported): string[] =>
     [
       imported.skipped.length > 0 && t('settingsfile.note_skipped', { keys: imported.skipped.join(', ') }),
-      imported.perPicture.length > 0 && t('settingsfile.note_picture', { keys: imported.perPicture.join(', ') }),
       imported.sizesLeftOut.length > 0 && t('settingsfile.note_sizes', { sizes: imported.sizesLeftOut.join(', ') }),
       imported.paddingLowered && t('settingsfile.note_padding'),
       imported.sizesAuto && t('settingsfile.note_auto'),
@@ -1466,7 +1488,7 @@
       <h3 id="file-title"><Icon name="check" />{t('settingsfile.done_title')}</h3>
       <p class="hint">{t('settingsfile.done_intro')}</p>
       <ul class="findings warn">
-        {#each noteLines(fileReport.imported) as line}
+        {#each fileReport.notes as line}
           <li>{line}</li>
         {/each}
       </ul>

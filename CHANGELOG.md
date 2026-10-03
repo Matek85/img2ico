@@ -10,6 +10,18 @@ when cutting a release.
 
 ## [Unreleased]
 
+### Added
+
+- `--rotate DEGREES` turns the picture clockwise (a negative number the other
+  way; a quarter turn is exact, any other angle makes the canvas larger and
+  leaves the corners transparent), and `--flip-horizontal` and
+  `--flip-vertical` mirror it. The order is: mirror, turn, then `--crop` (so
+  the crop is counted on the mirrored and turned picture), then `--trim`. All
+  three are also settings of a settings file (`rotate`, `flip-horizontal`,
+  `flip-vertical`), and an SVG refuses them like `--crop`. They are what the
+  web version's settings file holds for the picture's own mirror, turn and
+  crop, so such a file gives the same icon on the command line.
+
 ## [1.8.0] - 2026-10-01
 
 Layout options for the icon (`--fit`, `--crop`, `--trim`, `--corner-radius`,

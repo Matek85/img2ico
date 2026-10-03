@@ -2,7 +2,6 @@ import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   CLI_KEYS,
-  PICTURE_KEYS,
   PRESET_SIZES,
   SettingsFileError,
   USED_KEYS,
@@ -86,20 +85,35 @@ describe('writing the file', () => {
     expect(exportSettings({ ...base, removeBackground: false })).not.toMatch(/chroma-key|tolerance|feather/);
   });
 
-  it('leaves out what belongs to one picture and the website package', () => {
-    const text = exportSettings({
+  it('writes the picture\'s own mirror, turn, crop and GIF frame when they are used, in the order the command line applies them', () => {
+    const lines = exportSettings({
       ...defaultSettings(),
-      crop: { x: 1, y: 2, width: 3, height: 4 },
-      rotate: 90,
       flipH: true,
+      flipV: true,
+      rotate: 90,
+      crop: { x: 1, y: 2, width: 30, height: 40 },
       gifFrame: 2,
-      siteName: 'My site',
-      format: 'favicon',
-    });
-    // (The comment at the top says what is left out; the settings themselves must not have it.)
-    const body = text.split('\n').filter((line) => !line.startsWith('#')).join('\n');
-    expect(body).not.toMatch(/crop|rotate|flip|gif-frame|My site|favicon/);
-    expect(body).not.toContain('output-format');
+    })
+      .split('\n')
+      .filter((line) => !line.startsWith('#') && line !== '');
+    expect(lines.slice(5, 11)).toEqual([
+      'trim = false',
+      'flip-horizontal = true',
+      'flip-vertical = true',
+      'rotate = 90',
+      'crop = "1,2,30,40"',
+      // The command line counts the frames from 1, the page from 0.
+      'gif-frame = 3',
+    ]);
+    // Not used: not written.
+    const plain = exportSettings(defaultSettings());
+    expect(plain).not.toMatch(/flip|rotate|crop =|gif-frame/);
+  });
+
+  it('leaves out the website package', () => {
+    const text = exportSettings({ ...defaultSettings(), siteName: 'My site', themeColor: '#123456', format: 'favicon' });
+    expect(text).not.toMatch(/My site|123456|favicon/);
+    expect(text).not.toContain('output-format');
   });
 
   it('only uses keys the command line reads', () => {
@@ -126,9 +140,14 @@ describe('reading settings back', () => {
     tolerance: 55,
     feather: 7,
     format: 'icns',
+    flipH: true,
+    flipV: false,
+    rotate: 30,
+    crop: { x: 5, y: 6, width: 70, height: 80 },
+    gifFrame: 4,
   };
 
-  it('gives back what was written', () => {
+  it('gives back what was written, also the picture\'s own mirror, turn, crop and GIF frame', () => {
     expect(importSettings(exportSettings(settings), defaultSettings()).settings).toEqual(settings);
     const auto = { ...settings, backgroundAuto: true, backgroundColor: defaultSettings().backgroundColor };
     expect(importSettings(exportSettings(auto), defaultSettings()).settings).toEqual(auto);
@@ -136,7 +155,7 @@ describe('reading settings back', () => {
     expect(importSettings(exportSettings(plain), plain).settings).toEqual(plain);
   });
 
-  it('keeps what belongs to the picture and to the website package, and sets the rest as the file says', () => {
+  it('keeps the website package and the file type, and sets the rest as the file says (also the picture\'s own)', () => {
     const current: Settings = {
       ...defaultSettings(),
       padding: 30,
@@ -156,8 +175,9 @@ describe('reading settings back', () => {
     expect(result.padding).toBe(0);
     expect(result.grayscale).toBe(false);
     expect(result.cornerRadius).toBe(10);
-    // The picture's own, the website package and the file type (not in the file) stay.
-    expect(result).toMatchObject({ crop: current.crop, rotate: 90, flipH: true, flipV: true, gifFrame: 3, siteName: 'Mine', themeColor: '#123456', appleBackground: '#abcdef', format: 'favicon' });
+    expect(result).toMatchObject({ crop: null, rotate: 0, flipH: false, flipV: false, gifFrame: 0 });
+    // The website package and the file type (not in the file) stay.
+    expect(result).toMatchObject({ siteName: 'Mine', themeColor: '#123456', appleBackground: '#abcdef', format: 'favicon' });
   });
 
   it('reads hex colors with or without #, and "preset" wins over "sizes" as on the command line', () => {
@@ -167,13 +187,23 @@ describe('reading settings back', () => {
     expect(importSettings('preset = "windows"\n', defaultSettings()).settings.sizes).toEqual([...PRESET_SIZES.windows]);
   });
 
-  it('says what it skipped: settings of the command line only, settings of one picture, sizes not offered, a padding brought down', () => {
+  it('reads the mirror, the turn (any whole number of degrees, as 0 to 359), the crop and the GIF frame (counted from 1)', () => {
+    const read = (text: string) => importSettings(text, defaultSettings()).settings;
+    expect(read('flip-horizontal = true\nflip-vertical = true\n')).toMatchObject({ flipH: true, flipV: true });
+    expect(read('rotate = -90\n').rotate).toBe(270);
+    expect(read('rotate = 450\n').rotate).toBe(90);
+    expect(read('rotate = 0\n').rotate).toBe(0);
+    expect(read('crop = "10, 20, 300, 400"\n').crop).toEqual({ x: 10, y: 20, width: 300, height: 400 });
+    expect(read('gif-frame = 1\n').gifFrame).toBe(0);
+    expect(read('gif-frame = 5\n').gifFrame).toBe(4);
+  });
+
+  it('says what it skipped: settings of the command line only, sizes not offered, a padding brought down', () => {
     const imported = importSettings(
-      ['jobs = 4', 'recursive = true', 'include = ["*.png"]', 'crop = "1,2,3,4"', 'gif-frame = 2', 'sizes = "16,18,20,300"'].join('\n').replace(',300', ''),
+      ['jobs = 4', 'recursive = true', 'include = ["*.png"]', 'sizes = "16,18,20"'].join('\n'),
       defaultSettings(),
     );
     expect(imported.skipped).toEqual(['jobs', 'recursive', 'include']);
-    expect(imported.perPicture).toEqual(['crop', 'gif-frame']);
     expect(imported.sizesLeftOut).toEqual([18]);
     expect(imported.settings.sizes).toEqual([16, 20]);
     expect(importSettings('sizes = "auto"\n', defaultSettings())).toMatchObject({ sizesAuto: true, settings: { sizes: [...defaultSettings().sizes] } });
@@ -190,6 +220,14 @@ describe('reading settings back', () => {
     expect(problemsOf('tolerance = 101\n')).toEqual(['range:tolerance@1']);
     expect(problemsOf('corner-radius = 51\n')).toEqual(['range:corner-radius@1']);
     expect(problemsOf('padding = 101\n')).toEqual(['range:padding@1']);
+    expect(problemsOf('rotate = "left"\n')).toEqual(['type:rotate@1']);
+    expect(problemsOf('rotate = 2000000\n')).toEqual(['range:rotate@1']);
+    expect(problemsOf('flip-horizontal = "yes"\n')).toEqual(['type:flip-horizontal@1']);
+    expect(problemsOf('gif-frame = 0\n')).toEqual(['range:gif-frame@1']);
+    expect(problemsOf('crop = 5\n')).toEqual(['type:crop@1']);
+    for (const bad of ['1,2,3', '1,2,3,0', '1,2,x,4', '-1,2,3,4', '1,2,3,4,5', '']) {
+      expect(problemsOf(`crop = "${bad}"\n`), bad).toEqual(['value:crop@1']);
+    }
     expect(problemsOf('fit = "stretch"\n')).toEqual(['value:fit@1']);
     expect(problemsOf('output-format = "png"\n')).toEqual(['value:output-format@1']);
     expect(problemsOf('chroma-key = "green"\n')).toEqual(['value:chroma-key@1']);
@@ -212,7 +250,7 @@ describe('the command line and the page agree', () => {
     const keys = [...list.matchAll(/"([a-z-]+)"/g)].map((match) => match[1]);
     expect(keys.length).toBeGreaterThan(20);
     expect([...CLI_KEYS].sort()).toEqual([...keys].sort());
-    for (const key of [...USED_KEYS, ...PICTURE_KEYS]) expect(keys, key).toContain(key);
+    for (const key of USED_KEYS) expect(keys, key).toContain(key);
   });
 
   it('has the sizes of the command line presets (SizePreset in src/cli.rs)', () => {
@@ -238,6 +276,7 @@ describe('the command line and the page agree', () => {
     'web-settings-plain.toml': { ...defaultSettings(), sizes: [16, 32, 48], padding: 10, cornerRadius: 20, fit: 'cover', grayscale: true },
     'web-settings-color.toml': { ...defaultSettings(), sizes: [32, 64, 128, 256], trim: true, removeBackground: true, backgroundAuto: false, backgroundColor: '#00ff00', tolerance: 30, feather: 40, format: 'icns' },
     'web-settings-auto.toml': { ...defaultSettings(), removeBackground: true, backgroundAuto: true },
+    'web-settings-picture.toml': { ...defaultSettings(), sizes: [16, 32], flipH: true, rotate: 90, crop: { x: 4, y: 2, width: 20, height: 24 }, gifFrame: 2 },
   };
   for (const [name, settings] of Object.entries(fixtures)) {
     it(`writes ${name} as the file the command line test reads`, () => {
