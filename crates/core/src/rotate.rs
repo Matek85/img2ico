@@ -4,6 +4,7 @@
 //! The browser page shows the turned picture in the crop view from this same code, so what the
 //! frame is placed on is what the icon is made from.
 
+use crate::layout::{CropRect, check_crop};
 use crate::source::DEFAULT_MAX_PIXELS;
 use image::{Rgba, RgbaImage, imageops};
 
@@ -55,8 +56,46 @@ pub fn rotate_within(img: &RgbaImage, degrees: i32, max_pixels: u64) -> Result<R
         270 => return Ok(imageops::rotate270(img)),
         _ => {}
     }
+    let (canvas_w, canvas_h) = canvas_for(img, degrees, max_pixels)?;
+    Ok(turn_part(
+        img,
+        turn,
+        (canvas_w, canvas_h),
+        CropRect {
+            x: 0,
+            y: 0,
+            width: canvas_w,
+            height: canvas_h,
+        },
+    ))
+}
+
+/// Whether the turn is by a free angle: the quarters (and no turn) are done exactly and fast, any other angle
+/// is made pixel by pixel.
+pub fn is_free_angle(degrees: i32) -> bool {
+    !matches!(normalize(degrees), 0 | 90 | 180 | 270)
+}
+
+/// The same as `rotate` followed by `crop` of `rect` (a frame on the turned picture), but only the pixels of the
+/// frame are made: a picture of many megapixels turned by a free angle is then not made as a whole just to
+/// throw most of it away. The result is the same, pixel for pixel. For a free angle only; the quarters are
+/// turned whole, which is fast.
+pub fn rotate_then_crop(
+    img: &RgbaImage,
+    degrees: i32,
+    rect: CropRect,
+    max_pixels: u64,
+) -> Result<RgbaImage, String> {
+    debug_assert!(is_free_angle(degrees));
+    let canvas = canvas_for(img, degrees, max_pixels)?;
+    check_crop(canvas, rect)?;
+    Ok(turn_part(img, normalize(degrees), canvas, rect))
+}
+
+/// The canvas a turned picture needs, refused if it is bigger than `max_pixels`.
+fn canvas_for(img: &RgbaImage, degrees: i32, max_pixels: u64) -> Result<(u32, u32), String> {
     let (width, height) = img.dimensions();
-    let (canvas_w, canvas_h) = rotated_size(width, height, turn);
+    let (canvas_w, canvas_h) = rotated_size(width, height, degrees);
     if u64::from(canvas_w) * u64::from(canvas_h) > max_pixels {
         return Err(crate::msg!(
             "rotate.too_big",
@@ -66,22 +105,28 @@ pub fn rotate_within(img: &RgbaImage, degrees: i32, max_pixels: u64) -> Result<R
             height = canvas_h
         ));
     }
+    Ok((canvas_w, canvas_h))
+}
 
+/// The pixels of `part` of the canvas (of the size `canvas`) the picture turned by `turn` (a free angle,
+/// 1 to 359) makes.
+fn turn_part(img: &RgbaImage, turn: i32, canvas: (u32, u32), part: CropRect) -> RgbaImage {
+    let (width, height) = img.dimensions();
     let (sin, cos) = f64::from(turn).to_radians().sin_cos();
-    let (canvas_cx, canvas_cy) = (f64::from(canvas_w) / 2.0, f64::from(canvas_h) / 2.0);
+    let (canvas_cx, canvas_cy) = (f64::from(canvas.0) / 2.0, f64::from(canvas.1) / 2.0);
     let (source_cx, source_cy) = (f64::from(width) / 2.0, f64::from(height) / 2.0);
-    let mut out = RgbaImage::new(canvas_w, canvas_h);
-    for y in 0..canvas_h {
-        for x in 0..canvas_w {
+    let mut out = RgbaImage::new(part.width, part.height);
+    for y in 0..part.height {
+        for x in 0..part.width {
             // Where this pixel's centre comes from in the picture (the turn undone).
-            let dx = f64::from(x) + 0.5 - canvas_cx;
-            let dy = f64::from(y) + 0.5 - canvas_cy;
+            let dx = f64::from(part.x + x) + 0.5 - canvas_cx;
+            let dy = f64::from(part.y + y) + 0.5 - canvas_cy;
             let u = dx * cos + dy * sin + source_cx;
             let v = -dx * sin + dy * cos + source_cy;
             out.put_pixel(x, y, sample(img, u, v));
         }
     }
-    Ok(out)
+    out
 }
 
 /// The colour at the point (`u`, `v`) of the picture (pixel centres are at .5), mixed from the four
@@ -230,6 +275,51 @@ mod tests {
         let (w, h) = turned.dimensions();
         assert!(turned.get_pixel(w / 2, 3).0[0] > 200, "red on top");
         assert!(turned.get_pixel(w / 2, h - 4).0[2] > 200, "blue below");
+    }
+
+    #[test]
+    fn turning_only_the_frame_gives_the_same_pixels_as_turning_all_and_cutting() {
+        // A picture with something in every part, and a frame that is not the whole canvas.
+        let mut img = RgbaImage::new(37, 23);
+        for (x, y, pixel) in img.enumerate_pixels_mut() {
+            *pixel = Rgba([
+                (x * 7) as u8,
+                (y * 11) as u8,
+                (x * y) as u8,
+                200 + (x % 56) as u8,
+            ]);
+        }
+        for degrees in [1, 17, 45, 100, 181, 300, -5, -89] {
+            let canvas = rotated_size(37, 23, degrees);
+            let rect = CropRect {
+                x: canvas.0 / 5,
+                y: canvas.1 / 4,
+                width: canvas.0 / 2,
+                height: canvas.1 / 2,
+            };
+            let whole = rotate(&img, degrees).unwrap();
+            let expected = crate::layout::crop(&whole, rect).unwrap();
+            let part = rotate_then_crop(&img, degrees, rect, DEFAULT_MAX_PIXELS).unwrap();
+            assert_eq!(part, expected, "{degrees} degrees");
+        }
+    }
+
+    #[test]
+    fn a_frame_outside_the_turned_picture_is_refused_as_before() {
+        let img = solid(20, 10, [1, 2, 3, 255]);
+        let canvas = rotated_size(20, 10, 30);
+        let rect = CropRect {
+            x: 0,
+            y: 0,
+            width: canvas.0 + 1,
+            height: 1,
+        };
+        let whole = rotate(&img, 30).unwrap();
+        let wanted = crate::layout::crop(&whole, rect).unwrap_err();
+        assert_eq!(
+            rotate_then_crop(&img, 30, rect, DEFAULT_MAX_PIXELS).unwrap_err(),
+            wanted
+        );
     }
 
     #[test]

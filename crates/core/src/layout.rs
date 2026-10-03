@@ -170,7 +170,12 @@ pub fn parse_crop(text: &str) -> Result<CropRect, String> {
 
 /// Cuts `rect` out of `img`. It has to lie completely inside the image.
 pub fn crop(img: &RgbaImage, rect: CropRect) -> Result<RgbaImage, String> {
-    let (w, h) = img.dimensions();
+    check_crop(img.dimensions(), rect)?;
+    Ok(image::imageops::crop_imm(img, rect.x, rect.y, rect.width, rect.height).to_image())
+}
+
+/// Whether `rect` lies completely inside a picture of this size (`width`, `height`); the error says so if not.
+pub fn check_crop((w, h): (u32, u32), rect: CropRect) -> Result<(), String> {
     let fits = u64::from(rect.x) + u64::from(rect.width) <= u64::from(w)
         && u64::from(rect.y) + u64::from(rect.height) <= u64::from(h);
     if !fits {
@@ -185,7 +190,7 @@ pub fn crop(img: &RgbaImage, rect: CropRect) -> Result<RgbaImage, String> {
             h = h
         ));
     }
-    Ok(image::imageops::crop_imm(img, rect.x, rect.y, rect.width, rect.height).to_image())
+    Ok(())
 }
 
 /// The bounding box of everything that is not fully transparent, as a
