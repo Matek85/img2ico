@@ -62,6 +62,8 @@ export function toggleTheme(): void {
  * a script). A click changes to the other theme; choosing what the system has anyway goes back to
  * following the system.
  */
+let watching = false;
+
 export function startThemeSwitch(): void {
   apply(stored());
   const button = document.querySelector<HTMLButtonElement>('.theme-switch');
@@ -69,6 +71,11 @@ export function startThemeSwitch(): void {
   button.disabled = false;
   showButton(button);
   button.addEventListener('click', toggleTheme);
+  if (watching) return;
+  watching = true;
   // The system's setting changes (and nothing was chosen): the label follows.
-  system.addEventListener('change', () => showButton(button));
+  system.addEventListener('change', () => {
+    const current = document.querySelector<HTMLButtonElement>('.theme-switch');
+    if (current) showButton(current);
+  });
 }
