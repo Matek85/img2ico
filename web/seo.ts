@@ -1,14 +1,16 @@
 // What a search engine or a link preview sees of the page: the head tags, the
 // text that is there before any script runs, robots.txt and sitemap.xml.
 //
-// The texts come from the message catalogue, like everything else. The page
+// The texts come from the message catalogue of the page's language, like everything else.
+// English is at the root of the site, every other language in a folder of its own
+// (de/, es/, pt-br/, fr/) with the same pages. The page
 // is built to work from any address, so absolute URLs (canonical link, link
 // preview picture, sitemap) exist only when the build is told where the page
 // will live: SITE_URL=https://example.org/img2ico/ npm run build
 import type { Plugin } from 'vite';
 import { siApple, siGithub, siLinux } from 'simple-icons';
-import { en } from './src/i18n/en.ts';
-import { escapeHtml, helpBodyHtml } from './helpContent.ts';
+import { CATALOGUES } from './catalogues.ts';
+import { escapeHtml, helpBodyHtml, inlineHtml } from './helpContent.ts';
 
 type Messages = Record<string, string>;
 
@@ -28,7 +30,7 @@ export function jsonForScript(value: unknown): string {
   return JSON.stringify(value, null, 2).replace(/</g, '\\u003c');
 }
 
-export function structuredData(m: Messages, siteUrl: string): object {
+export function structuredData(m: Messages, siteUrl: string, lang = 'en'): object {
   return {
     '@context': 'https://schema.org',
     '@type': 'WebApplication',
@@ -38,7 +40,7 @@ export function structuredData(m: Messages, siteUrl: string): object {
     applicationCategory: 'MultimediaApplication',
     operatingSystem: 'Any',
     browserRequirements: 'Requires JavaScript and WebAssembly',
-    inLanguage: 'en',
+    inLanguage: lang,
     isAccessibleForFree: true,
     offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
     sameAs: [REPOSITORY],
@@ -52,16 +54,32 @@ export interface PageInfo {
   path: string;
 }
 
-/** The tags for <head> (after the charset and viewport ones). */
-export function headTags(m: Messages, siteUrl: string, page?: PageInfo): string {
+/**
+ * Sends a visitor of an English page to the page in their language: the one they chose before, or the
+ * first language of the browser's list that the site has (English first in that list: stay). Only the
+ * English pages have it; the choice is made with the language menu (see src/menus.ts).
+ */
+export function languageRedirect(prefix: string, pagePath: string): string {
+  const others = LANGUAGES.filter((language) => language.code !== 'en');
+  const map = Object.fromEntries(others.map((language) => [language.code.split('-')[0], language.code]));
+  const codes = others.map((language) => language.code).join('|');
+  return `<script>try{var s=localStorage.getItem('img2ico.lang.v1'),M=${JSON.stringify(map)},l=null;if(s){l=s}else{var a=navigator.languages||[navigator.language];for(var i=0;i<a.length;i++){var p=String(a[i]).toLowerCase().split('-')[0];if(p==='en')break;if(M[p]){l=M[p];break}}}if(l&&/^(${codes})$/.test(l))location.replace('${prefix}'+l+'/${pagePath}')}catch(e){}</script>`;
+}
+
+/** The tags for <head> (after the charset and viewport ones). `prefix` leads from the page to the site's root. */
+export function headTags(m: Messages, siteUrl: string, page?: PageInfo, lang: string = 'en', prefix = './'): string {
   const title = escapeHtml(page ? page.title : m['seo.title']);
   const description = escapeHtml(page ? page.description : m['seo.description']);
-  const address = siteUrl + (page ? page.path : '');
+  const pagePath = page ? page.path : '';
+  const address = siteUrl + langDir(lang) + pagePath;
+  const language = LANGUAGES.find((entry) => entry.code === lang) ?? LANGUAGES[0];
   const tags = [
     `<title>${title}</title>`,
     `<meta name="description" content="${description}" />`,
     `<meta name="robots" content="index, follow, max-image-preview:large" />`,
     `<meta name="color-scheme" content="light dark" />`,
+    `<link rel="icon" href="${prefix}favicon.ico" sizes="48x48" />`,
+    `<link rel="icon" type="image/png" href="${prefix}favicon.png" />`,
     // The theme the visitor chose, before the page is drawn (see src/theme.ts).
     `<script>try{var t=localStorage.getItem('img2ico.theme.v1');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}</script>`,
     `<meta name="theme-color" content="#16264a" media="(prefers-color-scheme: light)" />`,
@@ -70,20 +88,23 @@ export function headTags(m: Messages, siteUrl: string, page?: PageInfo): string 
     `<meta property="og:site_name" content="${escapeHtml(m['app.name'])}" />`,
     `<meta property="og:title" content="${title}" />`,
     `<meta property="og:description" content="${description}" />`,
-    `<meta property="og:locale" content="en_US" />`,
+    `<meta property="og:locale" content="${language.locale}" />`,
     `<meta name="twitter:card" content="${siteUrl ? 'summary_large_image' : 'summary'}" />`,
   ];
   if (siteUrl) {
     tags.push(
       `<link rel="canonical" href="${escapeHtml(address)}" />`,
       `<meta property="og:url" content="${escapeHtml(address)}" />`,
+      ...LANGUAGES.map((entry) => `<link rel="alternate" hreflang="${entry.code}" href="${escapeHtml(siteUrl + langDir(entry.code) + pagePath)}" />`),
+      `<link rel="alternate" hreflang="x-default" href="${escapeHtml(siteUrl + pagePath)}" />`,
       `<meta property="og:image" content="${escapeHtml(siteUrl)}og-image.png" />`,
       `<meta property="og:image:width" content="1200" />`,
       `<meta property="og:image:height" content="630" />`,
       `<meta property="og:image:alt" content="${escapeHtml(m['app.name'] + ' – ' + m['app.tagline'])}" />`,
     );
   }
-  if (!page) tags.push(`<script type="application/ld+json">\n${jsonForScript(structuredData(m, siteUrl))}\n</script>`);
+  if (lang === 'en') tags.push(languageRedirect(prefix, pagePath));
+  if (!page) tags.push(`<script type="application/ld+json">\n${jsonForScript(structuredData(m, siteUrl, lang))}\n</script>`);
   return tags.join('\n    ');
 }
 
@@ -147,14 +168,24 @@ export function helpPageInfo(m: Messages, slug: string): PageInfo | undefined {
   };
 }
 
-/** The languages the page is planned in: the flag (drawn here, flag emoji do not show on Windows) and the name in that language. */
+/**
+ * The languages of the page: the flag (drawn here, flag emoji do not show on Windows), the name in that language, the
+ * locale for link previews, and whether a notice says that an AI translated the page (until a person has read it).
+ */
 export const LANGUAGES = [
-  { code: 'en', name: 'English', flag: '<rect width="24" height="16" fill="#012169"/><path d="M0 0l24 16M24 0 0 16" stroke="#fff" stroke-width="3.2"/><path d="M0 0l24 16M24 0 0 16" stroke="#c8102e" stroke-width="1.1"/><path d="M12 0v16M0 8h24" stroke="#fff" stroke-width="5.2"/><path d="M12 0v16M0 8h24" stroke="#c8102e" stroke-width="3"/>' },
-  { code: 'de', name: 'Deutsch', flag: '<rect width="24" height="16" fill="#dd0000"/><rect width="24" height="5.34" fill="#000"/><rect y="10.66" width="24" height="5.34" fill="#ffce00"/>' },
-  { code: 'es', name: 'Español', flag: '<rect width="24" height="16" fill="#aa151b"/><rect y="4" width="24" height="8" fill="#f1bf00"/>' },
-  { code: 'pt-br', name: 'Português (Brasil)', flag: '<rect width="24" height="16" fill="#009c3b"/><path d="M12 1.6 22 8 12 14.4 2 8z" fill="#ffdf00"/><circle cx="12" cy="8" r="3.5" fill="#002776"/>' },
-  { code: 'fr', name: 'Français', flag: '<rect width="24" height="16" fill="#fff"/><rect width="8" height="16" fill="#002654"/><rect x="16" width="8" height="16" fill="#ce1126"/>' },
+  { code: 'en', locale: 'en_US', ai: false, name: 'English', flag: '<rect width="24" height="16" fill="#012169"/><path d="M0 0l24 16M24 0 0 16" stroke="#fff" stroke-width="3.2"/><path d="M0 0l24 16M24 0 0 16" stroke="#c8102e" stroke-width="1.1"/><path d="M12 0v16M0 8h24" stroke="#fff" stroke-width="5.2"/><path d="M12 0v16M0 8h24" stroke="#c8102e" stroke-width="3"/>' },
+  { code: 'de', locale: 'de_DE', ai: false, name: 'Deutsch', flag: '<rect width="24" height="16" fill="#dd0000"/><rect width="24" height="5.34" fill="#000"/><rect y="10.66" width="24" height="5.34" fill="#ffce00"/>' },
+  { code: 'es', locale: 'es_ES', ai: true, name: 'Español', flag: '<rect width="24" height="16" fill="#aa151b"/><rect y="4" width="24" height="8" fill="#f1bf00"/>' },
+  { code: 'pt-br', locale: 'pt_BR', ai: true, name: 'Português (Brasil)', flag: '<rect width="24" height="16" fill="#009c3b"/><path d="M12 1.6 22 8 12 14.4 2 8z" fill="#ffdf00"/><circle cx="12" cy="8" r="3.5" fill="#002776"/>' },
+  { code: 'fr', locale: 'fr_FR', ai: true, name: 'Français', flag: '<rect width="24" height="16" fill="#fff"/><rect width="8" height="16" fill="#002654"/><rect x="16" width="8" height="16" fill="#ce1126"/>' },
 ] as const;
+
+export type LanguageCode = (typeof LANGUAGES)[number]['code'];
+
+/** The folder of a language below the site's root: none for English. */
+export function langDir(code: string): string {
+  return code === 'en' ? '' : `${code}/`;
+}
 
 function flag(drawing: string): string {
   return `<svg class="flag" viewBox="0 0 24 16" width="22" height="15" aria-hidden="true">${drawing}</svg>`;
@@ -167,19 +198,20 @@ const THEME_ICON =
 /**
  * The top bar's menus, from the left: help, the command-line tool (the latest release for each system:
  * GitHub redirects "latest" to the newest one), the language, the light/dark switch, GitHub. `prefix` leads
- * from the page to the site's root ("./" or "../../").
+ * from the page to the site's root ("./", "../", "../../" or "../../../"), `lang` is the language of the page and
+ * `pagePath` the page below the language's folder ("" or "help/<topic>/"), so each language leads to the same page.
  */
-export function navHtml(m: Messages, prefix = './'): string {
+export function navHtml(m: Messages, prefix = './', lang: string = 'en', pagePath = ''): string {
   const latest = `${REPOSITORY}/releases/latest/download/`;
   const item = (file: string, key: string, path: string) =>
     `<a href="${latest}${file}">${osIcon(path)}${escapeHtml(m[key])}</a>`;
   const help = HELP_TOPICS.map(
-    (topic) => `<a href="${prefix}help/${topic.slug}/">${escapeHtml(m[`help.${topic.key}.title`])}</a>`,
+    (topic) => `<a href="${prefix}${langDir(lang)}help/${topic.slug}/">${escapeHtml(m[`help.${topic.key}.title`])}</a>`,
   ).join('\n              ');
-  const languages = LANGUAGES.map((language, i) =>
-    i === 0
-      ? `<a href="${prefix}" lang="${language.code}" aria-current="true">${flag(language.flag)}${escapeHtml(language.name)}</a>`
-      : `<span class="soon" lang="${language.code}" aria-disabled="true" title="${escapeHtml(m['nav.soon'])}">${flag(language.flag)}${escapeHtml(language.name)}<small>${escapeHtml(m['nav.soon'])}</small></span>`,
+  const current = LANGUAGES.find((language) => language.code === lang) ?? LANGUAGES[0];
+  const languages = LANGUAGES.map(
+    (language) =>
+      `<a href="${prefix}${langDir(language.code)}${pagePath}" lang="${language.code}" hreflang="${language.code}" data-lang="${language.code}"${language.code === current.code ? ' aria-current="true"' : ''}>${flag(language.flag)}${escapeHtml(language.name)}</a>`,
   ).join('\n              ');
   return `<details class="menu">
             <summary>${escapeHtml(m['nav.help'])}</summary>
@@ -197,7 +229,7 @@ export function navHtml(m: Messages, prefix = './'): string {
             </div>
           </details>
           <details class="menu lang">
-            <summary aria-label="${escapeHtml(m['nav.language'])}: ${escapeHtml(LANGUAGES[0].name)}">${flag(LANGUAGES[0].flag)}${escapeHtml(LANGUAGES[0].name)}</summary>
+            <summary aria-label="${escapeHtml(m['nav.language'])}: ${escapeHtml(current.name)}">${flag(current.flag)}${escapeHtml(current.name)}</summary>
             <div class="menu-list">
               ${languages}
             </div>
@@ -207,11 +239,11 @@ export function navHtml(m: Messages, prefix = './'): string {
 }
 
 /** A help page: the list of topics on the left, the page on the right. */
-export function helpHtml(m: Messages, slug: string, prefix: string): string {
+export function helpHtml(m: Messages, slug: string, prefix: string, lang: string = 'en'): string {
   const e = (key: string) => escapeHtml(m[key]);
   const links = HELP_TOPICS.map(
     (topic) =>
-      `<li><a href="${prefix}help/${topic.slug}/"${topic.slug === slug ? ' aria-current="page"' : ''}>${e(`help.${topic.key}.title`)}</a></li>`,
+      `<li><a href="${prefix}${langDir(lang)}help/${topic.slug}/"${topic.slug === slug ? ' aria-current="page"' : ''}>${e(`help.${topic.key}.title`)}</a></li>`,
   ).join('\n            ');
   const topic = HELP_TOPICS.find((entry) => entry.slug === slug);
   const key = topic ? topic.key : 'start';
@@ -224,9 +256,21 @@ export function helpHtml(m: Messages, slug: string, prefix: string): string {
         <article class="help-page">
           <h1>${e(`help.${key}.title`)}</h1>
           <p class="lead">${e(`help.${key}.description`)}</p>
-          ${helpBodyHtml(m, key, prefix)}
+          ${helpBodyHtml(m, key, prefix + langDir(lang))}
         </article>
       </div>`;
+}
+
+/** The logo and name of the site in the top bar, leading to the start page of the language. */
+export function brandHtml(m: Messages, prefix: string, lang: string): string {
+  const home = prefix + langDir(lang);
+  return `<a class="brand" href="${home}"><img src="${prefix}favicon.png" alt="" width="36" height="36" /><span>${escapeHtml(m['app.name'])}</span></a>`;
+}
+
+/** The note on a page that an AI translated (and a person has not read yet): empty for the other languages. */
+export function noticeHtml(m: Messages, lang: string): string {
+  const language = LANGUAGES.find((entry) => entry.code === lang);
+  return language?.ai ? `<p class="ai-note" role="note">${inlineHtml(m['lang.ai_note'], '')}</p>` : '';
 }
 
 /** The text under the converter. */
@@ -256,10 +300,31 @@ export function robotsTxt(siteUrl: string): string {
   return `User-agent: *\nAllow: /\n${siteUrl ? `\nSitemap: ${siteUrl}sitemap.xml\n` : ''}`;
 }
 
+/** Every page in every language, each with the same page in the other languages (for search engines). */
 export function sitemapXml(siteUrl: string): string {
-  const addresses = [siteUrl, ...HELP_TOPICS.map((topic) => `${siteUrl}help/${topic.slug}/`)];
-  const urls = addresses.map((address) => `  <url><loc>${escapeHtml(address)}</loc></url>`).join('\n');
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`;
+  const pages = ['', ...HELP_TOPICS.map((topic) => `help/${topic.slug}/`)];
+  const at = (code: string, page: string) => escapeHtml(siteUrl + langDir(code) + page);
+  const urls = LANGUAGES.flatMap((language) =>
+    pages.map((page) => {
+      const alternates = [
+        ...LANGUAGES.map((other) => `<xhtml:link rel="alternate" hreflang="${other.code}" href="${at(other.code, page)}"/>`),
+        `<xhtml:link rel="alternate" hreflang="x-default" href="${at('en', page)}"/>`,
+      ].join('');
+      return `  <url><loc>${at(language.code, page)}</loc>${alternates}</url>`;
+    }),
+  ).join('\n');
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">\n${urls}\n</urlset>\n`;
+}
+
+/** Which language and which help page an address of the site is ("/de/help/privacy/index.html"). */
+export function locate(path: string): { lang: LanguageCode; slug?: string; depth: number } {
+  const codes = LANGUAGES.filter((language) => language.code !== 'en')
+    .map((language) => language.code)
+    .join('|');
+  const match = new RegExp(`^/(?:(${codes})/)?(?:help/([^/]+)/)?`).exec(path);
+  const lang = (match?.[1] ?? 'en') as LanguageCode;
+  const slug = match?.[2];
+  return { lang, slug, depth: (match?.[1] ? 1 : 0) + (slug ? 2 : 0) };
 }
 
 /** Fills the placeholders of index.html and writes robots.txt (and sitemap.xml when the address is known). */
@@ -268,20 +333,23 @@ export function seo(address?: string): Plugin {
   return {
     name: 'img2ico-seo',
     transformIndexHtml(html, context) {
-      // A page below help/<topic>/ is two folders deep; the converter is at the root.
-      const helpSlug = /\/help\/([^/]+)\//.exec(context.path)?.[1];
-      const page = helpSlug ? helpPageInfo(en, helpSlug) : undefined;
-      const prefix = helpSlug ? '../../' : './';
+      // A help page is two folders deep, a language one more; the converter is at the root of its language.
+      const { lang, slug, depth } = locate(context.path);
+      const m = CATALOGUES[lang];
+      const page = slug ? helpPageInfo(m, slug) : undefined;
+      const prefix = depth ? '../'.repeat(depth) : './';
       return html
-        .replace('<!--seo:head-->', () => headTags(en, siteUrl, page))
-        .replace('<!--seo:help-->', () => (helpSlug ? helpHtml(en, helpSlug, prefix) : ''))
-        .replace('<!--seo:header-->', () => headerHtml(en))
+        .replace('<html lang="en">', () => `<html lang="${lang}">`)
+        .replace('<!--seo:head-->', () => headTags(m, siteUrl, page, lang, prefix))
+        .replace('<!--seo:brand-->', () => brandHtml(m, prefix, lang))
+        .replace('<!--seo:notice-->', () => noticeHtml(m, lang))
+        .replace('<!--seo:help-->', () => (slug ? helpHtml(m, slug, prefix, lang) : ''))
+        .replace('<!--seo:header-->', () => headerHtml(m))
         .replace('<!--seo:art-->', () => artHtml())
-        .replace('<!--seo:nav-->', () => navHtml(en, prefix))
-        .replace('<!--seo:name-->', () => escapeHtml(en['app.name']))
-        .replace('<!--seo:noscript-->', () => escapeHtml(en['seo.noscript']))
-        .replace('<!--seo:privacy-->', () => escapeHtml(en['app.privacy']))
-        .replace('<!--seo:about-->', () => aboutHtml(en));
+        .replace('<!--seo:nav-->', () => navHtml(m, prefix, lang, page ? page.path : ''))
+        .replace('<!--seo:noscript-->', () => escapeHtml(m['seo.noscript']))
+        .replace('<!--seo:privacy-->', () => escapeHtml(m['app.privacy']))
+        .replace('<!--seo:about-->', () => aboutHtml(m));
     },
     generateBundle() {
       this.emitFile({ type: 'asset', fileName: 'robots.txt', source: robotsTxt(siteUrl) });

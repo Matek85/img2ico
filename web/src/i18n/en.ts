@@ -2,18 +2,15 @@
 // directly: components ask for a key, so another language is one more file of
 // this shape (see index.ts). Plural forms are keys with the suffix _one /
 // _other (the suffixes of Intl.PluralRules); {name} is replaced by a value.
-import { helpEn } from './help-en';
-
 export const en = {
-  ...helpEn,
   'app.name': 'img2ico',
   'app.tagline': 'Turn PNG, JPG, SVG and more into .ico and .icns icons, or a complete favicon package. Right in your browser, nothing is uploaded.',
   'hero.title': 'Image to Icon Converter',
   'nav.github': 'GitHub',
   'nav.help': 'Help',
   'nav.language': 'Language',
+  'lang.ai_note': 'This page was translated by an AI and may contain mistakes. If you notice one, please [tell us on GitHub](https://github.com/Matek85/img2ico/issues).',
   'nav.theme': 'Light or dark mode',
-  'nav.soon': 'Coming soon',
   'nav.theme_to_light': 'Switch to light mode',
   'nav.theme_to_dark': 'Switch to dark mode',
   'nav.cli': 'Download CLI',

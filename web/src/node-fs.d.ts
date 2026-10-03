@@ -3,4 +3,6 @@
 declare module 'node:fs' {
   export function readFileSync(path: URL, encoding: 'utf8'): string;
   export function readdirSync(path: URL): string[];
+  export function mkdirSync(path: URL, options: { recursive: boolean }): void;
+  export function writeFileSync(path: URL, data: string): void;
 }
