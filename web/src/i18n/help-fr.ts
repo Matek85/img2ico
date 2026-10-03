@@ -103,9 +103,9 @@ export const helpFr: Record<keyof typeof helpEn, string> = {
   'help.settings.16.dl.4.t': 'Plus grand cadre, pivoter le cadre',
   'help.settings.16.dl.4.d':
     '**Plus grand cadre** rend le cadre aussi grand que l’image le permet, de la même forme. **Pivoter le cadre** échange large et haut.',
-  'help.settings.16.dl.5.t': 'Faire pivoter l’image',
+  'help.settings.16.dl.5.t': 'Faire pivoter et retourner l’image',
   'help.settings.16.dl.5.d':
-    'Tant que le cadenas est fermé, un curseur fait pivoter l’image de −180° à 180° par pas de 1° (un angle positif tourne dans le sens horaire), et des boutons la font pivoter de 90° ou 180°. L’image pivote sous le cadre, et les coins que la rotation laisse libres sont transparents.',
+    'Tant que le cadenas est fermé, un curseur fait pivoter l’image de −180° à 180° par pas de 1° (un angle positif tourne dans le sens horaire), et des boutons la font pivoter de 90° ou 180°. L’image pivote sous le cadre, et les coins que la rotation laisse libres sont transparents. Deux boutons retournent l’image, de gauche à droite et de haut en bas ; elle est d’abord retournée, puis pivotée.',
   'help.settings.16.dl.6.t': 'Gauche, Haut, Largeur, Hauteur',
   'help.settings.16.dl.6.d': 'Le cadre en pixels de l’image (après la rotation). Saisissez des nombres exacts si vous en avez besoin.',
   'help.settings.16.dl.7.t': 'Afficher la forme',

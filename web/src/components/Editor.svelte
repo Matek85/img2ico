@@ -270,16 +270,19 @@
   // the page scales it to the size of the full turn).
   let turnedUrl = $state('');
   let turnedFor = $state(0);
-  let shownOriginal = $derived(settings.rotate === 0 || !turnedUrl ? originalUrl : turnedUrl);
+  let transformed = $derived(settings.rotate !== 0 || settings.flipH || settings.flipV);
+  let shownOriginal = $derived(!transformed || !turnedUrl ? originalUrl : turnedUrl);
   $effect(() => {
     const degrees = settings.rotate;
+    const flipH = settings.flipH;
+    const flipV = settings.flipV;
     // A different frame of a GIF is a different picture.
     void pictureVersion;
-    if (!opened || opened.vector || degrees === 0) return;
+    if (!opened || opened.vector || !transformed) return;
     const timer = setTimeout(async () => {
       try {
-        const png = await rotatedPreview(degrees, 1600);
-        if (degrees !== settings.rotate) return;
+        const png = await rotatedPreview(degrees, flipH, flipV, 1600);
+        if (degrees !== settings.rotate || flipH !== settings.flipH || flipV !== settings.flipV) return;
         const url = URL.createObjectURL(new Blob([png as BlobPart], { type: 'image/png' }));
         if (turnedUrl) URL.revokeObjectURL(turnedUrl);
         turnedUrl = url;
@@ -314,6 +317,11 @@
   }
   let turnStart: { frame: Rect; size: Size; rotate: number; made: Rect } | null = null;
   const turnBy = (delta: number) => setTurn(settings.rotate + delta);
+  // Mirrors the picture; the frame stays where it is, the picture changes beneath it (as with the turn).
+  function toggleFlip(axis: 'flipH' | 'flipV') {
+    if (!opened || opened.vector) return;
+    settings[axis] = !settings[axis];
+  }
   // The slider and the number go from -180 to 180: a small turn to the left is -5, not 355.
   let turnShown = $derived(settings.rotate > 180 ? settings.rotate - 360 : settings.rotate);
 
@@ -742,6 +750,11 @@
         showShape = !showShape;
         return;
       }
+      if ((letter === 'h' || letter === 'v') && cropLocked && !opened?.vector) {
+        event.preventDefault();
+        toggleFlip(letter === 'h' ? 'flipH' : 'flipV');
+        return;
+      }
       // By position (the two keys beside each other, whatever the layout) or by the letter.
       const turn =
         event.code === 'KeyZ' || letter === 'z' || letter === 'y' ? -90 : event.code === 'KeyX' || letter === 'x' ? 90 : 0;
@@ -976,7 +989,7 @@
         {#if settings.sizes.length === 0}
           <p class="note">{t('editor.no_sizes')}</p>
         {:else if masking && view === 'icon' && picture}
-          <CropTool src={originalUrl} size={picture} turn={settings.rotate} original={{ width: opened.width, height: opened.height }} radius={settings.cornerRadius} fitMode={settings.fit} shape={showShape} bind:rect={frame} aspect={aspectValue(cropAspect)} locked={cropLocked} ontogglelock={() => (cropLocked = !cropLocked)} />
+          <CropTool src={originalUrl} size={picture} turn={settings.rotate} flipH={settings.flipH} flipV={settings.flipV} original={{ width: opened.width, height: opened.height }} radius={settings.cornerRadius} fitMode={settings.fit} shape={showShape} bind:rect={frame} aspect={aspectValue(cropAspect)} locked={cropLocked} ontogglelock={() => (cropLocked = !cropLocked)} />
         {:else if converted && tiles.length > 0 && view === 'pixels'}
           <PixelInspector
             bytes={converted.bytes}
@@ -1086,6 +1099,12 @@
           </button>
           <button type="button" class="outline small" title={keys.on ? `${t('turn.right')} (${cropKeyLabel('turnRight')})` : t('turn.right')} aria-label={t('turn.right')} onclick={() => turnBy(90)}>
             <Icon name="rotateRight" size={16} />{t('turn.degrees', { degrees: 90 })}
+          </button>
+          <button type="button" class="outline small icon-button" class:on={settings.flipH} aria-pressed={settings.flipH} title={keys.on ? `${t('turn.flip_h')} (H)` : t('turn.flip_h')} aria-label={t('turn.flip_h')} onclick={() => toggleFlip('flipH')}>
+            <Icon name="flipHorizontal" size={16} />
+          </button>
+          <button type="button" class="outline small icon-button" class:on={settings.flipV} aria-pressed={settings.flipV} title={keys.on ? `${t('turn.flip_v')} (V)` : t('turn.flip_v')} aria-label={t('turn.flip_v')} onclick={() => toggleFlip('flipV')}>
+            <Icon name="flipVertical" size={16} />
           </button>
         </div>
       </div>

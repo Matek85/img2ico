@@ -189,6 +189,32 @@ test.describe('shortcuts and the look of the page', () => {
     await expect(angle).toHaveValue('0');
   });
 
+  test('mirroring: H and the buttons mirror the picture, and the icon is made from the mirrored picture', async ({ page }) => {
+    await openInEditor(page, LOGO);
+    const [plain] = await startDownload(page);
+    const before = await downloaded(plain);
+    await page.keyboard.press('c');
+    const horizontal = page.getByRole('button', { name: 'Mirror the picture left to right' });
+    const vertical = page.getByRole('button', { name: 'Mirror the picture top to bottom' });
+    await expect(horizontal).toHaveAttribute('aria-pressed', 'false');
+    await page.keyboard.press('h');
+    await expect(horizontal).toHaveAttribute('aria-pressed', 'true');
+    await vertical.click();
+    await expect(vertical).toHaveAttribute('aria-pressed', 'true');
+    await vertical.click();
+    await expect(vertical).toHaveAttribute('aria-pressed', 'false');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.download button.primary')).toBeEnabled();
+    const [mirrored] = await startDownload(page);
+    expect((await downloaded(mirrored)).equals(before)).toBe(false);
+    // Reset puts the picture back the way it was.
+    await page.getByRole('button', { name: 'Reset to defaults' }).click();
+    await page.getByRole('button', { name: /Yes, reset/ }).click();
+    await expect(page.locator('.download button.primary')).toBeEnabled();
+    const [again] = await startDownload(page);
+    expect((await downloaded(again)).equals(before)).toBe(true);
+  });
+
   test('a help page is styled from the first frame', async ({ page }) => {
     await page.goto('/help/settings/');
     await expect(page.locator('h1')).toBeVisible();

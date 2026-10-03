@@ -793,6 +793,8 @@ fn options_of(
             replacement,
         }),
         grayscale: resolved.grayscale,
+        flip_horizontal: false,
+        flip_vertical: false,
         rotate: 0,
         crop: resolved.crop.map(parse_crop).transpose()?,
         trim: resolved.trim,

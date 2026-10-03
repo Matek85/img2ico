@@ -107,9 +107,9 @@ export const helpEn = {
   'help.settings.16.dl.4.t': 'Largest frame, turn the frame',
   'help.settings.16.dl.4.d':
     '**Largest frame** makes the frame as big as the picture allows, in the same shape. **Turn the frame** swaps wide and tall.',
-  'help.settings.16.dl.5.t': 'Turn the picture',
+  'help.settings.16.dl.5.t': 'Turn and mirror the picture',
   'help.settings.16.dl.5.d':
-    'While the lock is closed, a slider turns the picture from −180° to 180° in steps of 1° (a positive angle turns it clockwise), and buttons turn it by 90° or 180°. The picture turns beneath the frame, and the corners the turn leaves are transparent.',
+    'While the lock is closed, a slider turns the picture from −180° to 180° in steps of 1° (a positive angle turns it clockwise), and buttons turn it by 90° or 180°. The picture turns beneath the frame, and the corners the turn leaves are transparent. Two buttons mirror the picture, left to right and top to bottom; it is mirrored first, then turned.',
   'help.settings.16.dl.6.t': 'Left, Top, Width, Height',
   'help.settings.16.dl.6.d': 'The frame in pixels of the picture (after the turn). Type exact numbers if you need them.',
   'help.settings.16.dl.7.t': 'Show the shape',

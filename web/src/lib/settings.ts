@@ -23,6 +23,9 @@ export interface Settings {
   fit: Fit;
   grayscale: boolean;
   trim: boolean;
+  /** The picture is mirrored left to right and/or top to bottom, first (before it is turned). */
+  flipH: boolean;
+  flipV: boolean;
   /** The picture is turned clockwise by this many degrees (0 to 359) before it is cropped. */
   rotate: number;
   /** The part of the (turned) picture to use, in its pixels; `null` is all of it. */
@@ -52,6 +55,8 @@ export function defaultSettings(): Settings {
     fit: 'contain',
     grayscale: false,
     trim: false,
+    flipH: false,
+    flipV: false,
     rotate: 0,
     crop: null,
     gifFrame: 0,
@@ -76,6 +81,8 @@ export interface EngineOptions {
   fit?: Fit;
   grayscale?: boolean;
   trim?: boolean;
+  flipHorizontal?: boolean;
+  flipVertical?: boolean;
   rotate?: number;
   crop?: Rect;
   /** Lay the icon on this color (no transparency). */
@@ -102,6 +109,12 @@ export function toEngineOptions(settings: Settings, format: EngineFormat = 'ico'
     grayscale: settings.grayscale,
     trim: settings.trim,
   };
+  if (settings.flipH) {
+    options.flipHorizontal = true;
+  }
+  if (settings.flipV) {
+    options.flipVertical = true;
+  }
   if (settings.rotate) {
     options.rotate = settings.rotate;
   }

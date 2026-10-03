@@ -66,6 +66,8 @@ export const CROP_KEYS: readonly { label: string; action: string; letter?: strin
   // QWERTZ, W and X on AZERTY. The letters Z and Y work as well, wherever they are.
   { label: 'Z / Y / W', action: 'turnLeft', letter: 'z', also: 'y', code: 'KeyZ' },
   { label: 'X', action: 'turnRight', letter: 'x', code: 'KeyX' },
+  { label: 'H', action: 'flipH', letter: 'h' },
+  { label: 'V', action: 'flipV', letter: 'v' },
   { label: 'M', action: 'shape', letter: 'm' },
   { label: 'F', action: 'grow', letter: 'f' },
   { label: 'O', action: 'rotate', letter: 'o' },
