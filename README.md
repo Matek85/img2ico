@@ -4,6 +4,8 @@ A command-line tool that converts any image into a Windows `.ico` file (or a mac
 
 Built in Rust: a single, dependency-free binary — no runtime to install, nothing to configure.
 
+**No install at all?** The same engine runs in your browser, with a live preview, a crop frame and the same settings file: <https://matek85.github.io/img2ico/>. Nothing is uploaded.
+
 **Contents:** [Features](#features) · [Installation](#installation) · [Quick start](#quick-start) · [Command reference](#command-reference) · [Converting an image](#converting-an-image) · [Several files at once](#converting-several-files-at-once) · [Background color](#removing-or-replacing-a-background-color) · [macOS icons](#macos-icons) · [Existing .ico files](#working-with-existing-ico-files) · [Overwrite protection](#overwrite-protection-and-cleanup) · [Settings files](#settings-files) · [Scripting and CI](#scripting-and-ci) · [Recipes](#recipes) · [Speed and safe writing](#speed-large-images-and-safe-writing) · [Quality and safety](#quality-and-safety) · [Contributing](#contributing)
 
 ## Features

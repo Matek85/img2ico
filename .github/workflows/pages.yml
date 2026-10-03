@@ -1,0 +1,110 @@
+name: Pages
+
+# Publishes the web version on GitHub Pages (https://matek85.github.io/img2ico/).
+# It runs when something the page is made of changes on main, and by hand ("Run workflow") to publish again.
+# The checks of the page (type check, tests, browser tests) are those of the "Web" workflow on the pull request
+# that brought the change in; this one only builds the page for its address and publishes it.
+#
+# The page uses only relative paths, so the same build works from any address: moving it elsewhere later means
+# changing SITE_URL here (which sets the canonical links, the sitemap and the link-preview picture) and copying
+# the folder.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'web/**'
+      - 'crates/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+# Read-only by default; only the publishing job may publish.
+permissions:
+  contents: read
+
+# One publication at a time; a running one is finished, not cancelled, so the site is never left half done.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  SITE_URL: https://matek85.github.io/img2ico/
+
+jobs:
+  build:
+    name: Build the page
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+
+      # The wasm-bindgen tool must be exactly the version the engine uses (build-wasm.mjs checks this).
+      - name: Find the wasm-bindgen version
+        id: bindgen
+        run: |
+          version=$(grep -A1 '^name = "wasm-bindgen"$' Cargo.lock | sed -n 's/^version = "\(.*\)"$/\1/p')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Cache the wasm-bindgen tool
+        id: bindgen-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cargo/bin/wasm-bindgen
+          key: wasm-bindgen-${{ runner.os }}-${{ steps.bindgen.outputs.version }}
+
+      - name: Install the wasm-bindgen tool
+        if: steps.bindgen-cache.outputs.cache-hit != 'true'
+        run: cargo install wasm-bindgen-cli --version ${{ steps.bindgen.outputs.version }} --locked
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install the page's dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Build the engine (WebAssembly)
+        working-directory: web
+        run: npm run build:wasm
+
+      - name: Build the page for its address
+        working-directory: web
+        run: npx vite build
+
+      - name: Set up Pages
+        uses: actions/configure-pages@v6
+
+      - name: Pack the page
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: web/dist
+
+  deploy:
+    name: Publish the page
+    needs: build
+    runs-on: ubuntu-latest
+    # Publishing needs these two and only here; the environment shows the address of the page.
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Publish
+        id: deployment
+        uses: actions/deploy-pages@v5
