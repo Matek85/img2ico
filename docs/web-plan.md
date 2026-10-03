@@ -92,7 +92,7 @@ Being found counts as part of the page, so it is built in from the start and che
 - **Structure:** one `h1`, headings in order, landmarks (header, main, footer), `lang` follows the language in use.
 - **Check:** `npx lighthouse <address> --only-categories=seo,accessibility,best-practices,performance` should give 100 for the first three. `web/seo.test.ts` tests the generated tags and text. Last measured on the start page: performance 96, accessibility 100, best practices 100, SEO 100 (what is left is the engine's 4 MB).
 - **When languages are added:** one page per language (`/de/`, `/es/`, `/pt-br/`, `/fr/`) with `hreflang` links, not one page that switches by script; crawlers index what the address returns. The detection of the browser language only chooses where a first visit lands.
-- **When the design is done:** the link-preview picture `web/public/og-image.png` is a plain placeholder and is redone then.
+- **The link-preview picture** `web/public/og-image.png` (1200 × 630) shows the logo in the sizes an icon file holds, on the checkerboard of the preview, with the name and the one-line promise, in the dark colors of the page. It is one picture for all languages (English text).
 
 ## Checks
 
