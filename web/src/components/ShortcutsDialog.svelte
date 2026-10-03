@@ -1,7 +1,7 @@
 <script lang="ts">
   import { t } from '../i18n';
   import { keys, setShortcutsOn } from '../lib/keys.svelte';
-  import { GROUPS, SHORTCUTS } from '../lib/shortcuts';
+  import { CROP_KEYS, GROUPS, SHORTCUTS } from '../lib/shortcuts';
   import Icon from './Icon.svelte';
 
   // The list of the keys, with the switch for them. Opened by the keyboard button or by "?".
@@ -30,15 +30,20 @@
               <dd>{t(`keys.act_${shortcut.id}`)}</dd>
             </div>
           {/each}
-          {#if group === 'edit'}
-            <div>
-              <dt><kbd>Esc</kbd></dt>
-              <dd>{t('keys.act_escape')}</dd>
-            </div>
-          {/if}
         </dl>
       </section>
     {/each}
+    <section>
+      <h4>{t('keys.group_crop')}</h4>
+      <dl>
+        {#each CROP_KEYS as crop (crop.action)}
+          <div>
+            <dt><kbd>{crop.label}</kbd></dt>
+            <dd>{t(`keys.crop_${crop.action}`)}</dd>
+          </div>
+        {/each}
+      </dl>
+    </section>
   </div>
   <p class="hint">{t('keys.crop_note')}</p>
   <div class="dialog-actions">

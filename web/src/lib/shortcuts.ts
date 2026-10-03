@@ -9,7 +9,8 @@
 // Letters are matched by the character typed (`key`), so they follow the keyboard layout.
 // Digits are matched by the physical key (`code`): on a French keyboard the digit needs Shift,
 // and the key on the left of the row would otherwise never be a 1.
-// The Escape key (ends the crop) is handled where the crop is, not here.
+// Escape (ends the crop) is handled in the editor; the keys of the crop (Space, arrows, plus and
+// minus) are handled by the crop itself, and CROP_KEYS only lists them.
 
 export type ShortcutId =
   | 'viewIcon'
@@ -50,6 +51,14 @@ export const SHORTCUTS: readonly Shortcut[] = [
   { id: 'frameNext', label: '.', group: 'gif' },
   { id: 'theme', label: 'T', group: 'page' },
   { id: 'help', label: '?', group: 'page' },
+];
+
+/** The keys of the crop (handled by the crop itself, see CropTool.svelte), for the list. */
+export const CROP_KEYS: readonly { label: string; action: string }[] = [
+  { label: 'Space', action: 'lock' },
+  { label: '← ↑ → ↓', action: 'move' },
+  { label: '+ −', action: 'zoom' },
+  { label: 'Esc', action: 'done' },
 ];
 
 export const GROUPS: readonly ShortcutGroup[] = ['view', 'edit', 'save', 'gif', 'page'];

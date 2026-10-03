@@ -3384,3 +3384,11 @@ kbd {
   border-bottom-width: 2px;
   border-radius: 0.35rem;
 }
+
+.keys-groups dt {
+  flex-basis: 5.2rem;
+}
+
+.keys-groups dt kbd {
+  white-space: nowrap;
+}

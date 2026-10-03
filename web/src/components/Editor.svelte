@@ -797,7 +797,7 @@
         {#if settings.sizes.length === 0}
           <p class="note">{t('editor.no_sizes')}</p>
         {:else if masking && view === 'icon' && picture}
-          <CropTool src={originalUrl} size={picture} bind:rect={frame} aspect={aspectValue(cropAspect)} locked={cropLocked} />
+          <CropTool src={originalUrl} size={picture} bind:rect={frame} aspect={aspectValue(cropAspect)} locked={cropLocked} ontogglelock={() => (cropLocked = !cropLocked)} />
         {:else if converted && tiles.length > 0 && view === 'pixels'}
           <PixelInspector
             bytes={converted.bytes}
@@ -826,7 +826,7 @@
         class="chip lock-toggle"
         class:chosen={!cropLocked}
         aria-pressed={!cropLocked}
-        title={t(cropLocked ? 'crop.lock_on' : 'crop.lock_off')}
+        title={keys.on ? `${t(cropLocked ? 'crop.lock_on' : 'crop.lock_off')} (${t('keys.space')})` : t(cropLocked ? 'crop.lock_on' : 'crop.lock_off')}
         aria-label={t(cropLocked ? 'crop.lock_on' : 'crop.lock_off')}
         onclick={() => (cropLocked = !cropLocked)}
       >
