@@ -63,7 +63,7 @@
   import { shortName } from '../lib/names';
   import { PARTS, type Part, mergeSettings } from '../lib/applyAll';
   import { keys } from '../lib/keys.svelte';
-  import { type ShortcutId, isTyping, shortcutOf, withKey } from '../lib/shortcuts';
+  import { type ShortcutId, cropKeyLabel, isTyping, shortcutOf, withKey } from '../lib/shortcuts';
   import { toggleTheme } from '../theme';
 
   let {
@@ -742,9 +742,12 @@
         showShape = !showShape;
         return;
       }
-      if ((letter === 'z' || letter === 'y' || letter === 'x') && cropLocked && !opened?.vector) {
+      // By position (the two keys beside each other, whatever the layout) or by the letter.
+      const turn =
+        event.code === 'KeyZ' || letter === 'z' || letter === 'y' ? -90 : event.code === 'KeyX' || letter === 'x' ? 90 : 0;
+      if (turn && cropLocked && !opened?.vector) {
         event.preventDefault();
-        turnBy(letter === 'x' ? 90 : -90);
+        turnBy(turn);
         return;
       }
     }
@@ -1075,13 +1078,13 @@
           </button>
         </div>
         <div class="turn-buttons">
-          <button type="button" class="outline small" title={keys.on ? `${t('turn.left')} (Z / Y)` : t('turn.left')} aria-label={t('turn.left')} onclick={() => turnBy(-90)}>
+          <button type="button" class="outline small" title={keys.on ? `${t('turn.left')} (${cropKeyLabel('turnLeft')})` : t('turn.left')} aria-label={t('turn.left')} onclick={() => turnBy(-90)}>
             <Icon name="rotateLeft" size={16} />{t('turn.degrees', { degrees: 90 })}
           </button>
           <button type="button" class="outline small" title={t('turn.half')} aria-label={t('turn.half')} onclick={() => turnBy(180)}>
             {t('turn.degrees', { degrees: 180 })}
           </button>
-          <button type="button" class="outline small" title={keys.on ? `${t('turn.right')} (X)` : t('turn.right')} aria-label={t('turn.right')} onclick={() => turnBy(90)}>
+          <button type="button" class="outline small" title={keys.on ? `${t('turn.right')} (${cropKeyLabel('turnRight')})` : t('turn.right')} aria-label={t('turn.right')} onclick={() => turnBy(90)}>
             <Icon name="rotateRight" size={16} />{t('turn.degrees', { degrees: 90 })}
           </button>
         </div>
