@@ -126,6 +126,17 @@
   let converted = $state<Converted>();
   let tiles = $state<{ size: number; url: string }[]>([]);
   let working = $state(false);
+  // The preview is dimmed with a spinner when making the icon takes more than a moment (not for a quick
+  // change, which would only flicker).
+  let busy = $state(false);
+  $effect(() => {
+    if (!working) {
+      busy = false;
+      return;
+    }
+    const timer = setTimeout(() => (busy = true), 250);
+    return () => clearTimeout(timer);
+  });
   let convertFailure = $state('');
 
   // The website package: the Apple icon shown, the lines for the page's head.
@@ -1075,11 +1086,16 @@
           {/each}
         </ul>
       {/if}
+      {#if busy && !masking}
+        <div class="busy" role="status">
+          <span class="spinner" aria-hidden="true"></span>
+          <span>{t('editor.working')}</span>
+        </div>
+      {/if}
       </div>
       </div>
       {#if tiles.length > 0}<p class="hint">{t('editor.preview_note')}</p>{/if}
 
-      {#if working}<p class="hint" role="status">{t('editor.working')}</p>{/if}
       {#if convertFailure}
         <p class="failure" role="alert">{t('editor.convert_failed', { reason: convertFailure })}</p>
       {/if}
