@@ -19,6 +19,7 @@
   import CropTool from './CropTool.svelte';
   import DropOverlay from './DropOverlay.svelte';
   import GifPlayer from './GifPlayer.svelte';
+  import ShortcutsDialog from './ShortcutsDialog.svelte';
   import Icon from './Icon.svelte';
   import type { IconName } from '../lib/icons';
   import Queue from './Queue.svelte';
@@ -50,6 +51,9 @@
   } from '../lib/settings';
   import { describeMessage, explain } from '../lib/messages';
   import { shortName } from '../lib/names';
+  import { keys } from '../lib/keys.svelte';
+  import { type ShortcutId, isTyping, shortcutOf, withKey } from '../lib/shortcuts';
+  import { toggleTheme } from '../theme';
 
   let {
     file,
@@ -73,9 +77,9 @@
   const NAMED: Backdrop[] = ['checker', 'light', 'dark', 'gray'];
   const MAX_KEPT = 7;
   const VIEWS = [
-    { id: 'icon', icon: 'view' },
-    { id: 'compare', icon: 'compare' },
-    { id: 'pixels', icon: 'grid' },
+    { id: 'icon', icon: 'view', shortcut: 'viewIcon' },
+    { id: 'compare', icon: 'compare', shortcut: 'viewCompare' },
+    { id: 'pixels', icon: 'grid', shortcut: 'viewPixels' },
   ] as const;
 
   // What was chosen last time is the starting point (see storage.ts).
@@ -557,10 +561,73 @@
     saveBytes(bytes, downloadName(file.name, settings.format), settings.format === 'ico' ? ICO_TYPE : ICNS_TYPE);
   }
 
+  // The keyboard shortcuts (see lib/shortcuts.ts). Nothing happens while text is typed, while a
+  // dialog is open or while a question is waiting for an answer.
+  let shortcutsDialog = $state<ShortcutsDialog>();
+  let gifPlayer = $state<GifPlayer>();
+  const hint = (text: string, id: ShortcutId) => withKey(text, id, keys.on);
+  const canMakeIcon = () => !!converted && !working && !packing;
+
+  function runShortcut(id: ShortcutId) {
+    switch (id) {
+      case 'viewIcon':
+      case 'viewCompare':
+      case 'viewPixels':
+        view = id === 'viewIcon' ? 'icon' : id === 'viewCompare' ? 'compare' : 'pixels';
+        break;
+      case 'crop':
+        if (!opened?.vector && picture && (view === 'icon' || masking)) toggleMask();
+        break;
+      case 'reset':
+        if (!isDefault) askReset();
+        break;
+      case 'settings':
+        setSide(!sideOpen);
+        break;
+      case 'download':
+        if (canMakeIcon()) void download();
+        break;
+      case 'queueAdd':
+        if (canMakeIcon() && settings.format !== 'favicon') void addToQueue();
+        break;
+      case 'play':
+        gifPlayer?.toggle();
+        break;
+      case 'framePrev':
+        gifPlayer?.step(-1);
+        break;
+      case 'frameNext':
+        gifPlayer?.step(1);
+        break;
+      case 'theme':
+        toggleTheme();
+        break;
+      case 'help':
+        shortcutsDialog?.show();
+        break;
+    }
+  }
+
+  function onKeydown(event: KeyboardEvent) {
+    if (!keys.on || event.defaultPrevented || isTyping(event.target)) return;
+    if (confirmingReset || document.querySelector('dialog[open]')) return;
+    if (event.key === 'Escape' && masking && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      event.preventDefault();
+      endMask();
+      return;
+    }
+    const id = shortcutOf(event);
+    if (!id) return;
+    event.preventDefault();
+    runShortcut(id);
+  }
+
   // The largest image is shown big; the others are shown at their real size.
   let largest = $derived(tiles.length > 0 ? tiles[tiles.length - 1] : undefined);
   let smaller = $derived(tiles.slice(0, -1));
 </script>
+
+<svelte:window onkeydown={onKeydown} />
 
 {#if openFailure}
   <p class="failure" role="alert">{t('state.failed', { reason: openFailure })}</p>
@@ -581,7 +648,7 @@
           : t('editor.source_size', { width: opened.width, height: opened.height })}
       </figcaption>
     </figure>
-    <button type="button" class="outline reset" onclick={askReset} disabled={isDefault} title={t('editor.reset_hint')}>
+    <button type="button" class="outline reset" onclick={askReset} disabled={isDefault} title={hint(t('editor.reset_hint'), 'reset')}>
       <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
       {t('editor.reset')}
     </button>
@@ -646,12 +713,12 @@
           class="outline icon-button"
           onclick={addToQueue}
           disabled={!converted || working || packing || settings.format === 'favicon'}
-          title={settings.format === 'favicon' ? t('queue.add_favicon') : editId !== undefined ? t('queue.add_new') : t('queue.add_hint')}
+          title={settings.format === 'favicon' ? t('queue.add_favicon') : hint(editId !== undefined ? t('queue.add_new') : t('queue.add_hint'), 'queueAdd')}
           aria-label={editId !== undefined ? t('queue.add_new') : t('queue.add')}
         >
           <Icon name={editId !== undefined ? 'plus' : 'queueAdd'} />
         </button>
-        <button type="button" class="primary" onclick={download} disabled={!converted || working || packing}>
+        <button type="button" class="primary" onclick={download} disabled={!converted || working || packing} title={hint(t('download.button', { name: shortName(downloadName(file.name, settings.format)) }), 'download')}>
           <Icon name="download" />
           {packing ? t('site.building') : t('download.button', { name: shortName(downloadName(file.name, settings.format)) })}
         </button>
@@ -666,7 +733,7 @@
       <div class="views-row">
       <div class="views" role="radiogroup" aria-label={t('editor.view')}>
         {#each VIEWS as choice (choice.id)}
-          <label class:chosen={view === choice.id}>
+          <label class:chosen={view === choice.id} title={hint(t(`editor.view_${choice.id}`), choice.shortcut)}>
             <input type="radio" name="view" value={choice.id} bind:group={view} />
             <Icon name={choice.icon} />
             {t(`editor.view_${choice.id}`)}
@@ -679,7 +746,7 @@
           class="chip crop-toggle"
           class:chosen={masking}
           aria-pressed={masking}
-          title={t('crop.use')}
+          title={hint(t('crop.use'), 'crop')}
           onclick={toggleMask}
         >
           <Icon name="crop" size={16} />
@@ -687,10 +754,13 @@
           {#if settings.crop && !masking}<span class="dot" aria-label={t('crop.active')}></span>{/if}
         </button>
       {/if}
+      <button type="button" class="quiet icon-button keys-open" title={hint(t('keys.open'), 'help')} aria-label={t('keys.open')} onclick={() => shortcutsDialog?.show()}>
+        <Icon name="keyboard" />
+      </button>
       </div>
 
       {#if gif}
-        <GifPlayer count={gif.count} delays={gif.delays} bind:frame={settings.gifFrame} load={frameUrl} />
+        <GifPlayer bind:this={gifPlayer} count={gif.count} delays={gif.delays} bind:frame={settings.gifFrame} load={frameUrl} />
       {/if}
       {#if gifNote}<p class="hint">{gifNote}</p>{/if}
 
@@ -727,7 +797,7 @@
         {#if settings.sizes.length === 0}
           <p class="note">{t('editor.no_sizes')}</p>
         {:else if masking && view === 'icon' && picture}
-          <CropTool src={originalUrl} size={picture} bind:rect={frame} aspect={aspectValue(cropAspect)} locked={cropLocked} />
+          <CropTool src={originalUrl} size={picture} bind:rect={frame} aspect={aspectValue(cropAspect)} locked={cropLocked} ontogglelock={() => (cropLocked = !cropLocked)} />
         {:else if converted && tiles.length > 0 && view === 'pixels'}
           <PixelInspector
             bytes={converted.bytes}
@@ -756,7 +826,7 @@
         class="chip lock-toggle"
         class:chosen={!cropLocked}
         aria-pressed={!cropLocked}
-        title={t(cropLocked ? 'crop.lock_on' : 'crop.lock_off')}
+        title={keys.on ? `${t(cropLocked ? 'crop.lock_on' : 'crop.lock_off')} (${t('keys.space')})` : t(cropLocked ? 'crop.lock_on' : 'crop.lock_off')}
         aria-label={t(cropLocked ? 'crop.lock_on' : 'crop.lock_off')}
         onclick={() => (cropLocked = !cropLocked)}
       >
@@ -823,7 +893,7 @@
     {#if sideOpen}
     <section class="controls" aria-label={t('controls.look')}>
       <div class="side-head">
-        <button type="button" class="quiet small" title={t('side.collapse')} aria-label={t('side.collapse')} onclick={() => setSide(false)}>
+        <button type="button" class="quiet small" title={hint(t('side.collapse'), 'settings')} aria-label={t('side.collapse')} onclick={() => setSide(false)}>
           <Icon name="collapse" size={16} />
         </button>
       </div>
@@ -942,7 +1012,7 @@
     </section>
     {:else}
     <aside class="rail" aria-label={t('controls.look')}>
-      <button type="button" class="icon-button outline" class:flash-blue={flashExpand} title={t('side.expand')} aria-label={t('side.expand')} onclick={() => setSide(true)}>
+      <button type="button" class="icon-button outline" class:flash-blue={flashExpand} title={hint(t('side.expand'), 'settings')} aria-label={t('side.expand')} onclick={() => setSide(true)}>
         <Icon name="expand" size={16} />
       </button>
       {#each [USE_PRESETS, STYLE_PRESETS] as list, i (i)}
@@ -1002,6 +1072,7 @@
       <button type="button" class="primary" onclick={() => siteDialog?.close()}><Icon name="check" />{t('site.done')}</button>
     </div>
   </dialog>
+  <ShortcutsDialog bind:this={shortcutsDialog} />
   <DropOverlay onfiles={nextPicture} label={t('queue.drop')} />
   <Queue activeId={editId} onopen={jump} onnext={nextPicture} onpicture={nextPicture} />
   </div>

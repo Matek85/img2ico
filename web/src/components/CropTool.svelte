@@ -14,10 +14,20 @@
     rect = $bindable(),
     aspect = null,
     locked = true,
-  }: { src: string; size: Size; rect: Rect; aspect?: number | null; locked?: boolean } = $props();
+    ontogglelock,
+  }: {
+    src: string;
+    size: Size;
+    rect: Rect;
+    aspect?: number | null;
+    locked?: boolean;
+    /** The space bar was pressed: lock or unlock the frame. */
+    ontogglelock?: () => void;
+  } = $props();
 
   const MARGIN = 14;
   let box = $state<HTMLDivElement>();
+  let pane = $state<HTMLDivElement>();
   let width = $state(0);
   let height = $state(0);
 
@@ -99,6 +109,8 @@
   }
 
   onMount(() => {
+    // The keys work at once, without a click first.
+    pane?.focus({ preventScroll: true });
     const area = box?.closest<HTMLElement>('.stage') ?? box;
     if (!area) return;
     const wheel = (event: WheelEvent) => {
@@ -111,6 +123,7 @@
 
   // The arrow keys move the picture (locked) or the frame (unlocked) by a pixel, ten with
   // Shift; plus and minus zoom: the way to place it exactly, and the way without a pointer.
+  // The space bar locks or unlocks the frame.
   function key(event: KeyboardEvent) {
     const step = event.shiftKey ? 10 : 1;
     const delta: Record<string, [number, number]> = {
@@ -119,7 +132,10 @@
       ArrowUp: [0, -step],
       ArrowDown: [0, step],
     };
-    if (event.key === '+' || event.key === '=' || event.key === '-') {
+    if (event.key === ' ') {
+      event.preventDefault();
+      ontogglelock?.();
+    } else if (event.key === '+' || event.key === '=' || event.key === '-') {
       event.preventDefault();
       const factor = event.key === '-' ? 1 / 0.9 : 0.9;
       const at = box?.getBoundingClientRect();
@@ -139,10 +155,14 @@
   <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
   <div
     class="crop-pane"
+    bind:this={pane}
     role="group"
     tabindex="0"
     aria-label={t(locked ? 'crop.frame_locked' : 'crop.frame_unlocked')}
-    onpointerdown={beginPicture}
+    onpointerdown={(e) => {
+      pane?.focus({ preventScroll: true });
+      beginPicture(e);
+    }}
     onpointermove={move}
     onpointerup={end}
     onpointercancel={end}

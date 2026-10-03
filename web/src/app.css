@@ -3292,3 +3292,103 @@ button.small {
 .topbar nav .theme-switch svg {
   transform: none;
 }
+
+/* =========================================================================
+   Keyboard shortcuts: the button beside the views and the list of the keys.
+   ========================================================================= */
+
+.views-row {
+  justify-content: flex-start;
+}
+
+.views-row .crop-toggle {
+  margin-left: auto;
+}
+
+.views-row .views + .keys-open {
+  margin-left: auto;
+}
+
+.views-row .crop-toggle + .keys-open {
+  margin-left: 0;
+}
+
+.keys-dialog {
+  width: min(40rem, calc(100vw - 2rem));
+}
+
+.keys-dialog h3 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.5rem;
+}
+
+.keys-switch {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+  font-weight: 600;
+}
+
+.keys-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 1rem 1.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.keys-groups.off {
+  opacity: 0.5;
+}
+
+.keys-groups h4 {
+  margin: 0 0 0.35rem;
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.keys-groups dl {
+  margin: 0;
+}
+
+.keys-groups dl > div {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 0.2rem 0;
+}
+
+.keys-groups dt {
+  flex: 0 0 2.6rem;
+}
+
+.keys-groups dd {
+  margin: 0;
+}
+
+kbd {
+  display: inline-block;
+  min-width: 1.7rem;
+  padding: 0.1rem 0.4rem;
+  text-align: center;
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 0.35rem;
+}
+
+.keys-groups dt {
+  flex-basis: 5.2rem;
+}
+
+.keys-groups dt kbd {
+  white-space: nowrap;
+}
