@@ -66,11 +66,21 @@ impl VectorImage {
         }
         // Embedded images (data: URIs) are drawn; everything the file points
         // to outside itself is not - there is no `resources_dir` to look in.
-        let tree = usvg::Tree::from_data(bytes, &options)
-            .map_err(|e| format!("Could not read '{name}' as an SVG file: {e}"))?;
+        let tree = usvg::Tree::from_data(bytes, &options).map_err(|e| {
+            crate::msg!(
+                "svg.unreadable",
+                "Could not read '{name}' as an SVG file: {e}",
+                name = name,
+                e = e
+            )
+        })?;
         let size = tree.size();
         if !(size.width() > 0.0 && size.height() > 0.0) {
-            return Err(format!("The SVG '{name}' has no size."));
+            return Err(crate::msg!(
+                "svg.no_size",
+                "The SVG '{name}' has no size.",
+                name = name
+            ));
         }
         Ok(Self {
             tree: Box::new(tree),

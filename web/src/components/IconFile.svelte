@@ -13,7 +13,8 @@
   import Icon from './Icon.svelte';
   import { baseName, stemOf } from '../lib/batch';
   import { ICO_TYPE, PNG_TYPE, ZIP_TYPE, saveBytes } from '../lib/download';
-  import { explain } from '../lib/messages';
+  import { describeMessage, explain } from '../lib/messages';
+  import { shortName } from '../lib/names';
   import { queue } from '../lib/queue.svelte';
   import type { ValidationReport } from '../lib/report';
 
@@ -134,11 +135,11 @@
   <p class="failure" role="alert">{t('state.failed', { reason: failure })}</p>
   <button type="button" onclick={onback}><Icon name="back" />{t('state.back')}</button>
 {:else if !report}
-  <p class="working" role="status">{t('state.working', { name: file.name })}</p>
+  <p class="working" role="status">{t('state.working', { name: shortName(file.name) })}</p>
 {:else}
   <div class="bar">
     <button type="button" class="quiet" onclick={onback}><Icon name="back" />{t('state.back')}</button>
-    <span class="file">{file.name}</span>
+    <span class="file" title={file.name}>{file.name}</span>
   </div>
 
   <section class="result" aria-live="polite">
@@ -146,7 +147,7 @@
       {report.valid ? t('result.valid') : t('result.invalid')}
     </h2>
     <p class="meta">
-      {t('result.file', { name: file.name, size: formatBytes(report.bytes) })} ·
+      {t('result.file', { name: shortName(file.name), size: formatBytes(report.bytes) })} ·
       {t('result.images', { count: report.images.length })}
     </p>
 
@@ -157,8 +158,11 @@
           {#each group.list as finding}
             <li>
               {finding.image === null
-                ? finding.message
-                : t('result.about_image', { number: finding.image + 1, message: finding.message })}
+                ? finding.info ? describeMessage(finding.info) : finding.message
+                : t('result.about_image', {
+                    number: finding.image + 1,
+                    message: finding.info ? describeMessage(finding.info) : finding.message,
+                  })}
             </li>
           {/each}
         </ul>

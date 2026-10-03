@@ -3091,4 +3091,22 @@ button.small {
 
 .topbar .shell {
   padding-block: 0.5rem;
+
+/* A very long name never pushes anything wider than the page: it wraps where it must. */
+.editing-note,
+.queue-list strong,
+.queue-compare-head h3,
+.working,
+.hint {
+  overflow-wrap: anywhere;
+}
+
+.bar .file {
+  flex: 1 1 8rem;
+  min-width: 0;
+}
+
+.download-actions .primary {
+  max-width: 100%;
+  min-width: 0;
 }

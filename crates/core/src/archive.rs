@@ -60,7 +60,12 @@ fn u32_at(bytes: &[u8], at: usize) -> Option<u32> {
         .map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
 }
 
-const BROKEN: &str = "This is not a readable ZIP file (it is damaged or cut off).";
+fn broken() -> String {
+    crate::msg!(
+        "zip.broken",
+        "This is not a readable ZIP file (it is damaged or cut off)."
+    )
+}
 
 impl ZipArchive {
     /// Reads the table of contents of the ZIP in `bytes`.
@@ -71,17 +76,23 @@ impl ZipArchive {
         let eocd = (search_from..=bytes.len().saturating_sub(22))
             .rev()
             .find(|&at| u32_at(&bytes, at) == Some(END_OF_CENTRAL_DIRECTORY))
-            .ok_or_else(|| BROKEN.to_string())?;
+            .ok_or_else(broken)?;
 
-        let count = u16_at(&bytes, eocd + 10).ok_or(BROKEN)? as usize;
-        let directory_size = u32_at(&bytes, eocd + 12).ok_or(BROKEN)?;
-        let directory_offset = u32_at(&bytes, eocd + 16).ok_or(BROKEN)?;
+        let count = u16_at(&bytes, eocd + 10).ok_or_else(broken)? as usize;
+        let directory_size = u32_at(&bytes, eocd + 12).ok_or_else(broken)?;
+        let directory_offset = u32_at(&bytes, eocd + 16).ok_or_else(broken)?;
         if count == 0xFFFF || directory_size == 0xFFFF_FFFF || directory_offset == 0xFFFF_FFFF {
-            return Err("ZIP64 files (over 4 GB or 65535 files) are not supported.".to_string());
+            return Err(crate::msg!(
+                "zip.zip64",
+                "ZIP64 files (over 4 GB or 65535 files) are not supported."
+            ));
         }
         if count > MAX_ENTRIES {
-            return Err(format!(
-                "The ZIP lists {count} files; at most {MAX_ENTRIES} are accepted."
+            return Err(crate::msg!(
+                "zip.too_many_listed",
+                "The ZIP lists {count} files; at most {max} are accepted.",
+                count = count,
+                max = MAX_ENTRIES
             ));
         }
 
@@ -89,22 +100,24 @@ impl ZipArchive {
         let mut at = directory_offset as usize;
         for _ in 0..count {
             if u32_at(&bytes, at) != Some(CENTRAL_ENTRY) {
-                return Err(BROKEN.to_string());
+                return Err(broken());
             }
-            let name_length = u16_at(&bytes, at + 28).ok_or(BROKEN)? as usize;
-            let extra_length = u16_at(&bytes, at + 30).ok_or(BROKEN)? as usize;
-            let comment_length = u16_at(&bytes, at + 32).ok_or(BROKEN)? as usize;
-            let name_bytes = bytes.get(at + 46..at + 46 + name_length).ok_or(BROKEN)?;
+            let name_length = u16_at(&bytes, at + 28).ok_or_else(broken)? as usize;
+            let extra_length = u16_at(&bytes, at + 30).ok_or_else(broken)? as usize;
+            let comment_length = u16_at(&bytes, at + 32).ok_or_else(broken)? as usize;
+            let name_bytes = bytes
+                .get(at + 46..at + 46 + name_length)
+                .ok_or_else(broken)?;
             entries.push(RawEntry {
                 // Names are UTF-8 in practice (flag bit 11); anything else is
                 // shown as well as it can be.
                 name: String::from_utf8_lossy(name_bytes).replace('\\', "/"),
-                flags: u16_at(&bytes, at + 8).ok_or(BROKEN)?,
-                method: u16_at(&bytes, at + 10).ok_or(BROKEN)?,
-                crc: u32_at(&bytes, at + 16).ok_or(BROKEN)?,
-                compressed: u32_at(&bytes, at + 20).ok_or(BROKEN)?,
-                size: u32_at(&bytes, at + 24).ok_or(BROKEN)?,
-                offset: u32_at(&bytes, at + 42).ok_or(BROKEN)?,
+                flags: u16_at(&bytes, at + 8).ok_or_else(broken)?,
+                method: u16_at(&bytes, at + 10).ok_or_else(broken)?,
+                crc: u32_at(&bytes, at + 16).ok_or_else(broken)?,
+                compressed: u32_at(&bytes, at + 20).ok_or_else(broken)?,
+                size: u32_at(&bytes, at + 24).ok_or_else(broken)?,
+                offset: u32_at(&bytes, at + 42).ok_or_else(broken)?,
             });
             at += 46 + name_length + extra_length + comment_length;
         }
@@ -134,48 +147,79 @@ impl ZipArchive {
 
     /// Unpacks entry `index` (as listed by `files`).
     pub fn read(&self, index: usize) -> Result<Vec<u8>, String> {
-        let entry = self
-            .entries
-            .get(index)
-            .ok_or_else(|| format!("The ZIP has no file number {index}."))?;
+        let entry = self.entries.get(index).ok_or_else(|| {
+            crate::msg!(
+                "zip.no_such_file",
+                "The ZIP has no file number {index}.",
+                index = index
+            )
+        })?;
         let name = &entry.name;
         if entry.flags & 1 != 0 {
-            return Err(format!(
-                "'{name}' is encrypted; encrypted ZIPs are not supported."
+            return Err(crate::msg!(
+                "zip.encrypted",
+                "'{name}' is encrypted; encrypted ZIPs are not supported.",
+                name = name
             ));
         }
         if entry.size as usize > MAX_ENTRY_BYTES {
-            return Err(format!(
-                "'{name}' is {:.0} MB unpacked; at most {} MB per file are accepted.",
-                f64::from(entry.size) / 1e6,
-                MAX_ENTRY_BYTES / 1_000_000
+            return Err(crate::msg!(
+                "zip.entry_too_big",
+                "'{name}' is {megabytes} MB unpacked; at most {max} MB per file are accepted.",
+                name = name,
+                megabytes = format!("{:.0}", f64::from(entry.size) / 1e6),
+                max = MAX_ENTRY_BYTES / 1_000_000
             ));
         }
 
         let local = entry.offset as usize;
         if u32_at(&self.bytes, local) != Some(LOCAL_ENTRY) {
-            return Err(format!("'{name}' is damaged in the ZIP."));
+            return Err(crate::msg!(
+                "zip.entry_damaged",
+                "'{name}' is damaged in the ZIP.",
+                name = name
+            ));
         }
-        let name_length = u16_at(&self.bytes, local + 26).ok_or(BROKEN)? as usize;
-        let extra_length = u16_at(&self.bytes, local + 28).ok_or(BROKEN)? as usize;
+        let name_length = u16_at(&self.bytes, local + 26).ok_or_else(broken)? as usize;
+        let extra_length = u16_at(&self.bytes, local + 28).ok_or_else(broken)? as usize;
         let start = local + 30 + name_length + extra_length;
         let packed = self
             .bytes
             .get(start..start + entry.compressed as usize)
-            .ok_or_else(|| format!("'{name}' is cut off in the ZIP."))?;
+            .ok_or_else(|| {
+                crate::msg!(
+                    "zip.entry_cut_off",
+                    "'{name}' is cut off in the ZIP.",
+                    name = name
+                )
+            })?;
 
         let data = match entry.method {
             0 => packed.to_vec(),
             8 => miniz_oxide::inflate::decompress_to_vec_with_limit(packed, MAX_ENTRY_BYTES)
-                .map_err(|e| format!("'{name}' could not be unpacked: {:?}.", e.status))?,
+                .map_err(|e| {
+                    crate::msg!(
+                        "zip.entry_unpack_failed",
+                        "'{name}' could not be unpacked: {status}.",
+                        name = name,
+                        status = format!("{:?}", e.status)
+                    )
+                })?,
             other => {
-                return Err(format!(
-                    "'{name}' uses compression method {other}, which is not supported (only stored and deflated)."
+                return Err(crate::msg!(
+                    "zip.method_unsupported",
+                    "'{name}' uses compression method {method}, which is not supported (only stored and deflated).",
+                    name = name,
+                    method = other
                 ));
             }
         };
         if data.len() != entry.size as usize || crc32(&data) != entry.crc {
-            return Err(format!("'{name}' is damaged: its checksum does not match."));
+            return Err(crate::msg!(
+                "zip.checksum",
+                "'{name}' is damaged: its checksum does not match.",
+                name = name
+            ));
         }
         Ok(data)
     }
@@ -184,17 +228,27 @@ impl ZipArchive {
 /// Writes a ZIP holding `files` (name, contents), uncompressed.
 pub fn write_zip(files: &[(String, Vec<u8>)]) -> Result<Vec<u8>, String> {
     if files.len() >= 0xFFFF {
-        return Err("Too many files for one ZIP.".to_string());
+        return Err(crate::msg!(
+            "zip.too_many_files",
+            "Too many files for one ZIP."
+        ));
     }
     let mut out: Vec<u8> = Vec::new();
     let mut directory: Vec<u8> = Vec::new();
     for (name, data) in files {
-        let offset = u32::try_from(out.len()).map_err(|_| "The ZIP would be over 4 GB.")?;
-        let size = u32::try_from(data.len()).map_err(|_| "A file is over 4 GB.")?;
+        let offset = u32::try_from(out.len())
+            .map_err(|_| crate::msg!("zip.over_4gb", "The ZIP would be over 4 GB."))?;
+        let size = u32::try_from(data.len())
+            .map_err(|_| crate::msg!("zip.file_over_4gb", "A file is over 4 GB."))?;
         let crc = crc32(data);
         let name_bytes = name.as_bytes();
-        let name_length = u16::try_from(name_bytes.len())
-            .map_err(|_| format!("The name '{name}' is too long."))?;
+        let name_length = u16::try_from(name_bytes.len()).map_err(|_| {
+            crate::msg!(
+                "zip.name_too_long",
+                "The name '{name}' is too long.",
+                name = name
+            )
+        })?;
         // Bit 11 of the flags: the name is UTF-8.
         let flags: u16 = 1 << 11;
 

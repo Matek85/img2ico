@@ -48,7 +48,8 @@
     packMeta,
     toEngineOptions,
   } from '../lib/settings';
-  import { explain, friendly } from '../lib/messages';
+  import { describeMessage, explain } from '../lib/messages';
+  import { shortName } from '../lib/names';
 
   let {
     file,
@@ -565,13 +566,13 @@
   <p class="failure" role="alert">{t('state.failed', { reason: openFailure })}</p>
   <button type="button" onclick={onback}><Icon name="back" />{t('state.back')}</button>
 {:else if !opened}
-  <p class="working" role="status">{t('state.opening', { name: file.name })}</p>
+  <p class="working" role="status">{t('state.opening', { name: shortName(file.name) })}</p>
 {:else}
   <!-- On a wide window the queue (and its note) is a column to the left of the editor. -->
   <div class="workspace" class:with-queue={queue.items.length > 0}>
   <div class="bar">
     <button type="button" class="quiet" onclick={leave}><Icon name="back" />{t('state.back')}</button>
-    <span class="file">{file.name}</span>
+    <span class="file" title={file.name}>{file.name}</span>
     <figure class="original">
       <img src={originalUrl} alt={t('editor.source')} />
       <figcaption>
@@ -597,7 +598,7 @@
 
   {#if editId !== undefined}
     <div class="editing-note" role="status">
-      <span>{t('queue.editing_note', { name: queue.find(editId)?.fileName ?? file.name })}</span>
+      <span>{t('queue.editing_note', { name: shortName(queue.find(editId)?.fileName ?? file.name) })}</span>
       <label class="autosave">
         <input type="checkbox" bind:checked={autoSave} onchange={() => saveAutoSave(autoSave)} />
         {t('queue.autosave')}
@@ -652,7 +653,7 @@
         </button>
         <button type="button" class="primary" onclick={download} disabled={!converted || working || packing}>
           <Icon name="download" />
-          {packing ? t('site.building') : t('download.button', { name: downloadName(file.name, settings.format) })}
+          {packing ? t('site.building') : t('download.button', { name: shortName(downloadName(file.name, settings.format)) })}
         </button>
       </div>
     </div>
@@ -813,7 +814,7 @@
         <h3>{t('editor.warnings')}</h3>
         <ul class="findings warn">
           {#each converted.warnings as warning}
-            <li>{friendly(warning)}</li>
+            <li>{describeMessage(warning)}</li>
           {/each}
         </ul>
       {/if}

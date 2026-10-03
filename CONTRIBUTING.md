@@ -44,6 +44,7 @@ Rules for changes to the page:
 
 - **Every text goes through the message catalogue** (`web/src/i18n/en.ts`, used with `t('key', { params })`); nothing is written into the markup. The page will be translated, so the same placeholders must be usable in every language, and plurals are keys with `_one` / `_other`. Texts of the engine are shown through `web/src/lib/messages.ts`.
 - **Buttons** are sized by the classes at the end of `web/src/app.css` (`primary`, `outline`, `quiet`, `icon-button`, `chip`, `small`); a button that does something has a line icon (`web/src/lib/icons.ts`) in front of its text, and an icon-only button has a tooltip and an `aria-label`.
+- **A new warning or error of the engine is made with `msg!`** (`crates/core/src/msg.rs`: `msg!("area.what", "English sentence with {values}", value = ...)`), never with a bare `format!`, and gets a sentence in `web/src/i18n/en.ts` under `msg.area.what` that uses the same values. `npm test` checks that every code has one.
 - **The page and the command line must give the same bytes.** The page only calls the engine; nothing in `web/` converts pixels itself.
 - **Relative paths only**, so the built folder works from any address.
 - Before a pull request: `npm run check`, `npm test`, `npm run build`, and, for the Rust side, the commands of the Rust CI jobs. A Lighthouse run (see `docs/web-plan.md`) catches problems with accessibility and search engines.
