@@ -2441,6 +2441,12 @@ input[type='range'] {
     max-height: calc(100vh - 2rem);
     overflow: auto;
   }
+
+  .editor .preview.tall {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
 }
 
 /* =========================================================================
@@ -3957,6 +3963,37 @@ body.wide .ai-note {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
+}
+
+.changes-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.changes-head h2 {
+  margin: 0;
+}
+
+.changes-head button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.aspects .chip-sep {
+  align-self: stretch;
+  width: 1px;
+  margin: 0.2rem 0.3rem;
+  background: var(--border);
+}
+
+.aspects .history-toggle {
+  min-width: var(--control-small);
+  padding: 0;
+  justify-content: center;
 }
 
 .changes:focus {

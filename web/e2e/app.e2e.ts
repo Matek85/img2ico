@@ -382,15 +382,21 @@ test.describe('shortcuts and the look of the page', () => {
     // The other picture has none of them ...
     await page.getByRole('button', { name: /Edit text\.ico/ }).first().click();
     await expect(page.locator('.bar .file')).toHaveText('text.svg');
+    await expect(page.locator('.download button.primary')).toBeEnabled();
+    // (A vector picture has no crop panel; its button is under the editor.)
     await page.getByRole('button', { name: 'Show the changes' }).click();
     await expect(page.locator('.change-list button.change')).toHaveCount(1);
     // ... and the first has them still.
     await page.getByRole('button', { name: /Edit logo\.ico/ }).first().click();
     await expect(page.locator('.bar .file')).toHaveText('logo.png');
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    await page.keyboard.press('c');
     await page.getByRole('button', { name: 'Show the changes' }).click();
     await expect(page.locator('.change-list button.change')).toHaveCount(3);
     await page.keyboard.press('Control+z');
     await expect(page.locator('.change-list button.change').nth(1)).toHaveAttribute('aria-current', 'step');
+    await page.locator('.changes-head').getByRole('button', { name: 'Hide the changes' }).click();
+    await expect(page.locator('.change-list')).toHaveCount(0);
   });
 
   test('"Reset to defaults" can be undone', async ({ page }) => {

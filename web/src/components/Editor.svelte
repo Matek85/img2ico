@@ -571,6 +571,30 @@
       .reverse(),
   );
 
+  // The preview stays in view while the page is scrolled, but only if it fits the window: a taller one is
+  // part of the page (a scroll bar of its own in the middle of the page is worse than none).
+  function stickIfItFits(node: HTMLElement) {
+    const check = () => node.classList.toggle('tall', node.scrollHeight > window.innerHeight - 32);
+    const resizer = new ResizeObserver(check);
+    const watch = () => {
+      resizer.disconnect();
+      resizer.observe(node);
+      for (const child of node.children) resizer.observe(child);
+      check();
+    };
+    const changes = new MutationObserver(watch);
+    changes.observe(node, { childList: true });
+    window.addEventListener('resize', check);
+    watch();
+    return {
+      destroy() {
+        resizer.disconnect();
+        changes.disconnect();
+        window.removeEventListener('resize', check);
+      },
+    };
+  }
+
   // The list is folded away until asked for; opening it makes it flash once and takes the focus.
   let changesOpen = $state(false);
   let changesBox = $state<HTMLElement>();
@@ -1189,7 +1213,7 @@
     {#if settings.format === 'icns'}<p class="hint">{t('download.icns_note')}</p>{/if}
   </section>
   <div class="editor" class:folded={!sideOpen}>
-    <section class="preview" aria-labelledby="preview-title">
+    <section class="preview" aria-labelledby="preview-title" use:stickIfItFits>
       <h2 id="preview-title">{t('editor.preview')}</h2>
 
       <div class="views-row">
@@ -1300,6 +1324,19 @@
           {choice === 'free' ? t('crop.aspect_free') : choice}
         </label>
       {/each}
+      <span class="chip-sep" aria-hidden="true"></span>
+      <button
+        type="button"
+        class="chip history-toggle"
+        class:chosen={changesOpen}
+        aria-expanded={changesOpen}
+        aria-controls="changes"
+        title={changesOpen ? t('history.hide') : t('history.show')}
+        aria-label={changesOpen ? t('history.hide') : t('history.show')}
+        onclick={toggleChanges}
+      >
+        <Icon name="history" size={16} />
+      </button>
     </div>
     <div class="place-group">
     <div class="place" role="group" aria-label={t('crop.place')}>
@@ -1596,19 +1633,25 @@
     {/if}
   </div>
 
-  {#if opened}
+  <!-- A vector picture has no crop panel (where the button is); it gets one of its own. -->
+  {#if opened?.vector}
     <div class="changes-toggle">
       <button type="button" class="quiet small" aria-expanded={changesOpen} aria-controls="changes" onclick={toggleChanges}>
         <Icon name="history" size={16} />
         {changesOpen ? t('history.hide') : t('history.show')}
-        <Icon name={changesOpen ? 'chevronUp' : 'chevronDown'} size={16} />
       </button>
     </div>
   {/if}
 
   {#if opened && changesOpen}
     <section id="changes" class="changes" class:flash={flashChanges} bind:this={changesBox} tabindex="-1" aria-labelledby="changes-title">
-      <h2 id="changes-title">{t('history.title')}</h2>
+      <div class="changes-head">
+        <h2 id="changes-title">{t('history.title')}</h2>
+        <button type="button" class="quiet small" onclick={toggleChanges}>
+          {t('history.hide')}
+          <Icon name="chevronUp" size={16} />
+        </button>
+      </div>
       <p class="hint">{t('history.hint', { count: HISTORY_STEPS })}</p>
       {#if timeline.states.length < 2}
         <p class="hint">{t('history.empty')}</p>
