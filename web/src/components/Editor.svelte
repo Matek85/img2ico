@@ -413,6 +413,10 @@
 
   function resetSettings() {
     settings = defaultSettings();
+    // The crop goes back to the whole picture (the frame is what `settings.crop` is made from).
+    if (opened) frame = fullRect(opened);
+    cropOn = masking;
+    cropAspect = 'free';
     keptColors = [];
     customColor = '#3b82f6';
     backdrop = 'checker';
