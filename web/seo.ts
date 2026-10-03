@@ -95,7 +95,7 @@ export function headTags(m: Messages, siteUrl: string, page?: PageInfo, lang: st
     tags.push(
       `<link rel="canonical" href="${escapeHtml(address)}" />`,
       `<meta property="og:url" content="${escapeHtml(address)}" />`,
-      ...LANGUAGES.map((entry) => `<link rel="alternate" hreflang="${entry.code}" href="${escapeHtml(siteUrl + langDir(entry.code) + pagePath)}" />`),
+      ...LANGUAGES.map((entry) => `<link rel="alternate" hreflang="${langTag(entry.code)}" href="${escapeHtml(siteUrl + langDir(entry.code) + pagePath)}" />`),
       `<link rel="alternate" hreflang="x-default" href="${escapeHtml(siteUrl + pagePath)}" />`,
       `<meta property="og:image" content="${escapeHtml(siteUrl)}og-image.png" />`,
       `<meta property="og:image:width" content="1200" />`,
@@ -182,6 +182,14 @@ export const LANGUAGES = [
 
 export type LanguageCode = (typeof LANGUAGES)[number]['code'];
 
+/** The language as a tag for `lang` and `hreflang`: "pt-br" is written "pt-BR". */
+export function langTag(code: string): string {
+  return code
+    .split('-')
+    .map((part, i) => (i ? part.toUpperCase() : part))
+    .join('-');
+}
+
 /** The folder of a language below the site's root: none for English. */
 export function langDir(code: string): string {
   return code === 'en' ? '' : `${code}/`;
@@ -211,7 +219,7 @@ export function navHtml(m: Messages, prefix = './', lang: string = 'en', pagePat
   const current = LANGUAGES.find((language) => language.code === lang) ?? LANGUAGES[0];
   const languages = LANGUAGES.map(
     (language) =>
-      `<a href="${prefix}${langDir(language.code)}${pagePath}" lang="${language.code}" hreflang="${language.code}" data-lang="${language.code}"${language.code === current.code ? ' aria-current="true"' : ''}>${flag(language.flag)}${escapeHtml(language.name)}</a>`,
+      `<a href="${prefix}${langDir(language.code)}${pagePath}" lang="${langTag(language.code)}" hreflang="${langTag(language.code)}" data-lang="${language.code}"${language.code === current.code ? ' aria-current="true"' : ''}>${flag(language.flag)}${escapeHtml(language.name)}</a>`,
   ).join('\n              ');
   return `<details class="menu">
             <summary>${escapeHtml(m['nav.help'])}</summary>
@@ -307,7 +315,7 @@ export function sitemapXml(siteUrl: string): string {
   const urls = LANGUAGES.flatMap((language) =>
     pages.map((page) => {
       const alternates = [
-        ...LANGUAGES.map((other) => `<xhtml:link rel="alternate" hreflang="${other.code}" href="${at(other.code, page)}"/>`),
+        ...LANGUAGES.map((other) => `<xhtml:link rel="alternate" hreflang="${langTag(other.code)}" href="${at(other.code, page)}"/>`),
         `<xhtml:link rel="alternate" hreflang="x-default" href="${at('en', page)}"/>`,
       ].join('');
       return `  <url><loc>${at(language.code, page)}</loc>${alternates}</url>`;
@@ -339,7 +347,7 @@ export function seo(address?: string): Plugin {
       const page = slug ? helpPageInfo(m, slug) : undefined;
       const prefix = depth ? '../'.repeat(depth) : './';
       return html
-        .replace('<html lang="en">', () => `<html lang="${lang}">`)
+        .replace('<html lang="en">', () => `<html lang="${langTag(lang)}">`)
         .replace('<!--seo:head-->', () => headTags(m, siteUrl, page, lang, prefix))
         .replace('<!--seo:brand-->', () => brandHtml(m, prefix, lang))
         .replace('<!--seo:notice-->', () => noticeHtml(m, lang))

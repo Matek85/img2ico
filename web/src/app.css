@@ -3614,7 +3614,7 @@ kbd {
 /* The note on a page that an AI translated: quiet, but there before the page's content. */
 .ai-note {
   max-width: 44rem;
-  margin: 0.75rem auto 0;
+  margin: 0.75rem auto 0.75rem;
   padding: 0.5rem 0.9rem;
   color: var(--muted);
   font-size: 0.9rem;

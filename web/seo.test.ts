@@ -9,6 +9,7 @@ import {
   helpHtml,
   helpPageInfo,
   langDir,
+  langTag,
   languageRedirect,
   locate,
   navHtml,
@@ -145,6 +146,13 @@ describe('the languages', () => {
     expect(langDir('pt-br')).toBe('pt-br/');
   });
 
+  it('are written as language tags: pt-BR with its region in capitals', () => {
+    expect(langTag('pt-br')).toBe('pt-BR');
+    expect(langTag('de')).toBe('de');
+    expect(navHtml(en, './', 'en', '')).toContain('lang="pt-BR" hreflang="pt-BR" data-lang="pt-br"');
+    expect(sitemapXml('https://example.org/')).toContain('hreflang="pt-BR" href="https://example.org/pt-br/"');
+  });
+
   it('are told apart by the address of a page', () => {
     expect(locate('/')).toEqual({ lang: 'en', slug: undefined, depth: 0 });
     expect(locate('/index.html')).toEqual({ lang: 'en', slug: undefined, depth: 0 });
@@ -157,7 +165,7 @@ describe('the languages', () => {
     const tags = headTags(CATALOGUES.de, 'https://example.org/img2ico/', helpPageInfo(CATALOGUES.de, 'privacy'), 'de', '../../../');
     expect(tags).toContain('<link rel="canonical" href="https://example.org/img2ico/de/help/privacy/" />');
     for (const language of LANGUAGES) {
-      expect(tags).toContain(`hreflang="${language.code}" href="https://example.org/img2ico/${langDir(language.code)}help/privacy/"`);
+      expect(tags).toContain(`hreflang="${langTag(language.code)}" href="https://example.org/img2ico/${langDir(language.code)}help/privacy/"`);
     }
     expect(tags).toContain('hreflang="x-default" href="https://example.org/img2ico/help/privacy/"');
     expect(tags).toContain('<meta property="og:locale" content="de_DE" />');

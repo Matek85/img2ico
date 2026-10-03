@@ -1,5 +1,5 @@
 // German (Deutsch). The same keys as en.ts, addressed to the reader as "du". Terms: Icon, Bild, Warteschlange
-// (queue), Rahmen (frame), Bearbeiten (edit), Hinweise (notes). Reviewed by the maintainer, a native speaker.
+// (queue), Rahmen (frame), Bearbeiten (edit), Hinweise (notes). Written by an AI; the maintainer, a native speaker, reviews it (so this page has no AI note).
 import type { MessageKey } from './en';
 
 export const de: Record<MessageKey, string> = {
