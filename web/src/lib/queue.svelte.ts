@@ -6,7 +6,7 @@ import { iconEntries } from './ico';
 import { moveItem } from './queue';
 import type { Settings } from './settings';
 
-export type QueueFormat = 'ico' | 'icns';
+type QueueFormat = 'ico' | 'icns';
 
 export interface QueueItem {
   id: number;

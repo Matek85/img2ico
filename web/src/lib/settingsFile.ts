@@ -34,7 +34,7 @@ export const PRESET_SIZES: Record<string, readonly number[]> = {
   minimal: [16, 32],
 };
 
-export type ProblemCode =
+type ProblemCode =
   /** The text is not a settings file (a line that is not `key = value`, an unsupported kind of value). */
   | 'syntax'
   /** The same key twice. */

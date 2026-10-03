@@ -128,7 +128,7 @@ const SCENES = [
  * from the picture type into ICO (or ICNS). Decoration only; the animation is
  * pure CSS, and without motion the first scene stands finished.
  */
-export function artHtml(): string {
+function artHtml(): string {
   const scenes = SCENES.map(
     (scene, i) => `<div class="scene art${i + 1}" style="--i:${i}">
             <div class="frame"><div class="pic"></div><span class="tag"><b class="from">${scene.from}</b><b class="to">${scene.to}</b></span></div>
@@ -275,7 +275,7 @@ export function helpHtml(m: Messages, slug: string, prefix: string, lang: string
 }
 
 /** The logo and name of the site in the top bar, leading to the start page of the language. */
-export function brandHtml(m: Messages, prefix: string, lang: string): string {
+function brandHtml(m: Messages, prefix: string, lang: string): string {
   const home = prefix + langDir(lang);
   return `<a class="brand" href="${home}"><img src="${prefix}favicon.png" alt="" width="36" height="36" /><span>${escapeHtml(m['app.name'])}</span></a>`;
 }
