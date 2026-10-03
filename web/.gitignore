@@ -7,3 +7,6 @@ src/wasm/pkg/
 /es/
 /pt-br/
 /fr/
+# Playwright (npm run e2e): reports and traces of the last run.
+test-results/
+playwright-report/

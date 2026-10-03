@@ -38,6 +38,16 @@ npm test                          # the page's tests
 npm run build                     # the finished static page in web/dist
 ```
 
+The browser tests (`web/e2e`, [Playwright](https://playwright.dev)) open the finished page in a real browser: converting, the formats, icon files and the queue, the languages, the shortcuts. Build first, then:
+
+```
+npm run build
+npx playwright install chromium   # once; the browser the tests use
+npm run e2e                       # or: PW_CHANNEL=msedge npm run e2e, with the Edge or Chrome you already have
+```
+
+When a test fails, `playwright-report/` and `test-results/` (screenshots, traces) show what the browser saw; CI keeps them as the artifact `e2e-report`.
+
 `SITE_URL=https://example.org/img2ico/ npm run build` also writes the canonical link, the link-preview address and `sitemap.xml` (without it they are left out, so the build works from any address). See the search engine section of `docs/web-plan.md`.
 
 Rules for changes to the page:
@@ -49,7 +59,7 @@ Rules for changes to the page:
 - **A new warning or error of the engine is made with `msg!`** (`crates/core/src/msg.rs`: `msg!("area.what", "English sentence with {values}", value = ...)`), never with a bare `format!`, and gets a sentence in `web/src/i18n/en.ts` under `msg.area.what` that uses the same values. `npm test` checks that every code has one.
 - **The page and the command line must give the same bytes.** The page only calls the engine; nothing in `web/` converts pixels itself.
 - **Relative paths only**, so the built folder works from any address.
-- Before a pull request: `npm run check`, `npm test`, `npm run build`, and, for the Rust side, the commands of the Rust CI jobs. A Lighthouse run (see `docs/web-plan.md`) catches problems with accessibility and search engines.
+- Before a pull request: `npm run check`, `npm test`, `npm run build`, `npm run e2e`, and, for the Rust side, the commands of the Rust CI jobs. A Lighthouse run (see `docs/web-plan.md`) catches problems with accessibility and search engines.
 
 `npm run build:wasm` rebuilds only the engine (`crates/wasm`) into `web/src/wasm/pkg/`, which is generated and not committed. The `web/dist` folder works from any address, so it can be copied to any web space.
 
