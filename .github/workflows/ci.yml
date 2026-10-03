@@ -322,7 +322,7 @@ jobs:
           done
 
       - name: Upload the generated .icns and its decomposed iconset
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: icns-verification
           path: |
