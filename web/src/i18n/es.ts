@@ -350,6 +350,7 @@ export const es: Record<MessageKey, string> = {
   'queue.sub_add_chosen': 'Añadir las {count} elegidas juntas como un icono',
   'queue.sub_add_chosen_none': 'Marca dos o más para añadirlas juntas como un icono',
   'queue.sub_close': 'Cerrar',
+  'queue.inspect_hint': 'Mirar dentro de este archivo de icono: revisarlo, desmontarlo y guardar sus imágenes',
   'queue.look': 'Mirar dentro de {name}',
   'queue.as_it_is': 'archivo de icono tal cual',
   'queue.next_button': 'Añadir la siguiente imagen',

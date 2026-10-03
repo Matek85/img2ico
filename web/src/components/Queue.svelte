@@ -8,6 +8,7 @@
   import { stemOf } from '../lib/batch';
   import Compare from './Compare.svelte';
   import Icon from './Icon.svelte';
+  import InspectDialog from './InspectDialog.svelte';
   import { explain } from '../lib/messages';
   import { shortName } from '../lib/names';
 
@@ -123,6 +124,8 @@
     format: string;
     url: string;
   }
+  // The icon file that is being looked into, over the page.
+  let inspecting = $state<QueueItem | null>(null);
   let sub = $state<{ id: number; images: SubImage[] } | null>(null);
   let subTicked = $state<number[]>([]);
   let subRoot = $state<HTMLElement>();
@@ -284,10 +287,11 @@
           <button
             type="button"
             class="open"
-            aria-label={t(item.kind === 'icon' ? 'queue.look' : 'queue.edit', { name: item.fileName })}
+            aria-label={item.kind === 'icon' ? t('queue.as_picture_for', { name: item.fileName }) : t('queue.edit', { name: item.fileName })}
             aria-current={item.id === activeId ? 'true' : undefined}
-            disabled={!onopen || item.id === activeId}
-            onclick={() => onopen?.(item)}
+            title={item.kind === 'icon' ? t('queue.as_picture_hint') : undefined}
+            disabled={item.kind === 'icon' ? working || !onpicture : !onopen || item.id === activeId}
+            onclick={() => (item.kind === 'icon' ? asPicture(item) : onopen?.(item))}
           >
             {#if item.thumb}<img src={item.thumb} alt="" width="40" height="40" />{:else}<span class="blank"></span>{/if}
             <span class="what">
@@ -298,15 +302,14 @@
             </span>
           </button>
           <div class="item-buttons">
-            {#if onpicture && item.kind === 'icon'}
+            {#if item.kind === 'icon'}
               <button
                 type="button"
                 class="quiet icon-button"
-                title={t('queue.as_picture_hint')}
-                aria-label={t('queue.as_picture_for', { name: item.fileName })}
-                disabled={working}
-                onclick={() => asPicture(item)}
-              ><Icon name="edit" /></button>
+                title={t('queue.inspect_hint')}
+                aria-label={t('queue.look', { name: item.fileName })}
+                onclick={() => (inspecting = item)}
+              ><Icon name="search" /></button>
             {/if}
             {#if pickable(item)}
               <button
@@ -445,4 +448,8 @@
     {#if failure}<p class="failure" role="alert">{failure}</p>{/if}
     <p class="hint queue-note">{t('queue.note')}</p>
   </section>
+{/if}
+
+{#if inspecting}
+  <InspectDialog file={inspecting.file} onclose={() => (inspecting = null)} />
 {/if}

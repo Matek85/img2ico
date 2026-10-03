@@ -22,9 +22,12 @@
     file,
     onback,
     onpicture,
+    inspect = false,
   }: {
     file: File;
     onback: () => void;
+    /** Shown over the page (from the queue): only looking and saving, no way into the editor from here. */
+    inspect?: boolean;
     /** Opens a picture made from one of the images in the editor (it is put in the queue). */
     onpicture: (files: File[]) => void;
   } = $props();
@@ -138,7 +141,9 @@
   <p class="working" role="status">{t('state.working', { name: shortName(file.name) })}</p>
 {:else}
   <div class="bar">
-    <button type="button" class="quiet" onclick={onback}><Icon name="back" />{t('state.back')}</button>
+    <button type="button" class="quiet" onclick={onback}>
+      {#if inspect}<Icon name="close" />{t('queue.sub_close')}{:else}<Icon name="back" />{t('state.back')}{/if}
+    </button>
     <span class="file" title={file.name}>{file.name}</span>
   </div>
 
@@ -196,9 +201,11 @@
             <button type="button" class="quiet" disabled={working} onclick={() => savePng(image.index, image.width)}>
               <Icon name="download" /> {t('iconfile.save_png')}
             </button>
-            <button type="button" class="quiet" disabled={working} title={t('queue.as_picture_this_hint')} onclick={() => asPicture(image.index)}>
-              <Icon name="edit" /> {t('queue.as_picture')}
-            </button>
+            {#if !inspect}
+              <button type="button" class="quiet" disabled={working} title={t('queue.as_picture_this_hint')} onclick={() => asPicture(image.index)}>
+                <Icon name="edit" /> {t('queue.as_picture')}
+              </button>
+            {/if}
           </li>
         {/each}
       </ul>
@@ -225,9 +232,11 @@
         <button type="button" class="quiet" onclick={() => (selected = [])}><Icon name="checkNone" /> {t('iconfile.select_none')}</button>
       </div>
       <div class="actions">
-        <button type="button" class="outline" disabled={working} title={t('queue.as_picture_hint')} onclick={() => asPicture()}>
-          <Icon name="edit" /> {t('iconfile.as_picture_largest')}
-        </button>
+        {#if !inspect}
+          <button type="button" class="outline" disabled={working} title={t('queue.as_picture_hint')} onclick={() => asPicture()}>
+            <Icon name="edit" /> {t('iconfile.as_picture_largest')}
+          </button>
+        {/if}
         <button type="button" class="outline" disabled={working} onclick={() => addToQueue()}><Icon name="queueAdd" /> {t('iconfile.add_all')}</button>
         <button type="button" class="outline" disabled={working || selected.length === 0} onclick={() => addToQueue([...selected])}>
           <Icon name="queueAdd" /> {t('iconfile.add_selected', { count: selected.length })}
@@ -239,4 +248,4 @@
   {#if actionFailure}<p class="failure" role="alert">{actionFailure}</p>{/if}
 {/if}
 
-<DropOverlay onfiles={onpicture} label={t('queue.drop')} />
+{#if !inspect}<DropOverlay onfiles={onpicture} label={t('queue.drop')} />{/if}
