@@ -35,17 +35,20 @@
 
   let view = $state<View>({ kind: 'start' });
 
+  // The footer says which build this is; written again when the language changes (the line stays when the
+  // page's other texts are swapped, see language.ts).
+  $effect(() => {
+    const line = document.getElementById('engine');
+    if (!line) return;
+    line.textContent = t('footer.build', { date: __BUILD_DATE__, commit: __BUILD_COMMIT__ });
+    line.hidden = false;
+  });
+
   onMount(() => {
     // The page around the app (heading, text, footer) is plain HTML in
     // index.html. Start the engine once the page has settled, so the first
     // picture is converted without waiting for it.
     const start = () => engineVersion().then(() => {}, () => {});
-    // The footer says which build this is.
-    const line = document.getElementById('engine');
-    if (line) {
-      line.textContent = t('footer.build', { date: __BUILD_DATE__, commit: __BUILD_COMMIT__ });
-      line.hidden = false;
-    }
     if ('requestIdleCallback' in window) requestIdleCallback(() => void start(), { timeout: 3000 });
     else setTimeout(() => void start(), 1000);
   });
