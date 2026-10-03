@@ -649,11 +649,12 @@ a {
   .hero-art .sizes i:nth-child(5) { --n: 4; }
 }
 
+/* A scene fades in, stays, and is gone (a short empty moment) before the next one starts. */
 @keyframes scene-life {
   0% { opacity: 0; }
-  1.5% { opacity: 1; }
-  18.5% { opacity: 1; }
-  20%, 100% { opacity: 0; }
+  2% { opacity: 1; }
+  17% { opacity: 1; }
+  19%, 100% { opacity: 0; }
 }
 
 /* The picture comes in wide, then shrinks to an app-icon square. */
@@ -674,9 +675,12 @@ a {
 }
 
 /* The sizes pop up one after another, largest first. */
+/* They are hidden again before the scene ends: their loops start a little after the scene's (the stagger), so
+   an end state that stayed visible would show at the start of the next round. */
 @keyframes size-pop {
   0%, 10% { opacity: 0; transform: translateX(-1.5rem) scale(0.3); }
-  14%, 100% { opacity: 1; transform: none; }
+  14%, 17% { opacity: 1; transform: none; }
+  19%, 100% { opacity: 0; transform: none; }
 }
 
 /* The start page has the big heading; while working, it shrinks to a title. */
