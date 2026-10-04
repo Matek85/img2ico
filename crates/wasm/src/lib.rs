@@ -7,9 +7,10 @@ use image::RgbaImage;
 use img2ico_core::archive::{ZipArchive, write_zip};
 use img2ico_core::convert::{
     Background, BackgroundMode, DEFAULT_SIZES, Format, NoNotes, Options, Sizes, analyze_raster,
-    convert_raster, convert_vector,
+    convert_raster, convert_vector, render_raster_original, render_vector_original,
 };
 use img2ico_core::diag;
+use img2ico_core::export::{ImageKind, encode_image};
 use img2ico_core::favicon::{head_snippet, manifest};
 use img2ico_core::icon::{
     alpha_share, alpha_summary, entry_png, merge, missing_windows_sizes, read_dir, read_entry,
@@ -292,6 +293,112 @@ pub fn png_zip(bytes: &[u8], stem: &str) -> Result<Vec<u8>, String> {
     write_zip(&files)
 }
 
+/// The images of an .ico file as files of another kind (`png`, `jpg`, `webp`, `bmp`, `tiff`), in a ZIP, named
+/// `<stem>_<w>x<h>.<ending>`. A kind without transparency (jpg, bmp) lays the images on `background` (`#rrggbb`).
+#[wasm_bindgen]
+pub fn icon_image_zip(
+    bytes: &[u8],
+    stem: &str,
+    kind: &str,
+    background: &str,
+) -> Result<Vec<u8>, JsError> {
+    image_zip(bytes, stem, kind, background).map_err(failure)
+}
+
+/// `icon_image_zip` without the JavaScript error type.
+pub fn image_zip(
+    bytes: &[u8],
+    stem: &str,
+    kind: &str,
+    background: &str,
+) -> Result<Vec<u8>, String> {
+    let kind = image_kind(kind)?;
+    let background = background_color(background)?;
+    let dir = read_dir(bytes, "the icon file")?;
+    if dir.entries().is_empty() {
+        return Err(img2ico_core::msg!(
+            "icon.no_images",
+            "The icon file has no images."
+        ));
+    }
+    let mut names: Vec<String> = Vec::new();
+    let mut files = Vec::new();
+    for entry in dir.entries() {
+        let name = unique_file_name(
+            &names,
+            stem,
+            entry.width(),
+            entry.height(),
+            kind.extension(),
+        );
+        files.push((name.clone(), entry_image(entry, kind, background)?));
+        names.push(name);
+    }
+    write_zip(&files)
+}
+
+/// One image of an .ico file (the one at `index`) as a file of another kind (see `icon_image_zip`).
+#[wasm_bindgen]
+pub fn icon_image(
+    bytes: &[u8],
+    index: usize,
+    kind: &str,
+    background: &str,
+) -> Result<Vec<u8>, JsError> {
+    image_of_icon(bytes, index, kind, background).map_err(failure)
+}
+
+/// `icon_image` without the JavaScript error type.
+pub fn image_of_icon(
+    bytes: &[u8],
+    index: usize,
+    kind: &str,
+    background: &str,
+) -> Result<Vec<u8>, String> {
+    let kind = image_kind(kind)?;
+    let background = background_color(background)?;
+    let dir = read_dir(bytes, "the icon file")?;
+    let entry = dir.entries().get(index).ok_or_else(|| {
+        img2ico_core::msg!(
+            "icon.no_such_image",
+            "The icon file has {count} image(s); there is no image number {index}.",
+            count = dir.entries().len(),
+            index = index
+        )
+    })?;
+    entry_image(entry, kind, background)
+}
+
+fn entry_image(
+    entry: &ico::IconDirEntry,
+    kind: ImageKind,
+    background: [u8; 3],
+) -> Result<Vec<u8>, String> {
+    let png = entry_png(entry, "the icon file")?;
+    if kind == ImageKind::Png {
+        return Ok(png);
+    }
+    let image = image::load_from_memory_with_format(&png, image::ImageFormat::Png)
+        .map_err(|e| e.to_string())?
+        .to_rgba8();
+    encode_image(&image, kind, background)
+}
+
+fn image_kind(text: &str) -> Result<ImageKind, String> {
+    ImageKind::parse(text).ok_or_else(|| {
+        img2ico_core::msg!(
+            "export.unknown_type",
+            "{kind} is not an image type this page can make.",
+            kind = text
+        )
+    })
+}
+
+fn background_color(text: &str) -> Result<[u8; 3], String> {
+    img2ico_core::chroma_key::parse_hex_color(text)
+        .map_err(|e| format!("Invalid background color: {e}"))
+}
+
 /// Collects several .ico files and merges them into one. If two files hold the
 /// same size, the first wins and the others are reported as warnings.
 #[wasm_bindgen]
@@ -560,6 +667,14 @@ impl Source {
         self.pack_with(options, meta).map_err(failure)
     }
 
+    /// The picture as it was edited (the options, JSON text, see `parse_options`: the background removed, mirrored,
+    /// turned, cropped, trimmed, black and white; not the margin, corners or sizes of an icon), in its own size,
+    /// as an image file of the kind `png`, `jpg`, `webp`, `bmp` or `tiff`. `flatten` in the options is the color
+    /// jpg and bmp lay it on (white if there is none). The output's sizes are its width and height.
+    pub fn image(&self, options: &str, kind: &str) -> Result<Output, JsError> {
+        self.image_with(options, kind).map_err(failure)
+    }
+
     /// Makes the icon file the options (JSON text, see `parse_options`) ask for.
     pub fn convert(&self, options: &str) -> Result<Output, JsError> {
         self.convert_with(options).map_err(failure)
@@ -636,6 +751,32 @@ impl Source {
     /// `convert` without the JavaScript error type, so it can be tested.
     pub fn convert_with(&self, options_json: &str) -> Result<Output, String> {
         self.run(&parse_options(options_json)?)
+    }
+
+    /// `image` without the JavaScript error type, so it can be tested.
+    pub fn image_with(&self, options_json: &str, kind: &str) -> Result<Output, String> {
+        let kind = image_kind(kind)?;
+        let options = parse_options(options_json)?;
+        // The color a kind without transparency lays the picture on; the other kinds keep the transparency.
+        let background = options.flatten.unwrap_or([255, 255, 255]);
+        let options = Options {
+            flatten: None,
+            ..options
+        };
+        let (result, warnings) = diag::collect(|| match &self.picture {
+            Picture::Raster(image) => {
+                let analysis = analyze_raster(image, &options, &NoNotes)?;
+                render_raster_original(image.clone(), &options, &analysis, &NoNotes)
+            }
+            Picture::Vector(drawing) => render_vector_original(drawing, &options, &NoNotes),
+        });
+        let picture = result?;
+        let (width, height) = picture.dimensions();
+        Ok(Output {
+            bytes: encode_image(&picture, kind, background)?,
+            sizes: vec![width, height],
+            warnings,
+        })
     }
 
     /// `favicon_pack` without the JavaScript error type.
@@ -1220,6 +1361,73 @@ mod tests {
         let first = zip.read(zip.files()[0].index).unwrap();
         assert!(first.starts_with(&[0x89, b'P', b'N', b'G']));
         assert!(png_zip(b"nope", "x").is_err());
+    }
+
+    #[test]
+    fn the_images_of_an_icon_come_as_a_zip_of_any_kind() {
+        let bytes = icon_of(&[16, 48]);
+        let zip = ZipArchive::open(image_zip(&bytes, "logo", "JPG", "#ffffff").unwrap()).unwrap();
+        let names: Vec<String> = zip.files().into_iter().map(|f| f.name).collect();
+        assert_eq!(names, vec!["logo_16x16.jpg", "logo_48x48.jpg"]);
+        let first = zip.read(zip.files()[0].index).unwrap();
+        assert!(
+            first.starts_with(&[0xFF, 0xD8, 0xFF]),
+            "a JPEG starts with its marker"
+        );
+        let webp = image_of_icon(&bytes, 1, "webp", "#ffffff").unwrap();
+        assert_eq!(&webp[..4], b"RIFF");
+        assert_eq!(
+            image::GenericImageView::dimensions(&image::load_from_memory(&webp).unwrap()),
+            (48, 48)
+        );
+        assert!(
+            image_zip(&bytes, "logo", "gif", "#ffffff")
+                .unwrap_err()
+                .contains("not an image type")
+        );
+        assert!(image_of_icon(&bytes, 5, "png", "#ffffff").is_err());
+        assert!(image_zip(&bytes, "logo", "png", "nope").is_err());
+    }
+
+    #[test]
+    fn the_picture_can_be_saved_in_its_own_size_after_the_edits() {
+        let source = source(&png(60, 40));
+        // Cropped to 30 x 20, turned a quarter (20 x 30), margin and sizes of the icon do not matter.
+        let output = source
+            .image_with(
+                r#"{"crop": {"x": 0, "y": 0, "width": 20, "height": 30}, "rotate": 90, "padding": 10, "sizes": [16]}"#,
+                "png",
+            )
+            .unwrap();
+        assert_eq!(output.sizes, vec![20, 30]);
+        let image = image::load_from_memory(&output.bytes).unwrap();
+        assert_eq!(image::GenericImageView::dimensions(&image), (20, 30));
+        // A JPEG of it lies on the color of `flatten`.
+        let jpeg = source
+            .image_with(r##"{"flatten": "#102030"}"##, "jpg")
+            .unwrap();
+        assert!(jpeg.bytes.starts_with(&[0xFF, 0xD8, 0xFF]));
+        assert_eq!(jpeg.sizes, vec![60, 40]);
+        assert!(
+            source
+                .image_with("{}", "svg")
+                .err()
+                .unwrap()
+                .contains("not an image type")
+        );
+    }
+
+    #[test]
+    fn a_drawing_can_be_saved_as_a_picture_at_the_size_it_declares() {
+        let svg = br##"<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><rect width="40" height="20" fill="#336699"/></svg>"##;
+        let source = Source {
+            picture: open_source(svg, "a.svg", 1).unwrap(),
+            svg: Some(svg.to_vec()),
+        };
+        let output = source.image_with("{}", "png").unwrap();
+        assert_eq!(output.sizes, vec![40, 20]);
+        let image = image::load_from_memory(&output.bytes).unwrap().to_rgba8();
+        assert_eq!(image.get_pixel(20, 10).0, [0x33, 0x66, 0x99, 255]);
     }
 
     #[test]

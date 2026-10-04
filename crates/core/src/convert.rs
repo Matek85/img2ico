@@ -422,13 +422,14 @@ fn starting_sizes(options: &Options) -> &[u32] {
     }
 }
 
-/// Converts a raster source that `analyze_raster` has looked at.
-pub fn convert_raster(
+/// The picture as the person edited it, before it is made into icon sizes: the background removed, mirrored,
+/// turned, cropped, trimmed, in black and white if asked. Its own size, its own shape.
+fn prepare_raster(
     mut source: RgbaImage,
     options: &Options,
     analysis: &Analysis,
     notes: &dyn Notes,
-) -> Result<Converted, String> {
+) -> Result<RgbaImage, String> {
     remove_background(&mut source, options, analysis, notes)?;
 
     // The picture is mirrored, then turned, after the background is gone (so the color is found on the
@@ -495,6 +496,32 @@ pub fn convert_raster(
     if options.grayscale {
         apply_grayscale(&mut source);
     }
+    Ok(source)
+}
+
+/// The picture as the person edited it, in its own size (see `prepare_raster`), laid on the color of
+/// `options.flatten` if there is one. For saving it as an image file.
+pub fn render_raster_original(
+    source: RgbaImage,
+    options: &Options,
+    analysis: &Analysis,
+    notes: &dyn Notes,
+) -> Result<RgbaImage, String> {
+    let mut picture = prepare_raster(source, options, analysis, notes)?;
+    if let Some(color) = options.flatten {
+        flatten_onto(&mut picture, color);
+    }
+    Ok(picture)
+}
+
+/// Converts a raster source that `analyze_raster` has looked at.
+pub fn convert_raster(
+    source: RgbaImage,
+    options: &Options,
+    analysis: &Analysis,
+    notes: &dyn Notes,
+) -> Result<Converted, String> {
+    let mut source = prepare_raster(source, options, analysis, notes)?;
 
     // `Sizes::Auto` can only be settled now: it depends on how big the image
     // is after crop and trim.
@@ -566,8 +593,42 @@ pub fn convert_vector(
     notes: &dyn Notes,
 ) -> Result<Converted, String> {
     check_vector_options(options)?;
-    // Text is drawn only where there are fonts to draw it with (the command line, with the system's); a build
-    // without that (the web page) leaves it out, and says so rather than hand back an icon that quietly lacks it.
+    warn_about_vector_text(drawing, options);
+    // A drawing has no resolution to stay below, so `Sizes::Auto` gets all the
+    // sizes it started with.
+    let sizes = starting_sizes(options).to_vec();
+    let layout = options.layout;
+    let background = vector_background(drawing, options, notes)?;
+
+    let render = |size: u32| {
+        let mut square = drawing.render(size, &layout, options.trim);
+        finish_vector(&mut square, options, background.as_ref());
+        square
+    };
+    encode(&render, &sizes, options, options.threads, notes)
+}
+
+/// The drawing at the size it declares, as the person edited it (the background removed, black and white if
+/// asked), laid on the color of `options.flatten` if there is one. For saving it as an image file.
+pub fn render_vector_original(
+    drawing: &VectorImage,
+    options: &Options,
+    notes: &dyn Notes,
+) -> Result<RgbaImage, String> {
+    check_vector_options(options)?;
+    warn_about_vector_text(drawing, options);
+    let background = vector_background(drawing, options, notes)?;
+    let mut picture = drawing.render_page(options.trim)?;
+    finish_vector(&mut picture, options, background.as_ref());
+    if let Some(color) = options.flatten {
+        flatten_onto(&mut picture, color);
+    }
+    Ok(picture)
+}
+
+/// Text is drawn only where there are fonts to draw it with (the command line, with the system's); a build
+/// without that (the web page) leaves it out, and says so rather than hand back a picture that quietly lacks it.
+fn warn_about_vector_text(drawing: &VectorImage, options: &Options) {
     if cfg!(not(feature = "svg-text")) && drawing.has_text() {
         warn(
             options.silent,
@@ -578,47 +639,45 @@ pub fn convert_vector(
             ),
         );
     }
-    // A drawing has no resolution to stay below, so `Sizes::Auto` gets all the
-    // sizes it started with.
-    let sizes = starting_sizes(options).to_vec();
-    let layout = options.layout;
+}
 
-    // A background color (--chroma-key, also "auto") is removed from every
-    // rendered size. The color is settled - and the removal checked and
-    // reported - once, on a reference rendering; the sizes then each get the
-    // same color without repeating the messages.
-    let background = if options.background.is_some() {
-        let mut reference = drawing.render(VECTOR_REFERENCE_SIZE, &layout, options.trim);
-        let target = resolve_background(&reference, options, notes)?;
-        let analysis = Analysis {
-            target,
-            regions: Vec::new(),
-        };
-        remove_background(&mut reference, options, &analysis, notes)?;
-        analysis.target
-    } else {
-        None
+/// The background color (--chroma-key, also "auto") of a drawing, if one is to be removed. It is settled - and
+/// the removal checked and reported - once, on a reference rendering; every rendering then gets the same color
+/// without repeating the messages.
+fn vector_background(
+    drawing: &VectorImage,
+    options: &Options,
+    notes: &dyn Notes,
+) -> Result<Option<BackgroundTarget>, String> {
+    if options.background.is_none() {
+        return Ok(None);
+    }
+    let mut reference = drawing.render(VECTOR_REFERENCE_SIZE, &options.layout, options.trim);
+    let target = resolve_background(&reference, options, notes)?;
+    let analysis = Analysis {
+        target,
+        regions: Vec::new(),
     };
+    remove_background(&mut reference, options, &analysis, notes)?;
+    Ok(analysis.target)
+}
 
-    let render = |size: u32| {
-        let mut square = drawing.render(size, &layout, options.trim);
-        if let (Some(target), Some(background)) = (&background, &options.background) {
-            apply_chroma_key_feathered(
-                &mut square,
-                target.color,
-                background.tolerance,
-                background.feather,
-                &[],
-                background.replacement,
-                true,
-            );
-        }
-        if options.grayscale {
-            apply_grayscale(&mut square);
-        }
-        square
-    };
-    encode(&render, &sizes, options, options.threads, notes)
+/// What a rendering of a drawing gets after it is drawn: the background color removed, black and white.
+fn finish_vector(image: &mut RgbaImage, options: &Options, background: Option<&BackgroundTarget>) {
+    if let (Some(target), Some(background)) = (background, &options.background) {
+        apply_chroma_key_feathered(
+            image,
+            target.color,
+            background.tolerance,
+            background.feather,
+            &[],
+            background.replacement,
+            true,
+        );
+    }
+    if options.grayscale {
+        apply_grayscale(image);
+    }
 }
 
 /// The one-call form: analyzes and converts a source of either kind. A
@@ -1078,6 +1137,63 @@ mod tests {
     }
 
     const SVG: &[u8] = br##"<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><rect width="20" height="20" fill="#00ff00"/><circle cx="10" cy="10" r="6" fill="#ff0000"/></svg>"##;
+
+    #[test]
+    fn the_original_keeps_the_pictures_own_size_and_leaves_out_the_layout_of_the_icon() {
+        let mut options = options();
+        options.background = Some(green_key());
+        options.trim = true;
+        options.grayscale = true;
+        // What belongs to the icon, not to the picture: a margin and rounded corners.
+        options.layout.padding = 6;
+        options.layout.corner_radius = 20;
+        let source = picture();
+        let analysis = analyze_raster(&source, &options, &NoNotes).unwrap();
+        let result = render_raster_original(source, &options, &analysis, &NoNotes).unwrap();
+        // The green is gone and cut off: the 20x20 red square is left, gray, and it reaches the corners.
+        assert_eq!(result.dimensions(), (20, 20));
+        let [r, g, b, a] = result.get_pixel(0, 0).0;
+        assert_eq!(a, 255);
+        assert!(r == g && g == b, "{r} {g} {b}");
+    }
+
+    #[test]
+    fn the_original_follows_mirror_turn_and_crop_and_can_be_laid_on_a_color() {
+        let mut options = options();
+        options.flip_horizontal = true;
+        options.rotate = 90;
+        options.crop = Some(CropRect {
+            x: 0,
+            y: 0,
+            width: 20,
+            height: 10,
+        });
+        options.flatten = Some([1, 2, 3]);
+        // A picture with a see-through half.
+        let source = RgbaImage::from_fn(40, 20, |x, _| {
+            if x < 20 {
+                Rgba([255, 0, 0, 0])
+            } else {
+                Rgba([0, 0, 255, 255])
+            }
+        });
+        let analysis = analyze_raster(&source, &options, &NoNotes).unwrap();
+        let result = render_raster_original(source, &options, &analysis, &NoNotes).unwrap();
+        assert_eq!(result.dimensions(), (20, 10));
+        assert!(
+            result.pixels().all(|pixel| pixel[3] == 255),
+            "laid on the color"
+        );
+    }
+
+    #[test]
+    fn a_drawing_is_rendered_at_the_size_it_declares() {
+        let wide = br##"<svg xmlns="http://www.w3.org/2000/svg" width="30" height="10"><rect width="30" height="10" fill="#ff0000"/></svg>"##;
+        let drawing = VectorImage::parse(wide, "a.svg").unwrap();
+        let result = render_vector_original(&drawing, &options(), &NoNotes).unwrap();
+        assert_eq!(result.dimensions(), (30, 10));
+        assert_eq!(result.get_pixel(15, 5).0, [255, 0, 0, 255]);
+    }
 
     #[test]
     fn an_svg_is_drawn_at_every_size() {

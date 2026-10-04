@@ -24,7 +24,7 @@ export const helpPtBr: Record<keyof typeof helpEn, string> = {
     '**Editar**, acima da pré-visualização, abre as ferramentas de imagem: usar só uma parte da imagem, girá-la e ver como um estilo redondo a corta. Elas são descritas em [as configurações explicadas](help:settings).',
   'help.start.12.h2': 'Baixar',
   'help.start.13.p':
-    'Acima da pré-visualização, escolha o tipo de arquivo: **Windows .ico**, **macOS .icns** ou **ZIP para site**, e clique no botão de download. A barra fica à vista enquanto você rola a página. O botão de arquivo ao lado dele salva cada tamanho como um arquivo PNG, em um ZIP.',
+    'Acima da pré-visualização, escolha o tipo de arquivo: **Windows .ico**, **macOS .icns**, **ZIP para site** ou **Imagem** (a imagem como arquivo PNG, JPG, WebP, BMP ou TIFF), e clique no botão de download. A barra fica à vista enquanto você rola a página. O botão de arquivo ao lado dele salva cada tamanho como um arquivo PNG, em um ZIP.',
   'help.start.14.h2': 'Criar vários ícones',
   'help.start.15.p':
     '**Adicionar à fila** guarda o ícone e deixa você escolher a próxima imagem. A fila fica ao lado do editor: mude a ordem (arraste uma linha pela alça ou use os botões de seta), abra qualquer ícone para alterá-lo de novo (as alterações são salvas nele sozinhas), compare dois ícones e baixe todos como um ZIP ou um de cada vez. Enquanto você edita um ícone da fila, **Usar em todos os ícones** cria de novo os outros ícones com os tamanhos, a aparência ou a remoção do fundo deste. A fila só existe enquanto a página está aberta.',
@@ -158,10 +158,13 @@ export const helpPtBr: Record<keyof typeof helpEn, string> = {
   'help.types.05.dl.3.t': 'ZIP para site',
   'help.types.05.dl.3.d':
     'Um pacote para uma página web: favicon.ico (16, 32 e 48 pixels), favicon-16x16.png, favicon-32x32.png, apple-touch-icon.png (180 pixels), icon-192.png, icon-512.png, site.webmanifest e head-snippet.html com as linhas para colar na sua página. Um pacote feito a partir de um SVG tem também favicon.svg.',
-  'help.types.05.dl.4.t': 'ZIP de PNG',
-  'help.types.05.dl.4.d': 'Cada tamanho de um ícone como um arquivo PNG próprio, em um ZIP (o botão de arquivo ao lado do botão de download).',
-  'help.types.05.dl.5.t': 'ZIP da fila',
-  'help.types.05.dl.5.d': 'Todos os ícones da fila em um ZIP.',
+  'help.types.05.dl.4.t': 'Imagem (PNG, JPG, WebP, BMP, TIFF)',
+  'help.types.05.dl.4.d':
+    'A imagem como um arquivo de imagem comum, com a opção “Imagem” acima da prévia. **Tamanho original** é a imagem como você a editou (cortada, girada, espelhada, sem fundo, em preto e branco), no seu próprio tamanho; a margem e os cantos do ícone não valem, e um desenho (SVG) sai no tamanho que ele declara. **Tamanhos do ícone** cria uma imagem quadrada para cada tamanho marcado, com a margem e os cantos do ícone; um tamanho vira um arquivo, vários vêm em um ZIP. JPG e BMP não têm transparência, então as áreas transparentes recebem uma cor de fundo que você escolhe. O WebP é salvo sem perdas. GIF e SVG não são oferecidos como tipo de arquivo para salvar.',
+  'help.types.05.dl.5.t': 'ZIP de PNG',
+  'help.types.05.dl.5.d': 'Cada tamanho de um ícone como um arquivo PNG próprio, em um ZIP (o botão de arquivo ao lado do botão de download).',
+  'help.types.05.dl.6.t': 'ZIP da fila',
+  'help.types.05.dl.6.d': 'Todos os ícones da fila em um ZIP.',
 
   'help.types.06.h2': 'Abrir um arquivo .ico',
   'help.types.07.p':

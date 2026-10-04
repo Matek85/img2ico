@@ -32,6 +32,13 @@ describe('toEngineOptions', () => {
 });
 
 describe('downloadName', () => {
+  it('names an image after the picture and the type, or after the one size, or as a ZIP', () => {
+    expect(downloadName('logo.png', 'image', { type: 'jpg', size: 'original', sizes: [16, 32] })).toBe('logo.jpg');
+    expect(downloadName('logo.png', 'image', { type: 'webp', size: 'sizes', sizes: [48] })).toBe('logo_48x48.webp');
+    expect(downloadName('logo.png', 'image', { type: 'tiff', size: 'sizes', sizes: [16, 32] })).toBe('logo_tiff.zip');
+    expect(downloadName('logo.png', 'image')).toBe('logo.png');
+  });
+
   it('replaces the extension', () => {
     expect(downloadName('logo.final.png', 'ico')).toBe('logo.final.ico');
     expect(downloadName('photo.jpeg', 'icns')).toBe('photo.icns');

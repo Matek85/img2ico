@@ -28,7 +28,7 @@ export const helpEn = {
     '**Edit**, above the preview, opens the picture tools: use only a part of the picture, turn it, and see how a round style cuts it. They are described in [the settings explained](help:settings).',
   'help.start.12.h2': 'Download',
   'help.start.13.p':
-    'Above the preview, choose the file type: **Windows .ico**, **macOS .icns** or **Website ZIP**, then press the download button. The bar stays in view while you scroll. The archive button next to it saves every size as a PNG file, in a ZIP.',
+    'Above the preview, choose the file type: **Windows .ico**, **macOS .icns**, **Website ZIP** or **Image** (the picture as a PNG, JPG, WebP, BMP or TIFF file), then press the download button. The bar stays in view while you scroll. The archive button next to it saves every size as a PNG file, in a ZIP.',
   'help.start.14.h2': 'Make several icons',
   'help.start.15.p':
     '**Add to queue** keeps the icon and lets you choose the next picture. The queue sits beside the editor: change the order (drag a row by its grip, or use the arrow buttons), open any icon to change it again (the changes are saved to it by themselves), compare two icons, and download them all as one ZIP or one at a time. While you edit an icon of the queue, **Use for all icons** makes the other icons again with the sizes, the look or the background removal of this one. The queue exists only while the page is open.',
@@ -162,10 +162,13 @@ export const helpEn = {
   'help.types.05.dl.3.t': 'Website ZIP',
   'help.types.05.dl.3.d':
     'A package for a web page: favicon.ico (16, 32 and 48 pixels), favicon-16x16.png, favicon-32x32.png, apple-touch-icon.png (180 pixels), icon-192.png, icon-512.png, site.webmanifest, and head-snippet.html with the lines to paste into your page. A package made from an SVG has favicon.svg as well.',
-  'help.types.05.dl.4.t': 'PNG ZIP',
-  'help.types.05.dl.4.d': 'Every size of an icon as a PNG file of its own, in a ZIP (the archive button beside the download button).',
-  'help.types.05.dl.5.t': 'Queue ZIP',
-  'help.types.05.dl.5.d': 'All the icons of the queue in one ZIP.',
+  'help.types.05.dl.4.t': 'Image (PNG, JPG, WebP, BMP, TIFF)',
+  'help.types.05.dl.4.d':
+    'The picture as an ordinary image file, with the choice "Image" above the preview. **Original size** is the picture as you edited it (cropped, turned, mirrored, background removed, black and white), in its own size; the margin and corners of the icon do not apply, and a drawing (SVG) comes in the size it declares. **Icon sizes** makes one square image for every size you ticked, with the margin and corners of the icon; one size is a file, several come as a ZIP. JPG and BMP have no transparency, so see-through areas get a background color you choose. WebP is saved without loss. GIF and SVG are not offered as a file type to save.',
+  'help.types.05.dl.5.t': 'PNG ZIP',
+  'help.types.05.dl.5.d': 'Every size of an icon as a PNG file of its own, in a ZIP (the archive button beside the download button).',
+  'help.types.05.dl.6.t': 'Queue ZIP',
+  'help.types.05.dl.6.d': 'All the icons of the queue in one ZIP.',
 
   'help.types.06.h2': 'Opening an .ico file',
   'help.types.07.p':
