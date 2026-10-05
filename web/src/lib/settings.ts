@@ -65,10 +65,11 @@ export interface Settings {
   themeColor: string;
   /** The Apple icon is laid on this color: an iPhone fills transparency with black. */
   appleBackground: string;
-  /** For "Image": the type of file, the size of it, and the color jpg and bmp lay the picture on. */
-  imageType: ImageType;
-  imageSize: ImageSize;
-  imageBackground: string;
+  /**
+   * For "Image": the type of file, the size of it, and the color jpg and bmp lay the picture on. A group of its own, so
+   * the live preview of the icon (which reads the settings above) is not made again when only these change.
+   */
+  image: { type: ImageType; size: ImageSize; background: string };
 }
 
 export function defaultSettings(): Settings {
@@ -93,9 +94,7 @@ export function defaultSettings(): Settings {
     siteName: '',
     themeColor: '#ffffff',
     appleBackground: '#ffffff',
-    imageType: 'png',
-    imageSize: 'original',
-    imageBackground: '#ffffff',
+    image: { type: 'png', size: 'original', background: '#ffffff' },
   };
 }
 

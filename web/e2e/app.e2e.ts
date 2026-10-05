@@ -80,6 +80,25 @@ test.describe('converting', () => {
     for (const name of ['logo_16x16.jpg', 'logo_256x256.jpg']) expect(text, name).toContain(name);
   });
 
+  test('the comparison shows the saved picture, not the icon, when "Image" is saved in its own size', async ({ page }) => {
+    await openInEditor(page, LOGO);
+    await page.keyboard.press('2');
+    await page.locator('.formats label', { hasText: 'Image' }).click();
+    await page.locator('.image-size label', { hasText: 'Icon sizes' }).click();
+    await expect(page.locator('.download button.primary')).toBeEnabled();
+    const after = page.locator('.compare .after');
+    await expect(after).toBeVisible();
+    // With the icon sizes the "after" is the largest icon image ...
+    const iconImage = await after.getAttribute('src');
+    // ... with the original size it is the picture as it is saved, another picture.
+    await page.locator('.image-size label', { hasText: 'Original size' }).click();
+    await expect(after).not.toHaveAttribute('src', iconImage!);
+    await expect(after).toHaveAttribute('src', /^blob:/);
+    // And back.
+    await page.locator('.image-size label', { hasText: 'Icon sizes' }).click();
+    await expect(after).toHaveAttribute('src', iconImage!);
+  });
+
   test('an image cannot be put in the queue', async ({ page }) => {
     await openInEditor(page, LOGO);
     await page.locator('.formats label', { hasText: 'Image' }).click();
