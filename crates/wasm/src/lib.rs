@@ -1418,6 +1418,51 @@ mod tests {
     }
 
     #[test]
+    fn the_original_is_the_pictures_own_pixels_in_every_kind_but_jpg() {
+        // Something with edges, colors and every degree of transparency, so any change would show.
+        let original = RgbaImage::from_fn(37, 23, |x, y| {
+            Rgba([
+                (x * 7 % 256) as u8,
+                (y * 11 % 256) as u8,
+                ((x * y) % 256) as u8,
+                if (x + y) % 5 == 0 {
+                    (x * 6 % 256) as u8
+                } else {
+                    255
+                },
+            ])
+        });
+        let mut encoded = Cursor::new(Vec::new());
+        DynamicImage::ImageRgba8(original.clone())
+            .write_to(&mut encoded, ImageFormat::Png)
+            .unwrap();
+        let opened = source(&encoded.into_inner());
+        for kind in ["png", "webp", "tiff"] {
+            let output = opened.image_with("{}", kind).unwrap();
+            let back = image::load_from_memory(&output.bytes).unwrap().to_rgba8();
+            assert_eq!(
+                back, original,
+                "{kind} keeps every pixel, the transparency too"
+            );
+        }
+        // BMP has no transparency: an opaque picture comes back as it was.
+        let opaque = RgbaImage::from_fn(37, 23, |x, y| {
+            Rgba([(x * 7 % 256) as u8, (y * 11 % 256) as u8, 90, 255])
+        });
+        let mut encoded = Cursor::new(Vec::new());
+        DynamicImage::ImageRgba8(opaque.clone())
+            .write_to(&mut encoded, ImageFormat::Png)
+            .unwrap();
+        let output = source(&encoded.into_inner())
+            .image_with("{}", "bmp")
+            .unwrap();
+        assert_eq!(
+            image::load_from_memory(&output.bytes).unwrap().to_rgba8(),
+            opaque
+        );
+    }
+
+    #[test]
     fn a_drawing_can_be_saved_as_a_picture_at_the_size_it_declares() {
         let svg = br##"<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><rect width="40" height="20" fill="#336699"/></svg>"##;
         let source = Source {
