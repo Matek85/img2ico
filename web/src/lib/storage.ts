@@ -4,7 +4,7 @@
 // and anything unusable falls back to the defaults, so a damaged or outdated
 // entry can never break the page.
 
-import { SIZE_CHOICES, type Settings, defaultSettings } from './settings';
+import { IMAGE_TYPES, type ImageType, SIZE_CHOICES, type Settings, defaultSettings } from './settings';
 
 const KEY = 'img2ico.settings.v1';
 const AUTOSAVE_KEY = 'img2ico.autosave.v1';
@@ -81,6 +81,7 @@ export function sanitize(raw: unknown): Settings {
   const sizes = Array.isArray(data.sizes)
     ? data.sizes.filter((size): size is number => typeof size === 'number' && offered.includes(size))
     : base.sizes;
+  const image = typeof data.image === 'object' && data.image !== null ? (data.image as Record<string, unknown>) : {};
   return {
     sizes: Array.isArray(data.sizes) ? [...new Set(sizes)] : base.sizes,
     padding: whole(data.padding, 0, 40, base.padding),
@@ -98,10 +99,15 @@ export function sanitize(raw: unknown): Settings {
     backgroundColor: color(data.backgroundColor, base.backgroundColor),
     tolerance: whole(data.tolerance, 0, 100, base.tolerance),
     feather: whole(data.feather, 0, 100, base.feather),
-    format: data.format === 'icns' || data.format === 'favicon' ? data.format : 'ico',
+    format: data.format === 'icns' || data.format === 'favicon' || data.format === 'image' ? data.format : 'ico',
     siteName: typeof data.siteName === 'string' ? data.siteName.slice(0, 60) : base.siteName,
     themeColor: color(data.themeColor, base.themeColor),
     appleBackground: color(data.appleBackground, base.appleBackground),
+    image: {
+      type: (IMAGE_TYPES as readonly unknown[]).includes(image.type) ? (image.type as ImageType) : base.image.type,
+      size: image.size === 'sizes' ? 'sizes' : 'original',
+      background: color(image.background, base.image.background),
+    },
   };
 }
 

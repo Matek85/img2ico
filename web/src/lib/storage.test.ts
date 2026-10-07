@@ -37,6 +37,15 @@ describe('sanitize', () => {
     expect(result.appleBackground).toBe('#123456');
   });
 
+  it('keeps the settings of the image file and checks them', () => {
+    const kept = sanitize({ format: 'image', image: { type: 'webp', size: 'sizes', background: '#102030' } });
+    expect(kept.format).toBe('image');
+    expect(kept.image).toEqual({ type: 'webp', size: 'sizes', background: '#102030' });
+    const bad = sanitize({ format: 'image', image: { type: 'gif', size: 'huge', background: 'red' } });
+    expect(bad.image).toEqual({ type: 'png', size: 'original', background: '#ffffff' });
+    expect(sanitize({ image: 'no' }).image).toEqual({ type: 'png', size: 'original', background: '#ffffff' });
+  });
+
   it('never remembers a crop and checks the color', () => {
     expect(sanitize({ crop: { x: 1, y: 1, width: 5, height: 5 } }).crop).toBeNull();
     expect(sanitize({ backgroundColor: 'red' }).backgroundColor).toBe('#00ff00');

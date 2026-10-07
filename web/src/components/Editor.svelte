@@ -5,9 +5,12 @@
     convert,
     convertLatest,
     convertOnce,
+    exportImage,
     faviconPack,
     faviconSnippet,
     gifFramePng,
+    iconImage,
+    iconImageZip,
     openGif,
     openPicture,
     pngZip,
@@ -55,10 +58,13 @@
   import {
     DEFAULT_SIZES,
     FAVICON_SIZES,
+    IMAGE_MIME,
+    IMAGE_TYPES,
     SIZE_CHOICES,
     type Settings,
     defaultSettings,
     downloadName,
+    imageHasAlpha,
     packMeta,
     toEngineOptions,
   } from '../lib/settings';
@@ -334,6 +340,7 @@
     else if (originalUrl) URL.revokeObjectURL(originalUrl);
     if (appleUrl) URL.revokeObjectURL(appleUrl);
     revoke(tiles);
+    if (originalAfterUrl) URL.revokeObjectURL(originalAfterUrl);
     for (const url of pastPictures.values()) URL.revokeObjectURL(url);
     // The timeline stays with the icon of the queue (an icon made from here too).
     if (opened) settleHistory();
@@ -824,8 +831,9 @@
 
   // What the icon is made of, as the queue keeps it; nothing if there is nothing to keep.
   async function madeForQueue() {
-    if (!converted || settings.format === 'favicon') return undefined;
     const format = settings.format;
+    // Icon files only: an image or the website package is not kept in the queue.
+    if (!converted || (format !== 'ico' && format !== 'icns')) return undefined;
     const bytes = format === 'ico' ? converted.bytes : (await convert(toEngineOptions(settings, 'icns'))).bytes;
     return { file, settings: $state.snapshot(settings) as Settings, format, bytes, preview: converted.bytes };
   }
@@ -936,6 +944,17 @@
       }
       return;
     }
+    if (settings.format === 'image') {
+      packing = true;
+      try {
+        await downloadImage();
+      } catch (error) {
+        convertFailure = explain(error);
+      } finally {
+        packing = false;
+      }
+      return;
+    }
     let bytes: Uint8Array | undefined;
     if (settings.format === 'ico') {
       bytes = converted?.bytes;
@@ -946,12 +965,72 @@
     saveBytes(bytes, downloadName(file.name, settings.format), settings.format === 'ico' ? ICO_TYPE : ICNS_TYPE);
   }
 
+  // The picture as an ordinary image file: in its own size as edited, or one image for every icon size.
+  async function downloadImage() {
+    const { type, size, background } = settings.image;
+    const name = downloadName(file.name, 'image', { type, size, sizes: settings.sizes });
+    const mime = IMAGE_MIME[type];
+    if (size === 'original') {
+      // The sizes belong to the icon; the engine only wants some, and the background is for jpg and bmp.
+      const options = { ...toEngineOptions($state.snapshot(settings) as Settings), sizes: [256], flatten: background };
+      saveBytes(await exportImage(options, type), name, mime);
+    } else if (converted) {
+      const stem = stemOf(file.name);
+      if (settings.sizes.length === 1) saveBytes(await iconImage(converted.bytes, 0, type, background), name, mime);
+      else saveBytes(await iconImageZip(converted.bytes, stem, type, background), name, ZIP_TYPE);
+    }
+  }
+
   // The keyboard shortcuts (see lib/shortcuts.ts). Nothing happens while text is typed, while a
   // dialog is open or while a question is waiting for an answer.
   let shortcutsDialog = $state<ShortcutsDialog>();
   let gifPlayer = $state<GifPlayer>();
   const hint = (text: string, id: ShortcutId) => withKey(text, id, keys.on);
-  const canMakeIcon = () => !!converted && !working && !packing;
+  // Icon files go in the queue; an image or the website package does not.
+  // "Image" in its own size: the comparison shows the picture as it is saved (its own size, as edited), not the largest
+  // icon, which has far fewer pixels and would make the saved file look worse than it is.
+  let originalMode = $derived(settings.format === 'image' && settings.image.size === 'original');
+  let originalAfter = $state('');
+  let originalAfterUrl = '';
+  let originalAfterVersion = 0;
+  function dropOriginalAfter() {
+    originalAfterVersion += 1;
+    if (originalAfterUrl) URL.revokeObjectURL(originalAfterUrl);
+    originalAfterUrl = '';
+    originalAfter = '';
+  }
+  $effect(() => {
+    if (!opened || view !== 'compare' || !originalMode) {
+      if (originalAfterUrl) dropOriginalAfter();
+      return;
+    }
+    const options = { ...toEngineOptions($state.snapshot(settings) as Settings), sizes: [256] };
+    // A different frame of a GIF is a different picture.
+    void pictureVersion;
+    const mine = ++originalAfterVersion;
+    const timer = setTimeout(async () => {
+      try {
+        const bytes = await exportImage(options, 'png');
+        if (mine !== originalAfterVersion) return;
+        const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'image/png' }));
+        if (originalAfterUrl) URL.revokeObjectURL(originalAfterUrl);
+        originalAfterUrl = url;
+        originalAfter = url;
+      } catch {
+        // The comparison goes on showing what it showed; the download reports a failure itself.
+      }
+    }, 150);
+    return () => clearTimeout(timer);
+  });
+
+  // The name on the download button.
+  let downloadLabel = $derived(
+    downloadName(file.name, settings.format, { type: settings.image.type, size: settings.image.size, sizes: settings.sizes }),
+  );
+  let queueable = $derived(settings.format === 'ico' || settings.format === 'icns');
+  // The picture in its own size needs only the picture; everything else needs the icon that was made.
+  let downloadReady = $derived(settings.format === 'image' && settings.image.size === 'original' ? !!opened : !!converted);
+  const canMakeIcon = () => downloadReady && !working && !packing;
 
   function runShortcut(id: ShortcutId) {
     switch (id) {
@@ -973,7 +1052,7 @@
         if (canMakeIcon()) void download();
         break;
       case 'queueAdd':
-        if (canMakeIcon() && settings.format !== 'favicon') void addToQueue();
+        if (canMakeIcon() && queueable) void addToQueue();
         break;
       case 'play':
         gifPlayer?.toggle();
@@ -1185,6 +1264,7 @@
         <label title={t('download.ico_hint')}><input type="radio" name="format" value="ico" bind:group={settings.format} /> {t('download.ico')}</label>
         <label title={t('download.icns_hint')}><input type="radio" name="format" value="icns" bind:group={settings.format} /> {t('download.icns')}</label>
         <label title={t('download.favicon_hint')}><input type="radio" name="format" value="favicon" bind:group={settings.format} onchange={() => siteDialog?.showModal()} /> {t('download.favicon')}</label>
+        <label title={t('download.image_hint')}><input type="radio" name="format" value="image" bind:group={settings.format} /> {t('download.image')}</label>
         {#if settings.format === 'favicon'}
           <button type="button" class="gear" title={t('site.configure')} aria-label={t('site.configure')} onclick={() => siteDialog?.showModal()}>
             <Icon name="gear" size={16} />
@@ -1192,7 +1272,7 @@
         {/if}
       </fieldset>
       <div class="download-actions">
-        {#if settings.format !== 'favicon'}
+        {#if settings.format === 'ico' || settings.format === 'icns'}
           <button type="button" class="outline icon-button" title={t('download.png_zip')} aria-label={t('download.png_zip')} onclick={downloadPngZip} disabled={!converted || working}>
             <Icon name="archive" />
           </button>
@@ -1202,8 +1282,8 @@
             type="button"
             class="outline icon-button"
             onclick={() => saveEditing()}
-            disabled={!converted || working || packing || settings.format === 'favicon'}
-            title={settings.format === 'favicon' ? t('queue.add_favicon') : t('queue.update')}
+            disabled={!converted || working || packing || !queueable}
+            title={queueable ? t('queue.update') : t(settings.format === 'image' ? 'queue.add_image' : 'queue.add_favicon')}
             aria-label={t('queue.update')}
           >
             <Icon name="queueAdd" />
@@ -1213,19 +1293,44 @@
           type="button"
           class="outline icon-button"
           onclick={addToQueue}
-          disabled={!converted || working || packing || settings.format === 'favicon'}
-          title={settings.format === 'favicon' ? t('queue.add_favicon') : hint(editId !== undefined ? t('queue.add_new') : t('queue.add_hint'), 'queueAdd')}
+          disabled={!converted || working || packing || !queueable}
+          title={queueable ? hint(editId !== undefined ? t('queue.add_new') : t('queue.add_hint'), 'queueAdd') : t(settings.format === 'image' ? 'queue.add_image' : 'queue.add_favicon')}
           aria-label={editId !== undefined ? t('queue.add_new') : t('queue.add')}
         >
           <Icon name={editId !== undefined ? 'plus' : 'queueAdd'} />
         </button>
-        <button type="button" class="primary" onclick={download} disabled={!converted || working || packing} title={hint(t('download.button', { name: shortName(downloadName(file.name, settings.format)) }), 'download')}>
+        <button type="button" class="primary" onclick={download} disabled={!downloadReady || working || packing} title={hint(t('download.button', { name: shortName(downloadLabel) }), 'download')}>
           <Icon name="download" />
-          {packing ? t('site.building') : t('download.button', { name: shortName(downloadName(file.name, settings.format)) })}
+          {packing ? t('site.building') : t('download.button', { name: shortName(downloadLabel) })}
         </button>
       </div>
     </div>
     {#if settings.format === 'icns'}<p class="hint">{t('download.icns_note')}</p>{/if}
+    {#if settings.format === 'image'}
+      <div class="image-options">
+        <label class="image-type">
+          <span>{t('image.type')}</span>
+          <select bind:value={settings.image.type}>
+            {#each IMAGE_TYPES as type (type)}
+              <option value={type}>{type.toUpperCase()}</option>
+            {/each}
+          </select>
+        </label>
+        <fieldset class="image-size">
+          <legend class="sr-only">{t('image.size')}</legend>
+          <label title={t('image.size_original_hint')}><input type="radio" name="image-size" value="original" bind:group={settings.image.size} /> {t('image.size_original')}</label>
+          <label title={t('image.size_icons_hint')}><input type="radio" name="image-size" value="sizes" bind:group={settings.image.size} /> {t('image.size_icons')}</label>
+        </fieldset>
+        {#if !imageHasAlpha(settings.image.type)}
+          <label class="image-background">
+            <span>{t('image.background')}</span>
+            <input type="color" bind:value={settings.image.background} />
+          </label>
+        {/if}
+      </div>
+      <p class="hint">{settings.image.size === 'original' ? t('image.size_original_hint') : t('image.size_icons_hint')}</p>
+      {#if !imageHasAlpha(settings.image.type)}<p class="hint">{t('image.no_alpha')}</p>{/if}
+    {/if}
   </section>
   <div class="editor" class:folded={!sideOpen}>
     <section class="preview" aria-labelledby="preview-title" use:stickIfItFits>
@@ -1307,8 +1412,8 @@
             onuse={usePicked}
             oncancel={() => (picking = false)}
           />
-        {:else if largest && view === 'compare' && picture}
-          <Compare before={shownOriginal} after={largest.url} {picture} crop={settings.crop} />
+        {:else if (originalMode ? originalAfter : largest) && view === 'compare' && picture}
+          <Compare before={shownOriginal} after={originalMode ? originalAfter : largest!.url} {picture} crop={settings.crop} />
         {:else if largest}
           <figure class="big">
             <img src={largest.url} alt="" width={largest.size} height={largest.size} />

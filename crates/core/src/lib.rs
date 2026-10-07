@@ -11,6 +11,7 @@ pub mod archive;
 pub mod chroma_key;
 pub mod convert;
 pub mod diag;
+pub mod export;
 pub mod favicon;
 pub mod icns;
 pub mod icon;

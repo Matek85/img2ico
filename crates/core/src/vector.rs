@@ -119,6 +119,38 @@ impl VectorImage {
         Some((bounds.x(), bounds.y(), bounds.width(), bounds.height()))
     }
 
+    /// The drawing at the size it declares (its page; with `trim` only its content), as it is: no square, no
+    /// margin, no rounded corners. Straight alpha.
+    pub fn render_page(&self, trim: bool) -> Result<RgbaImage, String> {
+        let (page_w, page_h) = self.size();
+        let (source_x, source_y, source_w, source_h) = if trim {
+            self.content_area().unwrap_or((0.0, 0.0, page_w, page_h))
+        } else {
+            (0.0, 0.0, page_w, page_h)
+        };
+        let (width, height) = (
+            (source_w.round() as u32).max(1),
+            (source_h.round() as u32).max(1),
+        );
+        if u64::from(width) * u64::from(height) > crate::source::DEFAULT_MAX_PIXELS {
+            return Err(crate::msg!(
+                "export.too_big",
+                "This drawing declares a size of {width}x{height} pixels, which is too big to draw as one picture. Use the sizes of the icon instead.",
+                width = width,
+                height = height
+            ));
+        }
+        let mut pixmap = tiny_skia::Pixmap::new(width, height)
+            .expect("a pixmap of at least 1x1 pixel within the limit is valid");
+        let transform = tiny_skia::Transform::from_translate(-source_x, -source_y)
+            .post_scale(width as f32 / source_w, height as f32 / source_h);
+        resvg::render(&self.tree, transform, &mut pixmap.as_mut());
+        Ok(
+            RgbaImage::from_raw(width, height, pixmap.take_demultiplied())
+                .expect("a pixmap has width x height x 4 bytes"),
+        )
+    }
+
     /// Draws the SVG into a `size` x `size` square the way `layout` says:
     /// fitted inside the area left by the padding or (with `FitMode::Cover`)
     /// filling it, centered, on a transparent background, with the corners

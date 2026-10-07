@@ -24,7 +24,7 @@ export const helpFr: Record<keyof typeof helpEn, string> = {
     '**Modifier**, au-dessus de l’aperçu, ouvre les outils d’image : n’utiliser qu’une partie de l’image, la pivoter et voir comment un style rond la découpe. Ils sont décrits dans [les réglages expliqués](help:settings).',
   'help.start.12.h2': 'Télécharger',
   'help.start.13.p':
-    'Au-dessus de l’aperçu, choisissez le type de fichier : **Windows .ico**, **macOS .icns** ou **ZIP pour site web**, puis cliquez sur le bouton de téléchargement. La barre reste visible pendant que vous faites défiler la page. Le bouton d’archive à côté enregistre chaque taille en fichier PNG, dans un ZIP.',
+    'Au-dessus de l’aperçu, choisissez le type de fichier : **Windows .ico**, **macOS .icns**, **ZIP pour site web** ou **Image** (l’image en fichier PNG, JPG, WebP, BMP ou TIFF), puis cliquez sur le bouton de téléchargement. La barre reste visible pendant que vous faites défiler la page. Le bouton d’archive à côté enregistre chaque taille en fichier PNG, dans un ZIP.',
   'help.start.14.h2': 'Créer plusieurs icônes',
   'help.start.15.p':
     '**Ajouter à la file d’attente** garde l’icône et vous laisse choisir l’image suivante. La file d’attente se trouve à côté de l’éditeur : changez l’ordre (faites glisser une ligne par sa poignée ou utilisez les boutons fléchés), ouvrez n’importe quelle icône pour la modifier de nouveau (les modifications y sont enregistrées toutes seules), comparez deux icônes et téléchargez-les toutes en un ZIP ou une par une. Pendant que vous modifiez une icône de la file d’attente, **Utiliser pour toutes les icônes** recrée les autres icônes avec les tailles, l’aspect ou la suppression de l’arrière-plan de celle-ci. La file d’attente n’existe que tant que la page est ouverte.',
@@ -158,10 +158,13 @@ export const helpFr: Record<keyof typeof helpEn, string> = {
   'help.types.05.dl.3.t': 'ZIP pour site web',
   'help.types.05.dl.3.d':
     'Un jeu pour une page web : favicon.ico (16, 32 et 48 pixels), favicon-16x16.png, favicon-32x32.png, apple-touch-icon.png (180 pixels), icon-192.png, icon-512.png, site.webmanifest et head-snippet.html avec les lignes à coller dans votre page. Un jeu fait à partir d’un SVG contient aussi favicon.svg.',
-  'help.types.05.dl.4.t': 'ZIP de PNG',
-  'help.types.05.dl.4.d': 'Chaque taille d’une icône en fichier PNG à part, dans un ZIP (le bouton d’archive à côté du bouton de téléchargement).',
-  'help.types.05.dl.5.t': 'ZIP de la file d’attente',
-  'help.types.05.dl.5.d': 'Toutes les icônes de la file d’attente dans un ZIP.',
+  'help.types.05.dl.4.t': 'Fichier image (PNG, JPG, WebP, BMP, TIFF)',
+  'help.types.05.dl.4.d':
+    'L’image comme un fichier image ordinaire, avec le choix « Image » au-dessus de l’aperçu. **Taille d’origine** est l’image telle que vous l’avez modifiée (recadrée, tournée, retournée, arrière-plan supprimé, en noir et blanc), dans sa propre taille ; la marge et les coins de l’icône ne comptent pas, et un dessin (SVG) sort à la taille qu’il déclare. **Tailles de l’icône** crée une image carrée pour chaque taille cochée, avec la marge et les coins de l’icône ; une taille donne un fichier, plusieurs arrivent dans un ZIP. JPG et BMP n’ont pas de transparence, donc les zones transparentes reçoivent une couleur d’arrière-plan que vous choisissez. Le WebP est enregistré sans perte. GIF et SVG ne sont pas proposés comme type de fichier à enregistrer.',
+  'help.types.05.dl.5.t': 'ZIP de PNG',
+  'help.types.05.dl.5.d': 'Chaque taille d’une icône en fichier PNG à part, dans un ZIP (le bouton d’archive à côté du bouton de téléchargement).',
+  'help.types.05.dl.6.t': 'ZIP de la file d’attente',
+  'help.types.05.dl.6.d': 'Toutes les icônes de la file d’attente dans un ZIP.',
 
   'help.types.06.h2': 'Ouvrir un fichier .ico',
   'help.types.07.p':

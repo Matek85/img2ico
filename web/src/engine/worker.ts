@@ -12,6 +12,8 @@ import init, {
   favicon_snippet,
   icon_describe,
   icon_extract_png,
+  icon_image,
+  icon_image_zip,
   icon_pixels,
   icon_png_zip,
   icon_select,
@@ -192,6 +194,27 @@ self.onmessage = async (event: MessageEvent<Request>) => {
       }
       case 'pngZip': {
         const data = icon_png_zip(request.bytes, request.stem);
+        transfer.push(data.buffer);
+        response = { id: request.id, ok: true, data };
+        break;
+      }
+      case 'image': {
+        if (!source) throw new Error('No picture is open.');
+        const output = source.image(JSON.stringify(request.options), request.kind);
+        const data = output.bytes();
+        output.free();
+        transfer.push(data.buffer);
+        response = { id: request.id, ok: true, data };
+        break;
+      }
+      case 'iconImage': {
+        const data = icon_image(request.bytes, request.index, request.kind, request.background);
+        transfer.push(data.buffer);
+        response = { id: request.id, ok: true, data };
+        break;
+      }
+      case 'iconImageZip': {
+        const data = icon_image_zip(request.bytes, request.stem, request.kind, request.background);
         transfer.push(data.buffer);
         response = { id: request.id, ok: true, data };
         break;

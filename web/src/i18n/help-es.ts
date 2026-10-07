@@ -24,7 +24,7 @@ export const helpEs: Record<keyof typeof helpEn, string> = {
     '**Editar**, sobre la vista previa, abre las herramientas de imagen: usar solo una parte de la imagen, girarla y ver cómo la recorta un estilo redondo. Se describen en [los ajustes explicados](help:settings).',
   'help.start.12.h2': 'Descargar',
   'help.start.13.p':
-    'Sobre la vista previa, elige el tipo de archivo: **Windows .ico**, **macOS .icns** o **ZIP para sitio web**, y pulsa el botón de descarga. La barra se mantiene a la vista mientras te desplazas. El botón de archivo junto a él guarda cada tamaño como un archivo PNG, en un ZIP.',
+    'Sobre la vista previa, elige el tipo de archivo: **Windows .ico**, **macOS .icns**, **ZIP para sitio web** o **Imagen** (la imagen como archivo PNG, JPG, WebP, BMP o TIFF), y pulsa el botón de descarga. La barra se mantiene a la vista mientras te desplazas. El botón de archivo junto a él guarda cada tamaño como un archivo PNG, en un ZIP.',
   'help.start.14.h2': 'Crear varios iconos',
   'help.start.15.p':
     '**Añadir a la cola** guarda el icono y te deja elegir la siguiente imagen. La cola está junto al editor: cambia el orden (arrastra una fila por su asa o usa los botones de flecha), abre cualquier icono para cambiarlo otra vez (los cambios se guardan en él solos), compara dos iconos y descárgalos todos como un ZIP o uno a uno. Mientras editas un icono de la cola, **Usar para todos los iconos** vuelve a crear los demás iconos con los tamaños, el aspecto o la eliminación del fondo de este. La cola solo existe mientras la página está abierta.',
@@ -158,10 +158,13 @@ export const helpEs: Record<keyof typeof helpEn, string> = {
   'help.types.05.dl.3.t': 'ZIP para sitio web',
   'help.types.05.dl.3.d':
     'Un paquete para una página web: favicon.ico (16, 32 y 48 píxeles), favicon-16x16.png, favicon-32x32.png, apple-touch-icon.png (180 píxeles), icon-192.png, icon-512.png, site.webmanifest y head-snippet.html con las líneas para pegar en tu página. Un paquete creado a partir de un SVG incluye además favicon.svg.',
-  'help.types.05.dl.4.t': 'ZIP de PNG',
-  'help.types.05.dl.4.d': 'Cada tamaño de un icono como un archivo PNG propio, en un ZIP (el botón de archivo junto al botón de descarga).',
-  'help.types.05.dl.5.t': 'ZIP de la cola',
-  'help.types.05.dl.5.d': 'Todos los iconos de la cola en un ZIP.',
+  'help.types.05.dl.4.t': 'Imagen (PNG, JPG, WebP, BMP, TIFF)',
+  'help.types.05.dl.4.d':
+    'La imagen como un archivo de imagen normal, con la opción «Imagen» sobre la vista previa. **Tamaño original** es la imagen tal como la has editado (recortada, girada, reflejada, sin fondo, en blanco y negro), con su propio tamaño; el margen y las esquinas del icono no cuentan, y un dibujo (SVG) sale con el tamaño que declara. **Tamaños del icono** crea una imagen cuadrada por cada tamaño marcado, con el margen y las esquinas del icono; un tamaño es un archivo, varios llegan en un ZIP. JPG y BMP no tienen transparencia, así que las zonas transparentes reciben un color de fondo que eliges. WebP se guarda sin pérdida. GIF y SVG no se ofrecen como tipo de archivo para guardar.',
+  'help.types.05.dl.5.t': 'ZIP de PNG',
+  'help.types.05.dl.5.d': 'Cada tamaño de un icono como un archivo PNG propio, en un ZIP (el botón de archivo junto al botón de descarga).',
+  'help.types.05.dl.6.t': 'ZIP de la cola',
+  'help.types.05.dl.6.d': 'Todos los iconos de la cola en un ZIP.',
 
   'help.types.06.h2': 'Abrir un archivo .ico',
   'help.types.07.p':

@@ -23,7 +23,7 @@ export const helpDe: Record<keyof typeof helpEn, string> = {
     '**Bearbeiten** über der Vorschau öffnet die Bildwerkzeuge: nur einen Teil des Bildes verwenden, es drehen und sehen, wie ein runder Stil es zuschneidet. Sie sind in [Die Einstellungen erklärt](help:settings) beschrieben.',
   'help.start.12.h2': 'Herunterladen',
   'help.start.13.p':
-    'Wähle über der Vorschau den Dateityp: **Windows .ico**, **macOS .icns** oder **Website-ZIP**, und drücke dann auf den Download-Knopf. Die Leiste bleibt beim Scrollen im Blick. Der Archiv-Knopf daneben speichert jede Größe als PNG-Datei, in einer ZIP-Datei.',
+    'Wähle über der Vorschau den Dateityp: **Windows .ico**, **macOS .icns**, **Website-ZIP** oder **Bild** (das Bild als PNG-, JPG-, WebP-, BMP- oder TIFF-Datei), und drücke dann auf den Download-Knopf. Die Leiste bleibt beim Scrollen im Blick. Der Archiv-Knopf daneben speichert jede Größe als PNG-Datei, in einer ZIP-Datei.',
   'help.start.14.h2': 'Mehrere Icons machen',
   'help.start.15.p':
     '**Zur Warteschlange hinzufügen** behält das Icon und lässt dich das nächste Bild wählen. Die Warteschlange steht neben dem Editor: Ändere die Reihenfolge (ziehe eine Zeile am Griff oder nimm die Pfeilknöpfe), öffne jedes Icon, um es erneut zu ändern (die Änderungen werden von selbst darin gespeichert), vergleiche zwei Icons und lade alle als eine ZIP-Datei oder einzeln herunter. Während du ein Icon der Warteschlange bearbeitest, macht **Für alle Icons verwenden** die anderen Icons noch einmal mit den Größen, dem Aussehen oder dem Entfernen des Hintergrunds dieses Icons. Die Warteschlange gibt es nur, solange die Seite offen ist.',
@@ -157,10 +157,13 @@ export const helpDe: Record<keyof typeof helpEn, string> = {
   'help.types.05.dl.3.t': 'Website-ZIP',
   'help.types.05.dl.3.d':
     'Ein Paket für eine Webseite: favicon.ico (16, 32 und 48 Pixel), favicon-16x16.png, favicon-32x32.png, apple-touch-icon.png (180 Pixel), icon-192.png, icon-512.png, site.webmanifest und head-snippet.html mit den Zeilen zum Einfügen in deine Seite. Ein Paket aus einem SVG enthält zusätzlich favicon.svg.',
-  'help.types.05.dl.4.t': 'PNG-ZIP',
-  'help.types.05.dl.4.d': 'Jede Größe eines Icons als eigene PNG-Datei, in einer ZIP-Datei (der Archiv-Knopf neben dem Download-Knopf).',
-  'help.types.05.dl.5.t': 'Warteschlangen-ZIP',
-  'help.types.05.dl.5.d': 'Alle Icons der Warteschlange in einer ZIP-Datei.',
+  'help.types.05.dl.4.t': 'Bild (PNG, JPG, WebP, BMP, TIFF)',
+  'help.types.05.dl.4.d':
+    'Das Bild als gewöhnliche Bilddatei, über die Auswahl „Bild“ über der Vorschau. **Originalgröße** ist das Bild, wie du es bearbeitet hast (zugeschnitten, gedreht, gespiegelt, Hintergrund entfernt, schwarzweiß), in seiner eigenen Größe; Rand und Ecken des Icons gelten nicht, und eine Zeichnung (SVG) kommt in der Größe, die sie selbst angibt. **Icon-Größen** macht für jede angehakte Größe ein quadratisches Bild mit Rand und Ecken des Icons; eine Größe ergibt eine Datei, mehrere kommen als ZIP. JPG und BMP haben keine Transparenz, durchsichtige Stellen bekommen eine Hintergrundfarbe, die du wählst. WebP wird verlustfrei gespeichert. GIF und SVG werden nicht als Dateityp zum Speichern angeboten.',
+  'help.types.05.dl.5.t': 'PNG-ZIP',
+  'help.types.05.dl.5.d': 'Jede Größe eines Icons als eigene PNG-Datei, in einer ZIP-Datei (der Archiv-Knopf neben dem Download-Knopf).',
+  'help.types.05.dl.6.t': 'Warteschlangen-ZIP',
+  'help.types.05.dl.6.d': 'Alle Icons der Warteschlange in einer ZIP-Datei.',
 
   'help.types.06.h2': 'Eine .ico-Datei öffnen',
   'help.types.07.p':

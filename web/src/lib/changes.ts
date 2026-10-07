@@ -34,6 +34,7 @@ const GROUP_OF: Record<Exclude<keyof Settings, 'gifFrame'>, ChangeGroup> = {
   tolerance: 'background',
   feather: 'background',
   format: 'format',
+  image: 'format',
   siteName: 'site',
   themeColor: 'site',
   appleBackground: 'site',

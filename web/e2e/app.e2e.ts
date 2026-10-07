@@ -49,6 +49,64 @@ test.describe('converting', () => {
     expect((await downloaded(download)).subarray(0, 4).toString('latin1')).toBe('icns');
   });
 
+  test('the picture can be saved as an ordinary image: PNG in its own size, JPG, and the icon sizes', async ({ page }) => {
+    await openInEditor(page, LOGO);
+    await page.locator('.formats label', { hasText: 'Image' }).click();
+    // The picture in its own size, as a PNG.
+    await expect(page.locator('.download button.primary')).toHaveText(/Download logo\.png/);
+    await expect(page.locator('.download button.primary')).toBeEnabled();
+    const [png] = await startDownload(page);
+    expect(png.suggestedFilename()).toBe('logo.png');
+    const pngBytes = await downloaded(png);
+    expect([...pngBytes.subarray(0, 4)]).toEqual([0x89, 0x50, 0x4e, 0x47]);
+    // The logo is 256 x 256; a PNG says its size in the header.
+    expect([pngBytes.readUInt32BE(16), pngBytes.readUInt32BE(20)]).toEqual([256, 256]);
+
+    // A JPG has no transparency: the color it is laid on can be chosen.
+    await page.locator('.image-type select').selectOption('jpg');
+    await expect(page.locator('.image-background')).toBeVisible();
+    await expect(page.locator('.download button.primary')).toHaveText(/Download logo\.jpg/);
+    const [jpg] = await startDownload(page);
+    expect(jpg.suggestedFilename()).toBe('logo.jpg');
+    expect([...(await downloaded(jpg)).subarray(0, 3)]).toEqual([0xff, 0xd8, 0xff]);
+
+    // One image for each icon size: several come as a ZIP, named after the sizes.
+    await page.locator('.image-size label', { hasText: 'Icon sizes' }).click();
+    await expect(page.locator('.download button.primary')).toHaveText(/Download logo_jpg\.zip/);
+    const [zip] = await startDownload(page);
+    const bytes = await downloaded(zip);
+    expect(bytes.subarray(0, 2).toString('latin1')).toBe('PK');
+    const text = bytes.toString('latin1');
+    for (const name of ['logo_16x16.jpg', 'logo_256x256.jpg']) expect(text, name).toContain(name);
+  });
+
+  test('the comparison shows the saved picture, not the icon, when "Image" is saved in its own size', async ({ page }) => {
+    await openInEditor(page, LOGO);
+    await page.keyboard.press('2');
+    await page.locator('.formats label', { hasText: 'Image' }).click();
+    await page.locator('.image-size label', { hasText: 'Icon sizes' }).click();
+    await expect(page.locator('.download button.primary')).toBeEnabled();
+    const after = page.locator('.compare .after');
+    await expect(after).toBeVisible();
+    // With the icon sizes the "after" is the largest icon image ...
+    const iconImage = await after.getAttribute('src');
+    // ... with the original size it is the picture as it is saved, another picture.
+    await page.locator('.image-size label', { hasText: 'Original size' }).click();
+    await expect(after).not.toHaveAttribute('src', iconImage!);
+    await expect(after).toHaveAttribute('src', /^blob:/);
+    // And back.
+    await page.locator('.image-size label', { hasText: 'Icon sizes' }).click();
+    await expect(after).toHaveAttribute('src', iconImage!);
+  });
+
+  test('an image cannot be put in the queue', async ({ page }) => {
+    await openInEditor(page, LOGO);
+    await page.locator('.formats label', { hasText: 'Image' }).click();
+    await expect(page.getByRole('button', { name: 'Add to queue' })).toBeDisabled();
+    await page.locator('.formats label', { hasText: 'Windows .ico' }).click();
+    await expect(page.getByRole('button', { name: 'Add to queue' })).toBeEnabled();
+  });
+
   test('the website package is a ZIP with the favicon files', async ({ page }) => {
     await openInEditor(page, LOGO);
     await page.locator('label', { hasText: 'Website ZIP' }).click();

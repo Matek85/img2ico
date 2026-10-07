@@ -4187,4 +4187,47 @@ body.changes-docked .changes button.change .step-when { grid-area: when; }
     grid-column: 2;
     grid-row: 4;
   }
-}
+}
+
+/* The choices of an image file (type, size, background) below the download bar. */
+.image-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem 1.25rem;
+  margin-top: 0.6rem;
+}
+
+.image-options .image-type,
+.image-options .image-background {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.image-options select {
+  padding: 0.3rem 0.5rem;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  font: inherit;
+}
+
+.image-options .image-size {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.image-options input[type='color'] {
+  width: 2.25rem;
+  height: 1.75rem;
+  padding: 0;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 0.3rem;
+}

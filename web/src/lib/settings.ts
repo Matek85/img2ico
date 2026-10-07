@@ -5,7 +5,27 @@ import type { Rect } from './crop';
 
 export type Fit = 'contain' | 'cover';
 /** What the person wants to end up with: an .ico, an .icns, or a package for a website. */
-export type Format = 'ico' | 'icns' | 'favicon';
+export type Format = 'ico' | 'icns' | 'favicon' | 'image';
+
+/** The kinds of image file the page can save the picture as (the engine's `ImageKind`). */
+export const IMAGE_TYPES = ['png', 'jpg', 'webp', 'bmp', 'tiff'] as const;
+export type ImageType = (typeof IMAGE_TYPES)[number];
+
+/** The picture in its own size as edited, or one image for every icon size. */
+export type ImageSize = 'original' | 'sizes';
+
+/** Whether files of this type can be transparent (jpg and bmp cannot). */
+export function imageHasAlpha(type: ImageType): boolean {
+  return type !== 'jpg' && type !== 'bmp';
+}
+
+export const IMAGE_MIME: Record<ImageType, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  webp: 'image/webp',
+  bmp: 'image/bmp',
+  tiff: 'image/tiff',
+};
 
 /** The file types the engine writes. */
 export type EngineFormat = 'ico' | 'icns' | 'png';
@@ -45,6 +65,11 @@ export interface Settings {
   themeColor: string;
   /** The Apple icon is laid on this color: an iPhone fills transparency with black. */
   appleBackground: string;
+  /**
+   * For "Image": the type of file, the size of it, and the color jpg and bmp lay the picture on. A group of its own, so
+   * the live preview of the icon (which reads the settings above) is not made again when only these change.
+   */
+  image: { type: ImageType; size: ImageSize; background: string };
 }
 
 export function defaultSettings(): Settings {
@@ -69,6 +94,7 @@ export function defaultSettings(): Settings {
     siteName: '',
     themeColor: '#ffffff',
     appleBackground: '#ffffff',
+    image: { type: 'png', size: 'original', background: '#ffffff' },
   };
 }
 
@@ -131,10 +157,23 @@ export function toEngineOptions(settings: Settings, format: EngineFormat = 'ico'
   return options;
 }
 
-/** The name of the download: the picture's name with the icon's extension. */
-export function downloadName(pictureName: string, format: Format): string {
+/**
+ * The name of the download: the picture's name with the icon's extension. For an image (`format` "image", `image`
+ * says which) it is the picture's own name with the type's ending; with the icon sizes it is a file called after
+ * the one size, or a ZIP when there are several.
+ */
+export function downloadName(
+  pictureName: string,
+  format: Format,
+  image?: { type: ImageType; size: ImageSize; sizes: readonly number[] },
+): string {
   const dot = pictureName.lastIndexOf('.');
   const base = (dot > 0 ? pictureName.slice(0, dot) : pictureName) || 'icon';
+  if (format === 'image') {
+    const { type, size, sizes } = image ?? { type: 'png' as const, size: 'original' as const, sizes: [] };
+    if (size === 'original') return `${base}.${type}`;
+    return sizes.length === 1 ? `${base}_${sizes[0]}x${sizes[0]}.${type}` : `${base}_${type}.zip`;
+  }
   return format === 'favicon' ? `${base}_favicon.zip` : `${base}.${format}`;
 }
 

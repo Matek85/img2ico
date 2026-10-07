@@ -52,6 +52,9 @@ type Call =
   | { op: 'zipRead'; index: number }
   | { op: 'zipBuild'; files: { name: string; bytes: Uint8Array }[] }
   | { op: 'pngZip'; bytes: Uint8Array; stem: string }
+  | { op: 'image'; options: EngineOptions; kind: string }
+  | { op: 'iconImage'; bytes: Uint8Array; index: number; kind: string; background: string }
+  | { op: 'iconImageZip'; bytes: Uint8Array; stem: string; kind: string; background: string }
   | { op: 'close' };
 
 function call(request: Call, transfer: Transferable[] = []): Promise<Response & { ok: true }> {
@@ -178,6 +181,25 @@ export async function buildZip(files: { name: string; bytes: Uint8Array }[]): Pr
 /** Every image of an .ico file as a PNG, in a ZIP. */
 export async function pngZip(bytes: Uint8Array, stem: string): Promise<Uint8Array> {
   return field(await call({ op: 'pngZip', bytes, stem }), 'data');
+}
+
+/**
+ * The open picture as it was edited (the background removed, mirrored, turned, cropped, trimmed, black and white; not the
+ * margin, corners or sizes of an icon), in its own size, as an image file of this kind (png, jpg, webp, bmp, tiff).
+ * `options.flatten` is the color jpg and bmp lay it on.
+ */
+export async function exportImage(options: EngineOptions, kind: string): Promise<Uint8Array> {
+  return field(await call({ op: 'image', options, kind }), 'data');
+}
+
+/** One image of an .ico file (from 0) as an image file of this kind; jpg and bmp lay it on `background`. */
+export async function iconImage(bytes: Uint8Array, index: number, kind: string, background: string): Promise<Uint8Array> {
+  return field(await call({ op: 'iconImage', bytes, index, kind, background }), 'data');
+}
+
+/** Every image of an .ico file as an image file of this kind, in a ZIP. */
+export async function iconImageZip(bytes: Uint8Array, stem: string, kind: string, background: string): Promise<Uint8Array> {
+  return field(await call({ op: 'iconImageZip', bytes, stem, kind, background }), 'data');
 }
 
 /** Reads all frames of an animated GIF into the engine (see `gifFrame`, `selectGifFrame`). */
