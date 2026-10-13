@@ -13,14 +13,14 @@
     "e2e": "playwright test"
   },
   "devDependencies": {
-    "@playwright/test": "^1.63.0",
+    "@playwright/test": "^1.64.0",
     "@sveltejs/vite-plugin-svelte": "^7.3.1",
     "@tsconfig/svelte": "^5.0.8",
-    "simple-icons": "^16.33.0",
-    "svelte": "^5.57.1",
+    "simple-icons": "^16.34.0",
+    "svelte": "^5.57.2",
     "svelte-check": "^4.7.6",
     "typescript": "^6.0.3",
-    "vite": "^8.3.2",
+    "vite": "^8.3.4",
     "vitest": "^5.0.3"
   },
   "dependencies": {
